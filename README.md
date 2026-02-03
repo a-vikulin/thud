@@ -212,7 +212,7 @@ Verify that auto-adjustment parameters are sensible
 ## Building from Source
 
 ```bash
-git clone https://github.com/a-vikulin/tHUD.git
+git clone https://github.com/a-vikulin/thud.git
 cd tHUD
 ./gradlew assembleDebug
 # APK will be in app/build/outputs/apk/debug/
