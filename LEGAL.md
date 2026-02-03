@@ -1,21 +1,21 @@
 # Legal Information
 
-## What TreadmillHUD Does
+## What tHUD Does
 
-TreadmillHUD is an independent Android application that communicates with iFit-equipped treadmills via their local gRPC interface. It provides:
+tHUD is an independent Android application that communicates with iFit-equipped treadmills via their local gRPC interface. It provides:
 
 - A heads-up display overlay showing real-time workout metrics
 - Structured workout execution with HR/Power-based auto-adjustments
 - Integration with external heart rate monitors and foot pods
 - Export to standard FIT format for Garmin Connect and other platforms
 
-TreadmillHUD connects **locally** to your treadmill (via localhost) and does not interact with iFit's cloud services.
+tHUD connects **locally** to your treadmill (via localhost) and does not interact with iFit's cloud services.
 
 ## Certificate Requirement
 
-To authenticate with the treadmill's local interface, TreadmillHUD requires mTLS certificates that must be obtained separately. These certificates can be extracted from your own treadmill's firmware using tools available in a separate repository.
+To authenticate with the treadmill's local interface, tHUD requires mTLS certificates that must be obtained separately. These certificates can be extracted from your own treadmill's firmware using tools available in a separate repository.
 
-**TreadmillHUD itself does not contain any extracted credentials, certificates, or proprietary code.**
+**tHUD itself does not contain any extracted credentials, certificates, or proprietary code.**
 
 ## Interoperability Rights
 
@@ -36,7 +36,7 @@ Many countries have similar interoperability exceptions in their copyright laws.
 
 ## Intended Use
 
-TreadmillHUD is intended **exclusively** for:
+tHUD is intended **exclusively** for:
 
 - Controlling and monitoring treadmills you legally own
 - Enabling interoperability with equipment you purchased
@@ -51,7 +51,7 @@ TreadmillHUD is intended **exclusively** for:
 
 ## Disclaimer
 
-TreadmillHUD is provided "as is" for **personal interoperability purposes**. Users are responsible for ensuring their use complies with applicable laws in their jurisdiction.
+tHUD is provided "as is" for **personal interoperability purposes**. Users are responsible for ensuring their use complies with applicable laws in their jurisdiction.
 
 The authors are not affiliated with iFit, NordicTrack, ProForm, Freemotion, or any related entities. All trademarks are property of their respective owners.
 
@@ -64,4 +64,4 @@ Consumers who purchase connected fitness equipment should be able to:
 - Access data from hardware they own
 - Continue using equipment if the manufacturer discontinues support
 
-TreadmillHUD supports these consumer rights through legitimate interoperability.
+tHUD supports these consumer rights through legitimate interoperability.
