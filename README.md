@@ -1,0 +1,236 @@
+# tHUD
+
+A heads-up display overlay for iFIT 2.0 treadmills (NordicTrack, ProForm, Freemotion, etc.).
+Runs directly on the treadmill's built-in screen, and fully replaces built-in iFit app (Workout Player)
+for treadmill control. I strongly recommend disabling Workout Player app to avoid interference.
+
+Displays real-time metrics, executes structured workouts with HR and Power-based trend aware
+auto-adjustment for pace or incline,and exports runs to Garmin-compatible FIT files.
+
+Allows you to watch Netflix or any other video streaming service installed on the treadmill, 
+while you are running.
+
+Exposes your treadmill over FTMS both on Bluetooth and WiFi DirCon. Although in the end I found this
+rather useless, since Zwift and most other video like running apps don't use FTMS to adjust
+treadmill's speed or incline. I prefer watching videos while running.
+
+![ss-6.jpg](screenshots/ss-6.jpg)
+
+## Foreword
+Every line of code in this repo was written by Claude Code Opus 4.5 under my close supervision.
+It took about 5M tokens. At times this was a frustrating experience, but overall I am absolutely
+blown away by Claude's capabilities!
+
+## Compatibility
+
+- Designed for and tested on a NordicTrack X24 treadmill with iFIT 2.0 (GlassOS-based)
+- Other iFIT 2.0 equipment may work but is untested
+- Requires privileged access to the treadmill's Android system
+- Requires wireless debugging (ADB) enabled
+
+## Features
+
+### Real-Time HUD Display
+- Fully replaces built-in iFit app (Workout Player) for treadmill control 
+- Current pace and speed
+- Heart rate with zone coloring
+- Running power with zone coloring (with Stryd)
+- Distance and elapsed time
+- Elevation gain
+- Cadence
+- Stryd pace for comparison and treadmill speed calibration
+- Configurable speed coefficient adjuster. In my tests with foot pods, your actual running speed is about 10% slower than what treadmill reports.
+- Incline adjuster. Set to 1% to emulate flat outdoor running effort
+
+### Live Run Chart
+- Speed, Incline, HR, and Power lines can be toggled on/off
+- HR and Power lines are color coded with zone color
+- Colored horizontal zone border lines for reference 
+- Visual workout steps structure with speed&incline targets and HR/Power target ranges
+- Toggle button between Y-axis auto-zoom to the last 3 minutes window or full data scale
+
+### Structured Workouts
+![ss-5.png](screenshots/ss-5.png)
+- Create custom interval workouts with the built-in editor
+- Repeat blocks for intervals, which can contain any number of steps
+- Time-based or distance-based step durations, with an option to keep going until Next button is pressed
+- Pace and incline targets per step
+- Optional HR and Power target zones per step with pace/incline auto-adjustment
+- Early step ending on HR reaching certain levels
+- Full undo/redo support in editor
+
+### Auto-Adjustment (HR or Power)
+- Each workout step can pick either HR or Power and define a target zone for it
+- It also has to choose either pace or incline to be auto-adjusted in order to keep HR/Power in the target zone 
+- Trend-aware algorithm prevents overcorrection
+- Visual feedback on adjustment state
+- The rest of the workout is adjusted too
+- Manual speed and incline adjustment buttons also adjust effort level for subsequent steps 
+
+### Power-Based Training (Stryd)
+- Connect Stryd foot pod via Bluetooth
+- Display running power, cadence and pace in real-time
+- Power zone coloring
+- Power reading is corrected for incline
+
+### Auto-Screenshot
+- Capture the full screenshot of the treadmill's screen
+- Toggle screenshot mode with the camera button in HUD
+- Automatic screenshots on workout step transitions and pause
+- Screenshots saved to Downloads/tHUD/screenshots/
+- Filename matches FIT file naming for easy correlation
+
+### FIT File Export
+- Automatic export when run ends
+- Full Garmin Connect compatibility
+- Lap data for structured workouts
+- Power and cadence from Stryd
+- TSS (Training Stress Score) calculation with 3-tier fallback: Power → HR → Pace
+- Files saved to Downloads/tHUD/
+- Settings for device parameters - you can configure FIT files to include your real watch identification
+- **IMPORTANT:**
+   1. **For your run to be calculated towards your acute and chronic load you MUST sync your watch after uploading the fit file to Garmin Connect, because acute load calculation is actually performed by the watch!**
+   2. **For fit files to be accepted by Stryd PowerCenter you must set manufacturer=95 in settings**
+
+### Reliability
+- Run crash recovery with periodic auto-save
+- Reconnection handling preserves run data
+- Double-stop confirmation prevents accidental run endings
+
+## Prerequisites
+
+### Gaining Privileged Access
+Your treadmill runs a locked down Android with iFIT/GlassOS.
+To install third-party apps, you must gain privileged access,
+enable developer options and enable wireless debugging (ADB over WiFi).
+
+Refer to community resources for your specific treadmill model. Or better yet ask AI for instructions.
+
+### Optional Hardware
+- Bluetooth HR sensor
+- Stryd foot pod for running pace/power/cadence metrics
+
+## Certificate Setup (Required)
+
+tHUD communicates with your treadmill's GlassOS service using mTLS authentication.
+You must extract certificates from the iFit app before tHUD can connect.
+
+**Use [tHUD-certs](https://codeberg.org/avikulin/tHUD-certs) to extract certificates from your treadmill's iFit APK.**
+
+After extraction, push the certificates to your treadmill:
+```bash
+adb push ca.crt /sdcard/Android/data/io.github.avikulin.thud/files/certs/
+adb push client.crt /sdcard/Android/data/io.github.avikulin.thud/files/certs/
+adb push client.key /sdcard/Android/data/io.github.avikulin.thud/files/certs/
+```
+
+## Installation
+
+Once you have ADB access to your treadmill and certificates installed:
+
+```bash
+# Connect to treadmill via ADB
+adb connect <treadmill-ip>:<port>
+
+# Install tHUD
+adb install tHUD.apk
+```
+
+Or transfer the APK to the treadmill and install via a file manager app.
+
+## Setup
+
+### Initial Configuration
+![ss-1.jpg](screenshots/ss-1.jpg)
+1. Launch tHUD from the app drawer
+2. Grant overlay permission when prompted
+3. Grant notification permission (required for foreground service)
+4. When first using the screenshot feature, grant screen recording permission when prompted (used for capturing screenshots only, not video)
+5. Open Settings (gear icon) to configure:
+   - Pace Coefficient: 1.0 is "same as treadmill". Adjust to match your Foot pod pace readings
+   - Incline Power Coefficient: 0.9 seems right to me
+   - Incline Adjustment - set to 1%, meaning when treadmill is at 1% the HUD will call that 0% and will calculated elevation gain based on 0% incline for saving in FIT files
+   - Set other parameters if you want to see realisting TSS load calculation
+
+### HR/Power Zones
+![ss-2.jpg](screenshots/ss-2.jpg)
+
+Set you Lactate threshold and FTP, plus HR/Power zones as percentages of LTHR and FTP
+
+### Auto-adjust parameters
+![ss-3.jpg](screenshots/ss-3.jpg)
+
+Verify that auto-adjustment parameters are sensible
+
+### Connecting Bluetooth Sensors
+![ss-4.jpg](screenshots/ss-4.jpg)
+1. Tap the Bluetooth icon in the HUD
+2. Scan and select your device
+3. Device will auto-connect on future sessions
+
+### Creating Workouts
+1. Tap the "#" workout icon to open the editor
+2. Add steps using the + button
+3. Configure each step:
+   - Type (Warmup, Run, Recover, etc.)
+   - Duration (time or distance)
+   - Target pace
+   - Target incline
+   - HR or Power targets (optional)
+4. Use Undo/Redo buttons if needed
+5. Workout is saved after every edit 
+6. Click Run to run the workout
+
+## Usage
+
+### Starting a Free Run
+1. For a free run either use physical Start button or touch Pace HUD box and select desired pace/speed
+2. tHUD starts the run and sets incline to effective 0%
+
+### During a Run
+- Use physical Speed +/- buttons to adjust speed or use Pace box in the HUD to open popup menu with a list of paces
+- Use physical Incline +/- buttons to adjust incline or use Incline box in the HUD to open popup menu with a list of inclines
+- Tap Chart button in the HUD to show/hide Chart
+- Tap X button in the HUD to hide all HUD panels
+- To open HUD again use tHUD icon. Installing Taskbar is highly recommended for that
+- Workout panel shows current step, progress and gives 3-2-1-GO! beep sequence between steps 
+- Tap the camera button to enable/disable auto-screenshots
+
+### Ending a Run
+1. Use physical Stop button to pause your run
+2. When paused, press the physical Stop button again to end the run
+3. FIT file exports automatically
+4. Find your file in Downloads/tHUD/
+
+## Privacy
+
+- All data stays on your treadmill
+- No cloud services or accounts required
+- No telemetry or analytics
+- FIT files are stored locally until you transfer them
+
+## Building from Source
+
+```bash
+git clone https://github.com/a-vikulin/tHUD.git
+cd tHUD
+./gradlew assembleDebug
+# APK will be in app/build/outputs/apk/debug/
+```
+
+## License
+
+GNU General Public License v3.0 - see [LICENSE](LICENSE) file
+
+## Contributing
+
+Contributions are welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Submit a pull request
+
+For major changes, please open an issue first to discuss.
+
+## Disclaimer
+
+This software is provided as-is. Modifying your treadmill's software may void your warranty. Use at your own risk.

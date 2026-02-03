@@ -1,0 +1,294 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/hud_background"
+    android:orientation="vertical"
+    android:padding="@dimen/hud_padding">
+
+    <!-- All boxes in one row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <!-- Pace Box (touchable) -->
+        <LinearLayout
+            android:id="@+id/paceBox"
+            style="@style/HudBox.Interactive"
+            android:layout_marginEnd="@dimen/box_margin">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_pace"
+                style="@style/HudText.Label" />
+
+            <TextView
+                android:id="@+id/tvPace"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/default_pace"
+                style="@style/HudText.Value" />
+
+            <TextView
+                android:id="@+id/tvRawSpeed"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/default_raw_speed"
+                style="@style/HudText.Unit" />
+        </LinearLayout>
+
+        <!-- Incline Box (touchable) -->
+        <LinearLayout
+            android:id="@+id/inclineBox"
+            style="@style/HudBox.Interactive"
+            android:layout_marginStart="@dimen/box_margin"
+            android:layout_marginEnd="@dimen/box_margin">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_incline"
+                style="@style/HudText.Label" />
+
+            <TextView
+                android:id="@+id/tvIncline"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/default_incline"
+                style="@style/HudText.Value" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/unit_grade"
+                style="@style/HudText.Unit" />
+        </LinearLayout>
+
+        <!-- Timer Box -->
+        <LinearLayout
+            style="@style/HudBox.Data"
+            android:layout_marginStart="@dimen/box_margin"
+            android:layout_marginEnd="@dimen/box_margin">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_time"
+                style="@style/HudText.Label.Dim" />
+
+            <TextView
+                android:id="@+id/tvTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/default_time"
+                style="@style/HudText.Value" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:visibility="invisible"
+                android:text="@string/unit_km"
+                style="@style/HudText.Unit" />
+        </LinearLayout>
+
+        <!-- Distance Box -->
+        <LinearLayout
+            style="@style/HudBox.Data"
+            android:layout_marginStart="@dimen/box_margin"
+            android:layout_marginEnd="@dimen/box_margin">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_distance"
+                style="@style/HudText.Label.Dim" />
+
+            <TextView
+                android:id="@+id/tvDistance"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/default_distance"
+                style="@style/HudText.Value" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/unit_km"
+                style="@style/HudText.Unit" />
+        </LinearLayout>
+
+        <!-- Meters Climbed Box -->
+        <LinearLayout
+            style="@style/HudBox.Data"
+            android:layout_marginStart="@dimen/box_margin"
+            android:layout_marginEnd="@dimen/box_margin">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_climb"
+                style="@style/HudText.Label.Dim" />
+
+            <TextView
+                android:id="@+id/tvClimb"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/default_climb"
+                style="@style/HudText.Value" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:visibility="invisible"
+                android:text="@string/unit_km"
+                style="@style/HudText.Unit" />
+        </LinearLayout>
+
+        <!-- TSS Box -->
+        <LinearLayout
+            android:id="@+id/tssBox"
+            style="@style/HudBox.Data"
+            android:layout_marginStart="@dimen/box_margin"
+            android:layout_marginEnd="@dimen/box_margin">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_tss"
+                style="@style/HudText.Label.Dim" />
+
+            <TextView
+                android:id="@+id/tvTrainingMetrics"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/default_tss"
+                style="@style/HudText.Value" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:visibility="invisible"
+                android:text="@string/unit_km"
+                style="@style/HudText.Unit" />
+        </LinearLayout>
+
+        <!-- Heart Rate Box -->
+        <LinearLayout
+            android:id="@+id/hrBox"
+            style="@style/HudBox.HeartRate"
+            android:layout_marginStart="@dimen/box_margin"
+            android:layout_marginEnd="@dimen/box_margin">
+
+            <TextView
+                android:id="@+id/tvHrLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_heart_rate"
+                style="@style/HudText.Label.Dim" />
+
+            <TextView
+                android:id="@+id/tvHeartRate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/default_heart_rate"
+                style="@style/HudText.Value" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:visibility="invisible"
+                android:text="@string/unit_km"
+                style="@style/HudText.Unit" />
+        </LinearLayout>
+
+        <!-- Foot Pod Box (touchable) -->
+        <LinearLayout
+            android:id="@+id/footPodBox"
+            style="@style/HudBox.Interactive"
+            android:layout_marginStart="@dimen/box_margin"
+            android:layout_marginEnd="@dimen/box_margin">
+
+            <TextView
+                android:id="@+id/tvFootPodLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_foot_pod"
+                style="@style/HudText.Label.Dim" />
+
+            <TextView
+                android:id="@+id/tvFootPodValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/foot_pod_not_connected"
+                style="@style/HudText.Value" />
+
+            <TextView
+                android:id="@+id/tvFootPodUnit"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""
+                style="@style/HudText.Unit" />
+        </LinearLayout>
+
+        <!-- Service Buttons Box -->
+        <LinearLayout
+            android:id="@+id/serviceButtonsBox"
+            style="@style/HudBox.Service"
+            android:layout_marginStart="@dimen/box_margin">
+
+            <TextView
+                android:id="@+id/btnWorkouts"
+                android:text="@string/btn_workouts"
+                style="@style/HudButton.Close" />
+
+            <ImageView
+                android:id="@+id/btnChart"
+                android:layout_width="@dimen/service_button_width"
+                android:layout_height="@dimen/service_button_height"
+                android:src="@drawable/ic_chart"
+                android:scaleType="centerInside"
+                android:padding="20dp"
+                android:background="@drawable/service_button_border"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="@string/btn_chart" />
+
+            <ImageView
+                android:id="@+id/btnCamera"
+                android:layout_width="@dimen/service_button_width"
+                android:layout_height="@dimen/service_button_height"
+                android:src="@drawable/ic_camera"
+                android:scaleType="centerInside"
+                android:padding="20dp"
+                android:background="@drawable/service_button_border"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="@string/btn_camera" />
+
+            <ImageView
+                android:id="@+id/btnBluetooth"
+                android:layout_width="@dimen/service_button_width"
+                android:layout_height="@dimen/service_button_height"
+                android:src="@drawable/ic_bluetooth"
+                android:scaleType="centerInside"
+                android:padding="20dp"
+                android:background="@drawable/service_button_border"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="@string/bt_dialog_title" />
+
+            <TextView
+                android:id="@+id/btnSettings"
+                android:text="@string/btn_settings"
+                style="@style/HudButton.Close" />
+
+            <TextView
+                android:id="@+id/btnClose"
+                android:text="@string/btn_close"
+                style="@style/HudButton.Close" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

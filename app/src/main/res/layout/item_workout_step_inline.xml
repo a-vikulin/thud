@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Two-row inline step editor item (vertical layout) -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="@dimen/inline_step_padding"
+    android:layout_marginTop="@dimen/inline_step_item_margin"
+    android:background="@drawable/step_item_background">
+
+    <!-- Row 1: Action buttons + Step controls (or Repeat controls) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/inline_step_row_height"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <!-- Action buttons (Up/Down/Add/Copy/Delete) -->
+        <LinearLayout
+            android:id="@+id/layoutActionButtons"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <ImageButton
+                android:id="@+id/btnMoveUp"
+                android:layout_width="@dimen/inline_step_button_size"
+                android:layout_height="@dimen/inline_step_button_size"
+                android:src="@android:drawable/arrow_up_float"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/step_move_up"
+                android:scaleType="centerInside" />
+
+            <ImageButton
+                android:id="@+id/btnMoveDown"
+                android:layout_width="@dimen/inline_step_button_size"
+                android:layout_height="@dimen/inline_step_button_size"
+                android:src="@android:drawable/arrow_down_float"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/step_move_down"
+                android:scaleType="centerInside" />
+
+            <ImageButton
+                android:id="@+id/btnAddBelow"
+                android:layout_width="@dimen/inline_step_button_size"
+                android:layout_height="@dimen/inline_step_button_size"
+                android:src="@drawable/ic_add"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/step_add_below"
+                android:scaleType="centerInside" />
+
+            <ImageButton
+                android:id="@+id/btnDuplicate"
+                android:layout_width="@dimen/inline_step_button_size"
+                android:layout_height="@dimen/inline_step_button_size"
+                android:src="@drawable/ic_content_copy"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/step_duplicate"
+                android:scaleType="centerInside" />
+
+            <ImageButton
+                android:id="@+id/btnDelete"
+                android:layout_width="@dimen/inline_step_button_size"
+                android:layout_height="@dimen/inline_step_button_size"
+                android:src="@android:drawable/ic_menu_delete"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/btn_delete_step"
+                android:scaleType="centerInside" />
+        </LinearLayout>
+
+        <!-- Step Type Spinner -->
+        <Spinner
+            android:id="@+id/spinnerType"
+            android:layout_width="@dimen/inline_step_type_width"
+            android:layout_height="match_parent"
+            android:layout_marginStart="@dimen/inline_step_padding"
+            android:background="@color/editor_input_background"
+            android:spinnerMode="dropdown" />
+
+        <!-- Pace Spinner container -->
+        <FrameLayout
+            android:id="@+id/containerPace"
+            android:layout_width="@dimen/inline_step_pace_width"
+            android:layout_height="match_parent"
+            android:layout_marginStart="@dimen/inline_step_padding" />
+
+        <!-- Incline Spinner container -->
+        <FrameLayout
+            android:id="@+id/containerIncline"
+            android:layout_width="@dimen/inline_step_incline_width"
+            android:layout_height="match_parent"
+            android:layout_marginStart="@dimen/inline_step_padding" />
+
+        <!-- End Condition Spinner (Time/Distance) -->
+        <Spinner
+            android:id="@+id/spinnerEndCondition"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_marginStart="@dimen/inline_step_padding"
+            android:background="@color/editor_input_background"
+            android:spinnerMode="dropdown" />
+
+        <!-- Duration/Distance Value container -->
+        <FrameLayout
+            android:id="@+id/containerDuration"
+            android:layout_width="@dimen/inline_step_duration_width"
+            android:layout_height="match_parent"
+            android:layout_marginStart="@dimen/inline_step_padding" />
+
+        <!-- Early End Condition Spinner -->
+        <Spinner
+            android:id="@+id/spinnerEarlyEnd"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_marginStart="@dimen/inline_step_padding"
+            android:background="@color/editor_input_background"
+            android:spinnerMode="dropdown" />
+
+        <!-- HR End Value Container (shown for HR_RANGE early end) -->
+        <FrameLayout
+            android:id="@+id/containerHrEnd"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="@dimen/inline_step_padding"
+            android:visibility="gone" />
+
+        <!-- Repeat controls (shown only for REPEAT steps) -->
+        <TextView
+            android:id="@+id/tvRepeatLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/inline_step_padding"
+            android:text="@string/step_repeat_label"
+            android:textColor="@color/text_label"
+            android:textSize="@dimen/text_step_type"
+            android:visibility="gone" />
+
+        <FrameLayout
+            android:id="@+id/containerRepeatCount"
+            android:layout_width="@dimen/inline_step_pace_width"
+            android:layout_height="match_parent"
+            android:layout_marginStart="@dimen/inline_step_padding"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tvRepeatTimes"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/inline_step_padding"
+            android:text="@string/step_repeat_times"
+            android:textColor="@color/text_label"
+            android:textSize="@dimen/text_step_type"
+            android:visibility="gone" />
+
+        <!-- Spacer to fill remaining space -->
+        <View
+            android:id="@+id/spacerRow1"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+    </LinearLayout>
+
+    <!-- Row 2: Auto-adjust controls (full width, hidden for REPEAT) -->
+    <LinearLayout
+        android:id="@+id/layoutHrRow"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/inline_step_row_height"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:visibility="visible">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/step_auto_adjust"
+            android:textColor="@color/text_label"
+            android:textSize="@dimen/text_step_details" />
+
+        <!-- Auto-adjust Mode Spinner (No/HR/Power) -->
+        <Spinner
+            android:id="@+id/spinnerAutoMode"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_marginStart="@dimen/inline_step_padding"
+            android:background="@color/editor_input_background"
+            android:spinnerMode="dropdown" />
+
+        <!-- Adjustment Type Spinner (Pace/Incline) -->
+        <Spinner
+            android:id="@+id/spinnerAdjustType"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_marginStart="@dimen/inline_step_padding"
+            android:background="@color/editor_input_background"
+            android:spinnerMode="dropdown" />
+
+        <!-- Zone Slider container -->
+        <FrameLayout
+            android:id="@+id/containerZoneSlider"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="@dimen/inline_step_padding" />
+    </LinearLayout>
+</LinearLayout>

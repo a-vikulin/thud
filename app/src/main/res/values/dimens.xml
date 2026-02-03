@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== HUD Dimensions ==================== -->
+
+    <!-- HUD sizing (as fraction of screen) -->
+    <!-- Note: These are used programmatically in HUDService.kt -->
+    <!-- hud_width_percent = 0.6 (60%) -->
+    <!-- hud_height_percent = 0.10 (10%) -->
+    <!-- popup_width_percent = 0.6 (60%) -->
+    <!-- popup_height_percent = 0.7 (70%) -->
+
+    <!-- Padding and margins -->
+    <dimen name="hud_padding">4dp</dimen>
+    <dimen name="box_padding">2dp</dimen>
+    <dimen name="box_margin">2dp</dimen>
+    <dimen name="popup_padding">8dp</dimen>
+    <dimen name="popup_button_margin">2dp</dimen>
+    <dimen name="popup_resume_button_height">80dp</dimen>
+
+    <!-- ==================== Text Sizes ==================== -->
+
+    <!-- HUD text sizes -->
+    <dimen name="text_status">8sp</dimen>
+    <dimen name="text_label">10sp</dimen>
+    <dimen name="text_value">36sp</dimen>
+    <dimen name="text_value_small">20sp</dimen>
+    <dimen name="text_unit">10sp</dimen>
+    <dimen name="text_close_button">44sp</dimen>
+    <dimen name="service_button_border_width">2dp</dimen>
+    <dimen name="service_button_corner_radius">4dp</dimen>
+    <dimen name="service_button_width">80dp</dimen>
+    <dimen name="service_button_height">80dp</dimen>
+
+    <!-- Popup text sizes -->
+    <dimen name="text_popup_button">30sp</dimen>
+
+    <!-- ==================== Layout Fractions ==================== -->
+    <!-- Used in HUDService.kt for programmatic sizing -->
+
+    <item name="hud_width_fraction" format="float" type="dimen">0.9</item>
+    <item name="hud_height_fraction" format="float" type="dimen">0.09</item>
+    <item name="popup_width_fraction" format="float" type="dimen">0.6</item>
+    <item name="popup_height_fraction" format="float" type="dimen">0.7</item>
+    <item name="dialog_width_fraction" format="float" type="dimen">0.5</item>
+
+    <!-- ==================== Workout Chart ==================== -->
+
+    <item name="chart_width_fraction" format="float" type="dimen">0.97</item>
+    <item name="chart_height_fraction" format="float" type="dimen">0.35</item>
+    <dimen name="chart_left_axis_width">90dp</dimen>
+    <dimen name="chart_right_axis_width">70dp</dimen>
+    <dimen name="chart_bottom_axis_height">50dp</dimen>
+    <dimen name="chart_line_width">2dp</dimen>
+    <dimen name="chart_axis_label_size">20sp</dimen>
+    <dimen name="chart_zone_boundary_width">1dp</dimen>
+    <dimen name="chart_grid_stroke_width">1dp</dimen>
+    <dimen name="chart_power_stripe_width">2dp</dimen>
+    <dimen name="chart_top_padding">10dp</dimen>
+
+    <!-- ==================== Settings Dialog ==================== -->
+
+    <dimen name="dialog_padding_horizontal">50dp</dimen>
+    <dimen name="dialog_padding_vertical">40dp</dimen>
+    <dimen name="dialog_input_padding">10dp</dimen>
+    <dimen name="dialog_buttons_top_margin">20dp</dimen>
+
+    <!-- Settings Dialog Tabs -->
+    <dimen name="settings_tab_height">40dp</dimen>
+    <dimen name="settings_tab_padding_horizontal">16dp</dimen>
+    <dimen name="settings_tab_margin">4dp</dimen>
+    <dimen name="settings_tab_text_size">14sp</dimen>
+    <dimen name="settings_content_height">500dp</dimen>
+    <dimen name="settings_row_spacing">8dp</dimen>
+    <dimen name="settings_label_width">120dp</dimen>
+    <dimen name="settings_spinner_width">100dp</dimen>
+    <dimen name="settings_spinner_label_size">11sp</dimen>
+
+    <!-- ==================== Workout Panel ==================== -->
+
+    <item name="workout_panel_width_fraction" format="float" type="dimen">0.15</item>
+    <!-- Panel positioned below HUD (top 8%) with gap, above chart (bottom 35%) -->
+    <item name="workout_panel_height_fraction" format="float" type="dimen">0.50</item>
+    <item name="workout_panel_top_offset_fraction" format="float" type="dimen">0.10</item>
+    <dimen name="workout_panel_padding">12dp</dimen>
+    <dimen name="workout_panel_header_height">48dp</dimen>
+    <dimen name="step_item_height">40dp</dimen>
+    <dimen name="step_item_margin">4dp</dimen>
+    <dimen name="step_indicator_size">20dp</dimen>
+    <dimen name="control_button_size">44dp</dimen>
+    <dimen name="control_button_margin">8dp</dimen>
+    <dimen name="progress_bar_height">8dp</dimen>
+    <dimen name="progress_bar_corner_radius">4dp</dimen>
+    <dimen name="workout_panel_corner_radius">8dp</dimen>
+
+    <!-- Workout Panel Text -->
+    <dimen name="text_workout_title">16sp</dimen>
+    <dimen name="text_step_name">14sp</dimen>
+    <dimen name="text_step_detail">12sp</dimen>
+    <dimen name="text_step_time">12sp</dimen>
+    <dimen name="text_control_button">20sp</dimen>
+    <dimen name="text_countdown">48sp</dimen>
+
+    <!-- ==================== Workout Editor ==================== -->
+
+    <dimen name="editor_padding">16dp</dimen>
+    <dimen name="editor_input_padding">12dp</dimen>
+    <dimen name="editor_input_margin">8dp</dimen>
+    <dimen name="editor_section_spacing">24dp</dimen>
+
+    <!-- Step Item -->
+    <dimen name="step_item_padding">12dp</dimen>
+    <dimen name="step_item_margin_horizontal">8dp</dimen>
+    <dimen name="step_item_margin_vertical">4dp</dimen>
+    <dimen name="step_item_corner_radius">8dp</dimen>
+    <dimen name="step_child_indent">32dp</dimen>
+    <dimen name="step_action_button_size">40dp</dimen>
+    <dimen name="step_number_min_width">36dp</dimen>
+
+    <!-- Step Item Text -->
+    <dimen name="text_step_drag_handle">18sp</dimen>
+    <dimen name="text_step_number">14sp</dimen>
+    <dimen name="text_step_type">16sp</dimen>
+    <dimen name="text_step_duration">14sp</dimen>
+    <dimen name="text_step_details">12sp</dimen>
+
+    <!-- Editor Text -->
+    <dimen name="text_editor_title">20sp</dimen>
+    <dimen name="text_editor_label">14sp</dimen>
+    <dimen name="text_editor_input">16sp</dimen>
+    <dimen name="text_editor_summary">14sp</dimen>
+
+    <!-- Dialog -->
+    <dimen name="dialog_step_editor_width">400dp</dimen>
+    <dimen name="dialog_button_padding">16dp</dimen>
+
+    <!-- ==================== Workout Library ==================== -->
+
+    <!-- Card -->
+    <dimen name="library_card_margin_horizontal">16dp</dimen>
+    <dimen name="library_card_margin_vertical">8dp</dimen>
+    <dimen name="library_card_padding">16dp</dimen>
+    <dimen name="library_card_corner_radius">12dp</dimen>
+    <dimen name="library_card_elevation">4dp</dimen>
+    <dimen name="library_card_description_margin_top">4dp</dimen>
+    <dimen name="library_card_stats_margin_top">12dp</dimen>
+
+    <!-- Action buttons -->
+    <dimen name="library_action_button_size">40dp</dimen>
+    <dimen name="library_stat_drawable_padding">4dp</dimen>
+    <dimen name="library_stat_separator_width">16dp</dimen>
+
+    <!-- List -->
+    <dimen name="library_list_padding_top">8dp</dimen>
+    <dimen name="library_list_padding_bottom">80dp</dimen>
+    <dimen name="library_fab_margin">16dp</dimen>
+
+    <!-- Empty state -->
+    <dimen name="library_empty_subtitle_margin">8dp</dimen>
+
+    <!-- Quick start -->
+    <dimen name="library_quick_start_padding">32dp</dimen>
+    <dimen name="quick_start_icon_size">96dp</dimen>
+    <dimen name="quick_start_title_margin_top">24dp</dimen>
+    <dimen name="quick_start_subtitle_margin_top">8dp</dimen>
+    <dimen name="quick_start_button_margin_top">32dp</dimen>
+    <dimen name="quick_start_button_padding_horizontal">32dp</dimen>
+    <dimen name="quick_start_button_padding_vertical">12dp</dimen>
+    <dimen name="quick_start_hint_margin_top">16dp</dimen>
+
+    <!-- Library text -->
+    <dimen name="text_library_workout_name">18sp</dimen>
+    <dimen name="text_library_description">14sp</dimen>
+    <dimen name="text_library_stats">12sp</dimen>
+    <dimen name="text_library_empty_title">18sp</dimen>
+    <dimen name="text_library_empty_subtitle">14sp</dimen>
+    <dimen name="text_quick_start_title">24sp</dimen>
+    <dimen name="text_quick_start_subtitle">16sp</dimen>
+    <dimen name="text_quick_start_button">18sp</dimen>
+    <dimen name="text_quick_start_hint">12sp</dimen>
+
+    <!-- ==================== TouchSpinner ==================== -->
+
+    <dimen name="spinner_button_size">48dp</dimen>
+    <dimen name="spinner_value_min_width">80dp</dimen>
+    <dimen name="spinner_value_padding">8dp</dimen>
+    <dimen name="spinner_text_size">16sp</dimen>
+    <dimen name="spinner_button_text_size">24sp</dimen>
+    <dimen name="spinner_corner_radius">4dp</dimen>
+    <dimen name="spinner_height">48dp</dimen>
+
+    <!-- TouchSpinner behavior (see also integers.xml for interval values) -->
+    <item name="spinner_max_step_multiplier" format="float" type="dimen">5.0</item>
+    <item name="spinner_drag_exponent" format="float" type="dimen">2.0</item>
+
+    <!-- ==================== Dual Knob HR Slider ==================== -->
+
+    <dimen name="hr_slider_height">50dp</dimen>
+    <dimen name="hr_slider_handle_width">44dp</dimen>
+    <dimen name="hr_slider_handle_height">44dp</dimen>
+    <dimen name="hr_slider_bar_height">24dp</dimen>
+    <dimen name="hr_slider_handle_radius">4dp</dimen>
+    <dimen name="hr_slider_text_size">12sp</dimen>
+
+    <!-- ==================== Workout Preview Chart ==================== -->
+
+    <item name="preview_chart_height_fraction" format="float" type="dimen">0.25</item>
+    <dimen name="preview_chart_padding">8dp</dimen>
+    <dimen name="preview_chart_axis_width">60dp</dimen>
+
+    <!-- ==================== Inline Step Editor ==================== -->
+
+    <dimen name="inline_step_row_height">48dp</dimen>
+    <dimen name="inline_step_padding">8dp</dimen>
+    <dimen name="inline_step_item_margin">4dp</dimen>
+    <dimen name="inline_step_button_size">36dp</dimen>
+    <dimen name="inline_step_indent">40dp</dimen>
+    <dimen name="inline_step_type_width">90dp</dimen>
+    <dimen name="inline_step_duration_width">120dp</dimen>
+    <dimen name="inline_step_pace_width">80dp</dimen>
+    <dimen name="inline_step_incline_width">70dp</dimen>
+
+    <!-- ==================== Workout List ==================== -->
+
+    <dimen name="workout_list_item_height">48dp</dimen>
+    <dimen name="workout_list_item_padding">12dp</dimen>
+    <dimen name="workout_list_search_height">48dp</dimen>
+    <item name="workout_list_width_fraction" format="float" type="dimen">0.25</item>
+
+    <!-- ==================== HR Device Dialog ==================== -->
+
+    <dimen name="dialog_padding">24dp</dimen>
+    <dimen name="dialog_section_spacing">16dp</dimen>
+    <dimen name="dialog_item_spacing">8dp</dimen>
+    <dimen name="dialog_title_text_size">20sp</dimen>
+    <dimen name="dialog_section_title_size">14sp</dimen>
+    <dimen name="dialog_item_text_size">16sp</dimen>
+    <dimen name="dialog_item_subtitle_size">12sp</dimen>
+    <dimen name="dialog_button_text_size">14sp</dimen>
+    <dimen name="hr_dialog_min_section_height">60dp</dimen>
+    <dimen name="hr_dialog_progress_size">24dp</dimen>
+    <dimen name="hr_dialog_button_height">36dp</dimen>
+    <dimen name="hr_dialog_button_min_width">80dp</dimen>
+    <item name="hr_dialog_width_fraction" format="float" type="dimen">0.4</item>
+
+    <!-- ==================== Bluetooth Sensors Dialog ==================== -->
+
+    <dimen name="reconnect_spinner_size">20dp</dimen>
+    <dimen name="bt_action_button_min_width">170dp</dimen>
+
+    <!-- ==================== Chart Toggle Buttons ==================== -->
+
+    <dimen name="chart_toggle_button_width">80dp</dimen>
+    <dimen name="chart_toggle_button_text_size">24sp</dimen>
+    <dimen name="chart_toggle_button_margin">2dp</dimen>
+    <dimen name="chart_toggle_button_corner_radius">1dp</dimen>
+    <dimen name="chart_toggle_button_stroke_width">1dp</dimen>
+</resources>

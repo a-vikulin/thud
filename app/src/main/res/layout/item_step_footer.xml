@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Footer item with Add Step and Add Repeat buttons -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="@dimen/editor_padding"
+    android:gravity="start">
+
+    <Button
+        android:id="@+id/btnAddStep"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/editor_add_step"
+        android:textColor="@color/text_primary"
+        android:backgroundTint="@color/editor_button_primary"
+        android:paddingHorizontal="24dp"
+        android:textAllCaps="false" />
+
+    <Button
+        android:id="@+id/btnAddRepeat"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/editor_padding"
+        android:text="@string/editor_add_repeat"
+        android:textColor="@color/text_primary"
+        android:backgroundTint="@color/editor_button_secondary"
+        android:paddingHorizontal="24dp"
+        android:textAllCaps="false" />
+
+</LinearLayout>

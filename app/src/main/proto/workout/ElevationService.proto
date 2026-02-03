@@ -1,0 +1,20 @@
+syntax = "proto3";
+package com.ifit.glassos;
+import "util/Util.proto";
+option java_package = "com.ifit.glassos.workout";
+option java_outer_classname = "ElevationServiceProto";
+option java_multiple_files = true;
+
+message ElevationMetric {
+    string workoutID = 1;
+    int32 timeSeconds = 2;
+    double elevationGainMeters = 3;
+    double elevationLossMeters = 4;
+    double elevationNetMeters = 5;
+}
+
+service ElevationService {
+    rpc ElevationSubscription(Empty) returns (stream ElevationMetric);
+    rpc GetElevation(Empty) returns (ElevationMetric);
+    rpc CanRead(Empty) returns (AvailabilityResponse);
+}

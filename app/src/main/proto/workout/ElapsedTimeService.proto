@@ -1,0 +1,22 @@
+syntax = "proto3";
+package com.ifit.glassos;
+import "util/Util.proto";
+option java_package = "com.ifit.glassos.workout";
+option java_outer_classname = "ElapsedTimeServiceProto";
+option java_multiple_files = true;
+
+message ElapsedTimeMetric {
+  string workoutID = 1;
+  int32 elapsedSeconds = 2;
+}
+
+service ElapsedTimeService {
+  // check whether ElapsedTime is Readable
+  rpc CanRead(Empty) returns (AvailabilityResponse) {}
+
+  // get the current Elapsed Time relative to the current workout
+  rpc GetElapsedTime(Empty) returns (ElapsedTimeMetric) {}
+
+  // subscribe to ElapsedTime updates relative to the current workout
+  rpc ElapsedTimeSubscription(Empty) returns (stream ElapsedTimeMetric) {}
+}

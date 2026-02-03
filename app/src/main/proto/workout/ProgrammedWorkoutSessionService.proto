@@ -1,0 +1,34 @@
+syntax = "proto3";
+package com.ifit.glassos;
+import "util/NetworkError.proto";
+import "util/Util.proto";
+import "workout/ProgrammedWorkoutSessionError.proto";
+import "workout/WorkoutError.proto";
+import "workout/data/WorkoutSegmentDescriptor.proto";
+option java_package = "com.ifit.glassos.workout";
+option java_outer_classname = "ProgrammedWorkoutSessionServiceProto";
+option java_multiple_files = true;
+
+message AddAllWorkoutSegmentsRequest {
+  repeated WorkoutSegmentDescriptor workoutSegments = 1;
+}
+
+message ProgrammedWorkoutServiceResponse {
+  oneof errorOrSuccess {
+    bool success = 1;
+    ProgrammedWorkoutSessionError programmedSessionError = 2;
+    WorkoutError workoutError = 3;
+    NetworkError networkError = 4;
+  }
+}
+
+service ProgrammedWorkoutSessionService {
+  rpc ManualStartRequestedSubscription(Empty) returns (stream BooleanResponse);
+  rpc AddAllWorkoutSegments(AddAllWorkoutSegmentsRequest) returns (ProgrammedWorkoutServiceResponse);
+  rpc ClearRemainingWorkoutSegments(Empty) returns (Empty);
+  rpc Start(Empty) returns (ProgrammedWorkoutServiceResponse);
+  rpc Stop(Empty) returns (ProgrammedWorkoutServiceResponse);
+  rpc Next(Empty) returns (ProgrammedWorkoutServiceResponse);
+  rpc Pause(Empty) returns (ProgrammedWorkoutServiceResponse);
+  rpc Resume(Empty) returns (ProgrammedWorkoutServiceResponse);
+}

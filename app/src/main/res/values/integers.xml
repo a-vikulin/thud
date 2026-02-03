@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- TouchSpinner behavior defaults -->
+    <integer name="spinner_slowest_interval_ms">333</integer>
+    <integer name="spinner_fastest_interval_ms">125</integer>
+    <integer name="spinner_dead_zone_px">40</integer>
+    <integer name="spinner_max_drag_px">200</integer>
+</resources>

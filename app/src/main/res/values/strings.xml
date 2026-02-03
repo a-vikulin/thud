@@ -1,0 +1,419 @@
+<resources>
+    <string name="app_name">tHUD</string>
+
+    <!-- Settings Dialog -->
+    <string name="settings_pace_coefficient_label">Pace Coefficient (e.g., 0.85 = 15%% slower)</string>
+    <string name="settings_incline_adjustment_label">Incline Adjustment (1% = flat outdoor)</string>
+    <string name="settings_incline_power_coefficient_label">Incline Power Coefficient (0 = none, 1 = full)</string>
+    <string name="btn_cancel">Cancel</string>
+    <string name="btn_save">Save</string>
+
+    <!-- Settings Tabs -->
+    <string name="settings_tab_dynamics">Dynamics</string>
+    <string name="settings_tab_zones">Zones</string>
+    <string name="settings_tab_auto_adjust">Auto-Adjust</string>
+    <string name="settings_tab_fit_export">FIT Export</string>
+    <string name="settings_tab_ftms">FTMS</string>
+
+    <!-- FIT Export Tab -->
+    <string name="fit_export_description">Configure device identity to match your primary training device for Garmin Training Status compatibility.</string>
+    <string name="fit_manufacturer">Manufacturer ID</string>
+    <string name="fit_product_id">Product ID</string>
+    <string name="fit_device_serial">Unit ID (Serial)</string>
+    <string name="fit_software_version">Software Version</string>
+
+    <!-- FTMS Tab -->
+    <string name="ftms_settings_description">Enable FTMS servers to broadcast treadmill data to fitness apps like Zwift. Control allows apps to change speed/incline.</string>
+    <string name="ftms_ble_section">Bluetooth (BLE)</string>
+    <string name="ftms_dircon_section">WiFi (DirCon)</string>
+    <string name="ftms_broadcast">Broadcast</string>
+    <string name="ftms_control">Control</string>
+    <string name="ftms_device_name">Device Name</string>
+    <string name="ftms_device_name_placeholder">Default: %1$s</string>
+    <string name="ftms_default_device_name">tHUD Treadmill</string>
+
+    <!-- Zones Tab -->
+    <string name="settings_lthr_label">LTHR</string>
+    <string name="settings_ftp_label">FTP</string>
+    <string name="settings_hr_zones_title">HR Zones (% LTHR)</string>
+    <string name="settings_power_zones_title">Power Zones (% FTP)</string>
+
+    <!-- Auto-Adjust Tab -->
+    <string name="settings_hr_adjust_header">HR Adjust</string>
+    <string name="settings_power_adjust_header">Power Adjust</string>
+    <string name="settings_trend_window">Trend Window</string>
+    <string name="settings_trend_threshold">Trend Threshold</string>
+    <string name="settings_settling_time">Settling Time</string>
+    <string name="settings_adj_cooldown">Adj Cooldown</string>
+    <string name="settings_speed_adj">Speed Adj</string>
+    <string name="settings_speed_urgent">Speed Urgent</string>
+    <string name="settings_incline_adj">Incline Adj</string>
+    <string name="settings_incline_urgent">Incline Urgent</string>
+    <string name="settings_urgent_threshold">Urgent Threshold</string>
+    <string name="settings_max_speed_adj">Max Speed Adj</string>
+    <string name="settings_max_incline_adj">Max Incline Adj</string>
+
+    <!-- Chart Toggle Buttons -->
+    <string name="chart_toggle_speed">S</string>
+    <string name="chart_toggle_incline">I</string>
+    <string name="chart_toggle_hr">H</string>
+    <string name="chart_toggle_power">P</string>
+
+    <!-- Chart Axis Labels -->
+    <string name="chart_axis_speed">km/h</string>
+    <string name="chart_axis_incline_format">%1$d%%</string>
+    <string name="chart_axis_zone">Zone</string>
+    <string name="chart_axis_hr">bpm</string>
+    <string name="chart_axis_power">Power (W)</string>
+    <string name="chart_axis_zone_format">Z%1$d</string>
+    <string name="chart_axis_time_format">%1$dm</string>
+    <string name="chart_repeat_iteration_format">%1$s %2$d/%3$d</string>
+
+    <!-- Dynamics Tab -->
+    <string name="settings_user_weight_label">Body Weight</string>
+    <string name="settings_user_age_label">Age</string>
+    <string name="settings_user_sex_label">Sex</string>
+    <string name="settings_sex_male">Male</string>
+    <string name="settings_sex_female">Female</string>
+    <string name="settings_user_hr_rest_label">Resting HR</string>
+    <string name="settings_user_ftp_label">FTP</string>
+    <string name="settings_threshold_pace_label">LT-Pace</string>
+    <string name="unit_kg">kg</string>
+
+    <!-- HR Auto-Adjust Settings -->
+    <string name="settings_hr_trend_window">Trend Window</string>
+    <string name="settings_hr_trend_threshold">Trend Threshold</string>
+    <string name="settings_hr_settling_time">Settling Time</string>
+    <string name="settings_hr_adj_cooldown">Adj Cooldown</string>
+    <string name="settings_hr_speed_adj">Speed Adj</string>
+    <string name="settings_hr_speed_urgent_adj">Speed Urgent</string>
+    <string name="settings_hr_incline_adj">Incline Adj</string>
+    <string name="settings_hr_incline_urgent_adj">Incline Urgent</string>
+    <string name="settings_hr_urgent_threshold">Urgent Threshold</string>
+    <string name="settings_hr_max_speed_adj">Max Speed Adj</string>
+    <string name="settings_hr_max_incline_adj">Max Incline Adj</string>
+    <string name="unit_seconds">s</string>
+    <string name="unit_bpm_per_min">bpm/min</string>
+    <string name="unit_kph">kph</string>
+    <string name="unit_percent">%%</string>
+    <string name="unit_bpm">bpm</string>
+    <string name="btn_workouts">#</string>
+    <string name="btn_chart">~</string>
+    <string name="btn_camera">Camera</string>
+
+    <!-- Screenshot Feature -->
+    <string name="screenshot_saved">Screenshot: %1$s</string>
+    <string name="screenshot_failed">Screenshot failed</string>
+    <string name="screenshot_enabled">Auto-screenshot enabled</string>
+    <string name="screenshot_permission_required">Please grant screen capture permission</string>
+    <string name="screenshot_permission_denied">Screen capture permission denied</string>
+    <string name="btn_settings">&#9881;</string>
+    <string name="btn_close">X</string>
+
+    <!-- Popup Buttons -->
+    <string name="pace_button_format">%1$s\n%2$skm/h</string>
+    <string name="incline_button_positive_format">+%1$d%%</string>
+    <string name="incline_button_format">%1$d%%</string>
+
+    <!-- HUD Labels -->
+    <string name="label_pace">PACE</string>
+    <string name="label_incline">INCLINE</string>
+    <string name="label_time">TIME</string>
+    <string name="label_distance">DIST</string>
+    <string name="label_climb">CLIMB</string>
+    <string name="label_heart_rate">HEART RATE</string>
+    <string name="label_connecting">Connecting…</string>
+    <string name="label_tss">TSS</string>
+    <string name="default_tss">--</string>
+    <string name="unit_grade">grade</string>
+    <string name="unit_km">km</string>
+    <string name="default_pace">--:--</string>
+    <string name="default_raw_speed">(0.0 kph)</string>
+    <string name="default_incline">0.0%</string>
+    <string name="default_time">0:00</string>
+    <string name="default_distance">0.00</string>
+    <string name="default_climb">0m</string>
+    <string name="default_heart_rate">--</string>
+
+    <!-- Permissions -->
+    <string name="overlay_permission_required">Overlay permission required</string>
+
+    <!-- Toast Messages -->
+    <string name="toast_incline_requires_workout">Start a workout to change incline</string>
+    <string name="toast_failed_to_load_workout">Failed to load workout</string>
+    <string name="toast_no_workout_selected">No workout selected</string>
+
+    <!-- Notification -->
+    <string name="notification_title">tHUD</string>
+    <string name="notification_hud_visible">HUD visible</string>
+    <string name="notification_hud_hidden">HUD hidden</string>
+    <string name="notification_show_hud">Show HUD</string>
+    <string name="notification_hide_hud">Hide HUD</string>
+    <string name="notification_stop">Stop</string>
+    <string name="notification_channel_name">tHUD Service</string>
+    <string name="notification_channel_description">Keeps treadmill connection alive</string>
+
+    <!-- ==================== Workout Panel ==================== -->
+
+    <!-- Step Types -->
+    <string name="step_type_warmup">Warmup</string>
+    <string name="step_type_run">Run</string>
+    <string name="step_type_recover">Recover</string>
+    <string name="step_type_rest">Rest</string>
+    <string name="step_type_cooldown">Cooldown</string>
+    <string name="step_type_repeat">Repeat</string>
+
+    <!-- Workout Panel Labels -->
+    <string name="workout_panel_paused">PAUSED</string>
+    <string name="workout_panel_completed">COMPLETE</string>
+    <string name="workout_panel_next_step">Next: %1$s</string>
+    <string name="workout_panel_step_progress">%1$s / %2$s</string>
+    <string name="workout_panel_hr_target">HR: %1$d-%2$d</string>
+    <string name="workout_panel_hr_adjusting">HR adj: %1$s</string>
+    <string name="workout_panel_hr_target_detail">HR Target: %1$d-%2$d bpm</string>
+    <string name="workout_panel_incline_detail">%1$.1f%%</string>
+    <string name="workout_panel_pace_incline">Pace: %1$s  |  Incline: %2$s</string>
+    <string name="workout_panel_open_step_indicator">OPEN - press Next to advance</string>
+    <string name="workout_panel_more_steps">... %1$d more</string>
+    <string name="workout_panel_default_workout_name">Workout</string>
+    <string name="workout_panel_starting">Starting...</string>
+    <string name="workout_panel_ready">Ready</string>
+    <string name="workout_panel_start_button">▶ START</string>
+    <string name="workout_panel_complete">Complete!</string>
+    <string name="workout_panel_summary_duration">Duration: %1$s</string>
+    <string name="workout_panel_summary_distance">Distance: %1$s</string>
+    <string name="workout_panel_summary_steps">Steps: %1$d/%2$d</string>
+    <string name="workout_panel_save">SAVE</string>
+    <string name="workout_panel_discard">DISCARD</string>
+    <string name="workout_plan_complete">Plan Complete - Cooldown</string>
+    <plurals name="workout_panel_step_count">
+        <item quantity="one">%d step</item>
+        <item quantity="other">%d steps</item>
+    </plurals>
+
+    <!-- Control Buttons -->
+    <string name="btn_play">▶</string>
+    <string name="btn_pause">❚❚</string>
+    <string name="btn_stop">■</string>
+    <string name="btn_next">▶▶</string>
+    <string name="btn_prev">◀◀</string>
+    <string name="btn_reset_to_step">↺</string>
+
+    <!-- Execution Feedback -->
+    <string name="hr_adjusting_speed_up">HR low - increasing speed</string>
+    <string name="hr_adjusting_speed_down">HR high - reducing speed</string>
+    <string name="hr_adjusting_incline_up">HR low - increasing incline</string>
+    <string name="hr_adjusting_incline_down">HR high - reducing incline</string>
+    <string name="step_complete_countdown">Next in %1$d…</string>
+
+    <!-- ==================== Workout Editor ==================== -->
+
+    <!-- Editor Screen -->
+    <string name="editor_title_new">New Workout</string>
+    <string name="editor_title_edit">Edit Workout</string>
+    <string name="editor_workout_name_hint">Workout Name</string>
+    <string name="editor_workout_description_hint">Description (optional)</string>
+    <string name="editor_steps_header">STEPS</string>
+    <string name="editor_add_step">Add Step</string>
+    <string name="editor_summary_format">%1$d steps • %2$s • %3$s</string>
+    <string name="editor_summary_time_only">%1$d steps • %2$s</string>
+    <string name="editor_summary_distance_only">%1$d steps • %2$s</string>
+    <string name="editor_summary_steps_only">%1$d steps</string>
+    <string name="editor_unsaved_changes_title">Unsaved Changes</string>
+    <string name="editor_unsaved_changes_message">Discard changes?</string>
+    <string name="editor_discard">Discard</string>
+    <string name="editor_keep_editing">Keep Editing</string>
+
+    <!-- Step Editor Dialog -->
+    <string name="step_editor_title_new">Add Step</string>
+    <string name="step_editor_title_edit">Edit Step</string>
+    <string name="step_editor_type_label">Step Type</string>
+    <string name="step_editor_duration_label">Duration</string>
+    <string name="step_editor_duration_time">Time</string>
+    <string name="step_editor_duration_distance">Distance</string>
+    <string name="step_editor_duration_open">Open</string>
+    <string name="step_editor_pace_label">Pace</string>
+    <string name="step_editor_pace_hint">min:sec /km</string>
+    <string name="step_editor_incline_label">Incline</string>
+    <string name="step_editor_incline_hint">%</string>
+    <string name="step_editor_hr_enabled">HR Target</string>
+    <string name="step_editor_hr_range_label">Target HR Range</string>
+    <string name="step_editor_hr_min_hint">Min</string>
+    <string name="step_editor_hr_max_hint">Max</string>
+    <string name="step_editor_hr_adjustment_label">If HR out of range, adjust:</string>
+    <string name="step_editor_hr_adjust_speed">Speed</string>
+    <string name="step_editor_hr_adjust_incline">Incline</string>
+    <string name="step_editor_repeat_count_label">Repeat Count</string>
+    <string name="step_editor_repeat_count_hint">times</string>
+    <string name="step_editor_save">Save Step</string>
+
+    <!-- Step Item Actions -->
+    <string name="btn_edit_step">Edit step</string>
+    <string name="btn_delete_step">Delete step</string>
+    <string name="btn_add_to_repeat">Add step to repeat</string>
+
+    <!-- Master-Detail Editor -->
+    <string name="workout_search_hint">Search workouts...</string>
+    <string name="workout_add_new">+ New</string>
+    <string name="workout_back">Back</string>
+    <string name="workout_run">RUN</string>
+    <string name="editor_undo">Undo</string>
+    <string name="editor_redo">Redo</string>
+    <string name="editor_add_repeat">Add Repeat</string>
+    <string name="editor_add_substep">+ Add substep</string>
+    <string name="step_move_up">Move up</string>
+    <string name="step_move_down">Move down</string>
+    <string name="step_add_below">Add step below</string>
+    <string name="step_duplicate">Duplicate</string>
+    <string name="step_hr_auto">HR Auto</string>
+    <string name="step_repeat_label">Repeat</string>
+    <string name="step_repeat_times">times</string>
+    <!-- Duration types (primary duration) -->
+    <string name="duration_type_time">Time</string>
+    <string name="duration_type_distance">Distance</string>
+
+    <!-- Early end conditions (optional) -->
+    <string name="early_end_none">None</string>
+    <string name="early_end_open">Open</string>
+    <string name="early_end_hr_range">HR Range</string>
+
+    <!-- HR adjustment types -->
+    <string name="hr_adjust_pace">Pace</string>
+    <string name="hr_adjust_incline">Incline</string>
+
+    <!-- Auto-adjust modes -->
+    <string name="auto_adjust_none">No</string>
+    <string name="auto_adjust_hr">HR</string>
+    <string name="auto_adjust_power">Power</string>
+    <string name="step_auto_adjust">Auto:</string>
+
+    <!-- Step HR end labels -->
+    <string name="step_hr_end">HR End</string>
+
+    <!-- Summary bar labels -->
+    <string name="summary_steps_label">STEPS</string>
+    <string name="summary_duration_label">DURATION</string>
+    <string name="summary_distance_label">DISTANCE</string>
+    <string name="summary_tss_label">TSS</string>
+
+    <!-- Validation Messages -->
+    <string name="validation_name_required">Workout name is required</string>
+    <string name="validation_steps_required">Add at least one step</string>
+    <string name="validation_pace_invalid">Invalid pace format (use min:sec)</string>
+    <string name="validation_hr_invalid">Invalid HR range</string>
+
+    <!-- ==================== Workout Library ==================== -->
+
+    <!-- Library -->
+    <string name="library_title">Workouts</string>
+    <string name="library_empty_title">No Workouts Yet</string>
+    <string name="library_empty_subtitle">Tap the + button to create\nyour first workout</string>
+    <string name="library_create_workout">Create workout</string>
+    <string name="library_start_workout">Start workout</string>
+    <string name="library_more_options">More options</string>
+    <string name="library_menu_edit">Edit</string>
+    <string name="library_menu_duplicate">Duplicate</string>
+    <string name="library_menu_delete">Delete</string>
+
+    <!-- Plurals -->
+    <plurals name="library_step_count">
+        <item quantity="one">%d step</item>
+        <item quantity="other">%d steps</item>
+    </plurals>
+
+    <!-- Delete confirmation -->
+    <string name="delete_workout_title">Delete Workout</string>
+    <string name="delete_workout_message">Are you sure you want to delete \"%1$s\"?</string>
+    <string name="btn_delete">Delete</string>
+
+    <!-- Free Run Confirmation Dialog -->
+    <string name="free_run_dialog_title">Workout Loaded</string>
+    <string name="free_run_dialog_message">A workout is loaded. Do you want to dismiss it and start a free run instead?</string>
+    <string name="btn_free_run">Start Free Run</string>
+    <string name="btn_start_workout">Run Workout</string>
+
+    <!-- FIT File Export -->
+    <string name="free_run_name">Free Run</string>
+    <string name="fit_export_success">Saved: %1$s</string>
+    <string name="fit_export_failed">Failed to save workout</string>
+    <string name="fit_export_already_exported">Already saved</string>
+    <string name="fit_export_no_data">No workout data to save</string>
+    <string name="fit_export_too_short">Export skipped - run shorter than 1 minute</string>
+
+    <!-- Pace Popup Resume Button -->
+    <string name="btn_resume_workout">▶ RESUME WORKOUT</string>
+
+    <!-- ==================== HR Device Dialog ==================== -->
+    <string name="hr_dialog_title">Heart Rate Sensors</string>
+    <string name="hr_dialog_paired_section">Paired Devices</string>
+    <string name="hr_dialog_discovered_section">Nearby Devices</string>
+    <string name="hr_dialog_no_paired">No paired HR sensors</string>
+    <string name="hr_dialog_scanning">Scanning for devices…</string>
+    <string name="hr_dialog_no_discovered">No devices found</string>
+    <string name="hr_device_connected">Connected</string>
+    <string name="hr_device_connecting">Connecting…</string>
+    <string name="hr_device_disconnected">Disconnected</string>
+    <string name="btn_connect">Connect</string>
+    <string name="btn_disconnect">Disconnect</string>
+    <string name="btn_pair">Pair</string>
+    <string name="hr_device_signal_dbm">%1$d dBm</string>
+    <string name="hr_dialog_found_devices">Found %1$d devices</string>
+    <string name="hr_dialog_scan_failed">Scan failed</string>
+    <string name="hr_device_connected_to">Connected to %1$s</string>
+
+    <!-- ==================== Foot Pod (Stryd) ==================== -->
+    <string name="foot_pod_dialog_title">Foot Pod</string>
+    <string name="foot_pod_scanning">Scanning for devices…</string>
+    <string name="foot_pod_connecting">Connecting…</string>
+    <string name="foot_pod_connected">Connected</string>
+    <string name="foot_pod_disconnected">Disconnected</string>
+    <string name="foot_pod_no_devices">No devices found</string>
+    <string name="foot_pod_found_devices">Found %1$d device(s)</string>
+    <string name="foot_pod_scan_failed">Scan failed</string>
+
+    <!-- Foot Pod Metrics -->
+    <string name="metric_power">Power</string>
+    <string name="metric_cadence">Cadence</string>
+    <string name="metric_stryd_pace">Stryd Pace</string>
+    <string name="unit_watts">W</string>
+    <string name="unit_spm">SPM</string>
+    <string name="label_foot_pod">FOOT POD</string>
+    <string name="foot_pod_not_connected">--</string>
+
+    <!-- ==================== Bluetooth Sensors Dialog ==================== -->
+    <string name="bt_dialog_title">Bluetooth Sensors</string>
+    <string name="bt_connection_status">Connection Status</string>
+    <string name="bt_saved_devices">Saved Devices</string>
+    <string name="bt_no_devices_connected">No devices connected</string>
+    <string name="bt_no_saved_devices">No saved devices</string>
+    <string name="bt_hr_sensor">HR Sensor</string>
+    <string name="bt_foot_pod">Foot Pod</string>
+    <string name="bt_status_connected">Connected</string>
+    <string name="bt_status_disconnected">Disconnected</string>
+    <string name="bt_status_scanning">Scanning…</string>
+    <string name="bt_status_reconnecting">Reconnecting…</string>
+    <string name="bt_last_data">Last: %1$s ago</string>
+    <string name="bt_last_data_value">Last: %1$s ago, %2$s</string>
+    <string name="bt_saved_device">Saved: %1$s</string>
+    <string name="bt_not_configured">Not configured</string>
+    <string name="btn_reconnect">Reconnect</string>
+    <string name="btn_reconnect_all">Reconnect All</string>
+    <string name="btn_forget">Forget</string>
+    <string name="btn_scan">Scan for Devices</string>
+    <string name="btn_stop_scan">Stop Scan</string>
+
+    <!-- ==================== Resume Run Dialog ==================== -->
+    <string name="resume_run_dialog_title">Resume Previous Run?</string>
+    <string name="resume_run_dialog_message_free">You have an unfinished free run:\n%1$s, %2$s</string>
+    <string name="resume_run_dialog_message_workout">You have an unfinished workout (%1$s):\n%2$s, %3$s</string>
+    <string name="btn_resume">Resume</string>
+    <string name="btn_discard">Discard</string>
+    <string name="toast_run_resumed">Run resumed</string>
+    <string name="toast_run_resume_failed">Failed to resume run</string>
+
+    <!-- ==================== Certificate Error Dialog ==================== -->
+    <string name="certs_error_dialog_title">Certificates Not Found</string>
+    <string name="certs_error_dialog_message">mTLS certificates required to connect to GlassOS are missing.\n\nMissing files: %1$s\n\nCopy certificates to:\n%2$s\n\nSee project /certs folder for extraction instructions.</string>
+    <string name="btn_dismiss">Dismiss</string>
+    <string name="btn_retry">Retry</string>
+</resources>

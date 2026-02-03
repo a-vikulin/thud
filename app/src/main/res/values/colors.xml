@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Default Android colors (keep for compatibility) -->
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- ==================== HUD Colors ==================== -->
+
+    <!-- Main HUD background -->
+    <color name="hud_background">#CC000000</color>
+
+    <!-- Status indicator colors -->
+    <color name="status_connecting">#FFAA00</color>
+    <color name="status_connected">#00FF00</color>
+    <color name="status_error">#FF0000</color>
+
+    <!-- Text colors -->
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_label">#AAAAAA</color>
+    <color name="text_label_dim">#888888</color>
+
+    <!-- Box backgrounds -->
+    <color name="box_interactive">#44FFFFFF</color>
+    <color name="box_data">#33FFFFFF</color>
+    <color name="box_heart_rate">#33FF4444</color>
+    <color name="box_service">#33888888</color>
+
+    <!-- Close button -->
+    <color name="btn_close">#FF6666</color>
+    <color name="service_button_border">#888888</color>
+
+    <!-- Toggle button states (chart, camera) -->
+    <color name="toggle_button_on_background">#44FFFFFF</color>
+    <color name="toggle_button_on_tint">#FFFFFF</color>
+    <color name="toggle_button_off_tint">#888888</color>
+
+    <!-- ==================== Heart Rate Zones ==================== -->
+
+    <color name="hr_zone_1">#999999</color>  <!-- Grey - recovery -->
+    <color name="hr_zone_2">#4488FF</color>  <!-- Blue - easy -->
+    <color name="hr_zone_3">#44DD44</color>  <!-- Green - aerobic -->
+    <color name="hr_zone_4">#FFAA00</color>  <!-- Orange - threshold -->
+    <color name="hr_zone_5">#FF4444</color>  <!-- Red - max -->
+
+    <!-- ==================== Workout Chart Colors ==================== -->
+
+    <color name="chart_background">#77000000</color>
+    <color name="chart_grid">#33FFFFFF</color>        <!-- Subtle white grid -->
+    <color name="chart_axis_label">#AAAAAA</color>    <!-- Axis label text -->
+
+    <!-- Speed: bright for live line + toggle symbol, dim for target outline + toggle background -->
+    <color name="chart_speed">#FFCA28</color>
+    <color name="chart_speed_dim">#806510</color>
+
+    <!-- Incline: bright for live line + toggle symbol, dim for target outline + toggle background -->
+    <color name="chart_incline">#AD7EFF</color>
+    <color name="chart_incline_dim">#5A4080</color>
+
+    <!-- HR: bright for toggle symbol, dim for toggle background (line uses zone colors) -->
+    <color name="chart_hr">#FF4444</color>
+    <color name="chart_hr_dim">#802222</color>
+
+    <!-- Power: bright for toggle symbol, dim for toggle background (line uses zone colors) -->
+    <color name="chart_power">#44FF44</color>
+    <color name="chart_power_dim">#228022</color>
+
+    <!-- Fit/Scale: bright for toggle symbol, dim for toggle background (fit all data mode) -->
+    <color name="chart_fit">#AAAAAA</color>
+    <color name="chart_fit_dim">#555555</color>
+
+    <!-- Target rectangles for HR and Power zones -->
+    <color name="chart_hr_target_rect">#4044FF44</color>
+    <color name="chart_power_target_rect">#4044FF44</color>
+
+    <!-- ==================== Popup Colors ==================== -->
+
+    <color name="popup_background">#EE222222</color>
+    <color name="popup_button_active">#4488FF</color>
+    <color name="popup_button_inactive">#555555</color>
+    <color name="popup_button_text">#FFFFFF</color>
+
+    <!-- ==================== Workout Panel Colors ==================== -->
+
+    <color name="workout_panel_background">#77000000</color>
+    <color name="step_pending">#666666</color>
+    <color name="step_active">#00FF00</color>
+    <color name="step_completed">#888888</color>
+    <color name="step_warmup">#FFA500</color>
+    <color name="step_run">#00BFFF</color>
+    <color name="step_recover">#32CD32</color>
+    <color name="step_rest">#808080</color>
+    <color name="step_cooldown">#9370DB</color>
+    <color name="hr_target_warning">#FF4444</color>
+    <color name="progress_bar_background">#333333</color>
+    <color name="progress_bar_fill">#00FF00</color>
+    <color name="control_button_background">#44FFFFFF</color>
+    <color name="control_button_text">#FFFFFF</color>
+
+    <!-- ==================== Workout Editor Colors ==================== -->
+
+    <color name="editor_background">#1A1A1A</color>
+    <color name="editor_step_background">#2A2A2A</color>
+    <color name="editor_step_border">#444444</color>
+    <color name="editor_input_background">#333333</color>
+    <color name="editor_button_primary">#4488FF</color>
+    <color name="editor_button_secondary">#666666</color>
+    <color name="editor_fab">#4488FF</color>
+    <color name="editor_divider">#444444</color>
+
+    <!-- ==================== Workout Library Colors ==================== -->
+
+    <color name="library_background">#121212</color>
+    <color name="library_card_background">#1E1E1E</color>
+    <color name="library_tab_indicator">#4488FF</color>
+    <color name="library_start_button">#00AA00</color>
+    <color name="library_fab">#4488FF</color>
+
+    <!-- ==================== Dialog Common Colors ==================== -->
+
+    <color name="text_secondary">#AAAAAA</color>
+    <color name="text_dim">#666666</color>
+    <color name="divider_color">#444444</color>
+    <color name="button_primary">#4488FF</color>
+    <color name="button_secondary">#444444</color>
+    <color name="button_success">#44AA44</color>
+
+    <!-- ==================== TouchSpinner Colors ==================== -->
+
+    <color name="spinner_button_background">#444444</color>
+    <color name="spinner_button_pressed">#666666</color>
+    <color name="spinner_button_text">#FFFFFF</color>
+    <color name="spinner_value_background">#333333</color>
+    <color name="spinner_value_text">#FFFFFF</color>
+
+    <!-- ==================== Inline Step Editor Colors ==================== -->
+
+    <color name="step_row_background">#2A2A2A</color>
+    <color name="step_row_selected">#3A3A4A</color>
+    <color name="step_action_button">#555555</color>
+    <color name="step_action_button_pressed">#777777</color>
+
+    <!-- ==================== Workout List Colors ==================== -->
+
+    <color name="workout_list_background">#1A1A1A</color>
+    <color name="workout_list_item_selected">#2A3A4A</color>
+    <color name="workout_list_divider">#333333</color>
+    <color name="run_button_background">#00AA00</color>
+    <color name="run_button_text">#FFFFFF</color>
+
+    <!-- Chart Power Zone Stripes -->
+    <color name="chart_power_stripe_overlay">#20000000</color>
+
+    <!-- ==================== Slider Colors ==================== -->
+
+    <color name="slider_unselected_overlay">#88000000</color>
+
+    <!-- ==================== Chart Toggle Button Colors ==================== -->
+
+    <color name="chart_toggle_inactive_text">#888888</color>
+    <color name="chart_toggle_inactive_background">#40000000</color>
+    <color name="chart_toggle_inactive_stroke">#40000000</color>
+    <color name="chart_toggle_active_stroke">#80000000</color>
+</resources>

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Two-line workout list item: Name + Stats subtitle -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingVertical="@dimen/workout_list_item_padding"
+    android:paddingHorizontal="@dimen/workout_list_item_padding"
+    android:background="?attr/selectableItemBackground">
+
+    <!-- Name and stats column -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <!-- Workout name -->
+        <TextView
+            android:id="@+id/tvWorkoutName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="@dimen/text_editor_input"
+            android:textColor="@color/text_primary"
+            android:ellipsize="end"
+            android:maxLines="1"
+            tools:text="Morning Run" />
+
+        <!-- Stats subtitle -->
+        <TextView
+            android:id="@+id/tvStats"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textSize="@dimen/text_step_details"
+            android:textColor="@color/text_label"
+            android:ellipsize="end"
+            android:maxLines="1"
+            tools:text="Steps: 5  Distance: 4.5 km  Duration: 30:00  TSS: 45" />
+    </LinearLayout>
+
+    <!-- Copy button -->
+    <ImageButton
+        android:id="@+id/btnCopy"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:layout_marginStart="4dp"
+        android:src="@drawable/ic_content_copy"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/library_menu_duplicate"
+        android:scaleType="centerInside"
+        android:padding="4dp" />
+
+    <!-- Delete button -->
+    <ImageButton
+        android:id="@+id/btnDelete"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:layout_marginStart="4dp"
+        android:src="@android:drawable/ic_menu_delete"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/btn_delete"
+        android:scaleType="centerInside"
+        android:padding="4dp" />
+
+</LinearLayout>

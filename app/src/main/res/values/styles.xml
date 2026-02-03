@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== HUD Box Styles ==================== -->
+
+    <!-- Base style for all HUD boxes -->
+    <style name="HudBox">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:padding">@dimen/box_padding</item>
+        <item name="android:gravity">center</item>
+    </style>
+
+    <!-- Interactive box (Pace, Incline) - touchable -->
+    <style name="HudBox.Interactive">
+        <item name="android:background">@color/box_interactive</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
+    <!-- Data box (Time) - display only -->
+    <style name="HudBox.Data">
+        <item name="android:background">@color/box_data</item>
+    </style>
+
+    <!-- Heart Rate box -->
+    <style name="HudBox.HeartRate">
+        <item name="android:background">@color/box_heart_rate</item>
+    </style>
+
+    <!-- Service buttons box -->
+    <style name="HudBox.Service">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_weight">0</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:background">@color/box_service</item>
+    </style>
+
+    <!-- ==================== Text Styles ==================== -->
+
+    <!-- Base text style -->
+    <style name="HudText">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:fontFamily">sans-serif-condensed</item>
+    </style>
+
+    <!-- Status text (connection indicator) -->
+    <style name="HudText.Status">
+        <item name="android:textColor">@color/status_connecting</item>
+        <item name="android:textSize">@dimen/text_status</item>
+        <item name="android:gravity">center</item>
+    </style>
+
+    <!-- Label text (PACE, INCLINE, etc.) -->
+    <style name="HudText.Label">
+        <item name="android:textColor">@color/text_label</item>
+        <item name="android:textSize">@dimen/text_label</item>
+    </style>
+
+    <!-- Label text dimmed -->
+    <style name="HudText.Label.Dim">
+        <item name="android:textColor">@color/text_label_dim</item>
+    </style>
+
+    <!-- Value text (main numbers) -->
+    <style name="HudText.Value">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">@dimen/text_value</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:singleLine">true</item>
+    </style>
+
+    <!-- Value text small (for compact multi-value display) -->
+    <style name="HudText.Value.Small">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">@dimen/text_value_small</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:singleLine">true</item>
+    </style>
+
+    <!-- Unit text (min/km, grade, etc.) -->
+    <style name="HudText.Unit">
+        <item name="android:textColor">@color/text_label</item>
+        <item name="android:textSize">@dimen/text_unit</item>
+    </style>
+
+    <!-- ==================== Button Styles ==================== -->
+
+    <!-- Base button style -->
+    <style name="HudButton">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:fontFamily">sans-serif-condensed</item>
+    </style>
+
+    <!-- Service button (text-based) -->
+    <style name="HudButton.Close">
+        <item name="android:layout_width">@dimen/service_button_width</item>
+        <item name="android:layout_height">@dimen/service_button_height</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">@dimen/text_close_button</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:gravity">center</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:background">@drawable/service_button_border</item>
+    </style>
+
+    <!-- ==================== Workout Editor Styles ==================== -->
+
+    <!-- Step type selection button -->
+    <style name="StepTypeButton">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:background">@drawable/step_type_button_background</item>
+        <item name="android:padding">8dp</item>
+        <item name="android:layout_marginHorizontal">2dp</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
+</resources>

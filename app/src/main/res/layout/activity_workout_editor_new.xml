@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- New master-detail workout editor layout (25% left list, 75% right editor) -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:background="@color/editor_background">
+
+    <!-- ==================== LEFT PANE (25%) - Workout List ==================== -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:background="@color/workout_list_background">
+
+        <!-- Header row: Back | Add Workout -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/workout_list_search_height"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@color/editor_step_background"
+            android:paddingHorizontal="@dimen/workout_list_item_padding">
+
+            <!-- Back button -->
+            <ImageButton
+                android:id="@+id/btnBack"
+                android:layout_width="@dimen/step_action_button_size"
+                android:layout_height="@dimen/step_action_button_size"
+                android:src="@drawable/ic_back"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/workout_back"
+                app:tint="@color/text_primary" />
+
+            <TextView
+                android:id="@+id/tvBackLabel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/workout_back"
+                android:textColor="@color/text_primary"
+                android:textSize="@dimen/text_step_type"
+                android:layout_marginStart="@dimen/editor_input_margin" />
+
+            <!-- Add workout button -->
+            <Button
+                android:id="@+id/btnAddWorkout"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/step_action_button_size"
+                android:text="@string/workout_add_new"
+                android:textColor="@color/editor_button_primary"
+                android:background="?attr/selectableItemBackground"
+                android:textAllCaps="false"
+                android:minWidth="0dp"
+                android:paddingHorizontal="@dimen/editor_padding" />
+        </LinearLayout>
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/editor_divider" />
+
+        <!-- Search box -->
+        <EditText
+            android:id="@+id/etSearch"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/workout_list_search_height"
+            android:hint="@string/workout_search_hint"
+            android:textSize="@dimen/text_editor_input"
+            android:textColor="@color/text_primary"
+            android:textColorHint="@color/text_label"
+            android:background="@color/editor_input_background"
+            android:paddingHorizontal="@dimen/workout_list_item_padding"
+            android:inputType="text"
+            android:maxLines="1"
+            android:drawableStart="@android:drawable/ic_menu_search"
+            android:drawablePadding="8dp" />
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/editor_divider" />
+
+        <!-- Workout list -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvWorkoutList"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:clipToPadding="false" />
+
+    </LinearLayout>
+
+    <!-- Vertical divider -->
+    <View
+        android:layout_width="1dp"
+        android:layout_height="match_parent"
+        android:background="@color/editor_divider" />
+
+    <!-- ==================== RIGHT PANE (75%) - Editor ==================== -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="4"
+        android:orientation="vertical">
+
+        <!-- Fixed header: RUN | Name | Undo/Redo -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="@dimen/editor_padding"
+            android:gravity="center_vertical"
+            android:background="@color/editor_step_background">
+
+            <!-- RUN button -->
+            <Button
+                android:id="@+id/btnRun"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:text="@string/workout_run"
+                android:textColor="@color/text_primary"
+                android:backgroundTint="@color/library_start_button"
+                android:paddingHorizontal="24dp"
+                android:textAllCaps="true"
+                android:textStyle="bold" />
+
+            <!-- Workout name -->
+            <EditText
+                android:id="@+id/etWorkoutName"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="@dimen/editor_padding"
+                android:hint="@string/editor_workout_name_hint"
+                android:textSize="@dimen/text_editor_title"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_label"
+                android:background="@color/editor_input_background"
+                android:padding="@dimen/editor_input_padding"
+                android:inputType="text|textNoSuggestions"
+                android:maxLines="1" />
+
+            <!-- Undo button -->
+            <ImageButton
+                android:id="@+id/btnUndo"
+                android:layout_width="@dimen/step_action_button_size"
+                android:layout_height="@dimen/step_action_button_size"
+                android:layout_marginStart="@dimen/editor_input_margin"
+                android:src="@drawable/ic_undo"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/editor_undo"
+                app:tint="@color/text_label" />
+
+            <!-- Redo button -->
+            <ImageButton
+                android:id="@+id/btnRedo"
+                android:layout_width="@dimen/step_action_button_size"
+                android:layout_height="@dimen/step_action_button_size"
+                android:layout_marginStart="@dimen/editor_input_margin"
+                android:src="@drawable/ic_redo"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/editor_redo"
+                app:tint="@color/text_label" />
+        </LinearLayout>
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/editor_divider" />
+
+        <!-- Preview Chart (30% height to match overlay) -->
+        <FrameLayout
+            android:id="@+id/chartContainer"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="0.35"
+            android:background="@color/chart_background">
+
+            <!-- WorkoutChart will be added programmatically -->
+
+        </FrameLayout>
+
+        <!-- Stats bar under chart (single line) -->
+        <TextView
+            android:id="@+id/tvStats"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingVertical="@dimen/editor_input_padding"
+            android:paddingHorizontal="@dimen/editor_padding"
+            android:background="@color/editor_step_background"
+            android:gravity="center"
+            android:textSize="@dimen/text_step_type"
+            android:textColor="@color/text_label"
+            tools:text="Steps: 5    Distance: 4.5 km    Duration: 30:00    TSS: 45" />
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/editor_divider" />
+
+        <!-- Scrollable step list (includes Add buttons as footer) -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvSteps"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:paddingBottom="8dp" />
+    </LinearLayout>
+</LinearLayout>
