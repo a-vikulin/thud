@@ -97,46 +97,56 @@ blown away by Claude's capabilities!
 - Reconnection handling preserves run data
 - Double-stop confirmation prevents accidental run endings
 
-## Prerequisites
+## Installation Guide
 
-### Gaining Privileged Access
-Your treadmill runs a locked down Android with iFIT/GlassOS.
-To install third-party apps, you must gain privileged access,
-enable developer options and enable wireless debugging (ADB over WiFi).
+### Step 1: Gain Privileged Access to Your Treadmill
 
-Refer to community resources for your specific treadmill model. Or better yet ask AI for instructions.
+Your treadmill runs a locked-down Android system with iFIT/GlassOS. Before you can install tHUD, you need to:
 
-### Optional Hardware
-- Bluetooth HR sensor
-- Stryd foot pod for running pace/power/cadence metrics
+1. Gain privileged access to your treadmill
+2. Enable Developer Options
+3. Enable Wireless Debugging (ADB over WiFi)
 
-## Certificate Setup (Required)
+This process varies by treadmill model. Search for guides specific to your model, or ask an AI assistant for step-by-step instructions.
 
-tHUD communicates with your treadmill's GlassOS service using mTLS authentication.
-You must extract certificates from the iFit app before tHUD can connect.
+### Step 2: Set Up Android Development Tools
 
-**Use [tHUD-certs](https://codeberg.org/avikulin/tHUD-certs) to extract certificates from your treadmill's iFit APK.**
+You'll need [Android SDK](https://developer.android.com/studio) to build and install tHUD. The easiest way is to install Android Studio, which includes everything you need.
 
-After extraction, push the certificates to your treadmill:
+Once installed, clone and build tHUD:
+
 ```bash
-adb push ca.crt /sdcard/Android/data/io.github.avikulin.thud/files/certs/
-adb push client.crt /sdcard/Android/data/io.github.avikulin.thud/files/certs/
-adb push client.key /sdcard/Android/data/io.github.avikulin.thud/files/certs/
+git clone https://github.com/a-vikulin/thud.git
+cd thud
+./gradlew assembleDebug
 ```
 
-## Installation
+The APK will be created at `app/build/outputs/apk/debug/app-debug.apk`
 
-Once you have ADB access to your treadmill and certificates installed:
+### Step 3: Extract and Install Certificates
+
+tHUD communicates with your treadmill's GlassOS service using mTLS authentication. You must extract certificates from the iFit app before tHUD can connect.
+
+Follow the instructions at **[tHUD-certs](https://codeberg.org/avikulin/tHUD-certs)** to extract certificates from your treadmill's iFit APK, then push them to the treadmill:
 
 ```bash
 # Connect to treadmill via ADB
 adb connect <treadmill-ip>:<port>
 
-# Install tHUD
-adb install tHUD.apk
+# Create certs folder and push certificates
+adb shell mkdir -p /sdcard/Android/data/io.github.avikulin.thud/files/certs/
+adb push ca.crt /sdcard/Android/data/io.github.avikulin.thud/files/certs/
+adb push client.crt /sdcard/Android/data/io.github.avikulin.thud/files/certs/
+adb push client.key /sdcard/Android/data/io.github.avikulin.thud/files/certs/
 ```
 
-Or transfer the APK to the treadmill and install via a file manager app.
+### Step 4: Install tHUD
+
+Install the APK (reconnect with `adb connect` first if needed):
+
+```bash
+adb install app/build/outputs/apk/debug/app-debug.apk
+```
 
 ## Setup
 
@@ -208,15 +218,6 @@ Verify that auto-adjustment parameters are sensible
 - No cloud services or accounts required
 - No telemetry or analytics
 - FIT files are stored locally until you transfer them
-
-## Building from Source
-
-```bash
-git clone https://github.com/a-vikulin/thud.git
-cd tHUD
-./gradlew assembleDebug
-# APK will be in app/build/outputs/apk/debug/
-```
 
 ## License
 
