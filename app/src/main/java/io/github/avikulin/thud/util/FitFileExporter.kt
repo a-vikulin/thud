@@ -9,6 +9,7 @@ import io.github.avikulin.thud.domain.engine.ExecutionStep
 import io.github.avikulin.thud.domain.model.AutoAdjustMode
 import io.github.avikulin.thud.domain.model.DurationType
 import io.github.avikulin.thud.domain.model.StepType
+import io.github.avikulin.thud.service.SettingsManager
 import com.garmin.fit.*
 import java.io.File
 import java.text.SimpleDateFormat
@@ -198,27 +199,8 @@ class FitFileExporter(private val context: Context) {
         // Calories (cumulative, so take the last value)
         val totalCalories = workoutData.last().caloriesKcal
 
-        // Calculate TSS from power/HR/pace data (priority: Power > HR > Pace)
-        // Note: Only TSS is written to FIT file; Load and TE are left for Garmin to calculate
-        val hrSamples = workoutData
-            .filter { it.heartRateBpm > 0 }
-            .map { Pair(it.elapsedMs, it.heartRateBpm) }
-        val powerSamples = workoutData
-            .filter { it.powerWatts > 0 }
-            .map { Pair(it.elapsedMs, it.powerWatts) }
-        val speedSamples = workoutData
-            .filter { it.speedKph > 0 }
-            .map { Pair(it.elapsedMs, it.speedKph) }
-        val trainingMetrics = TrainingMetricsCalculator.calculate(
-            hrSamples = hrSamples,
-            powerSamples = powerSamples,
-            speedSamples = speedSamples,
-            hrRest = userHrRest,
-            lthr = userLthr,
-            ftpWatts = userFtpWatts,
-            thresholdPaceKph = thresholdPaceKph
-        )
-        Log.d(TAG, "Training metrics - TSS: ${trainingMetrics.tss} (source=${trainingMetrics.tssSource})")
+        // Note: TSS, Load, and TE are NOT written to FIT file
+        // Let Garmin calculate them using their Firstbeat algorithms
 
         // Calculate incline power metrics
         val avgInclinePower = workoutData
@@ -314,12 +296,21 @@ class FitFileExporter(private val context: Context) {
             maxCadence = maxCadence,
             totalCalories = totalCalories,
             numLaps = numLaps,
-            tss = trainingMetrics.tss,
             avgInclinePower = avgInclinePower,
             avgRawPower = avgRawPower
         )
 
-        // 10. Activity message (required last before close)
+        // 10. Time in Zone message (HR zone time distribution)
+        writeTimeInZoneMessage(
+            encoder,
+            endTimeMs = endTimeMs,
+            workoutData = workoutData,
+            userLthr = userLthr,
+            userHrRest = userHrRest,
+            userFtpWatts = userFtpWatts
+        )
+
+        // 11. Activity message (required last before close)
         writeActivityMessage(encoder, startTimeMs, totalDurationMs, totalTimerMs)
 
         encoder.close()
@@ -643,7 +634,8 @@ class FitFileExporter(private val context: Context) {
             avgInclinePower = avgInclinePower,
             avgRawPower = avgRawPower,
             wktStepIndex = wktStepIndex,
-            intensity = intensity
+            intensity = intensity,
+            messageIndex = lapIndex
         )
     }
 
@@ -704,6 +696,9 @@ class FitFileExporter(private val context: Context) {
         val record = RecordMesg()
         record.setTimestamp(DateTime(toFitTimestamp(dataPoint.timestampMs)))
 
+        // Activity type - running for treadmill
+        record.setActivityType(ActivityType.RUNNING)
+
         // Heart rate (bpm)
         if (dataPoint.heartRateBpm > 0) {
             record.setHeartRate(dataPoint.heartRateBpm.toInt().toShort())
@@ -760,9 +755,11 @@ class FitFileExporter(private val context: Context) {
         avgInclinePower: Double = 0.0,
         avgRawPower: Double = 0.0,
         wktStepIndex: Int? = null,
-        intensity: Intensity = Intensity.ACTIVE
+        intensity: Intensity = Intensity.ACTIVE,
+        messageIndex: Int = 0
     ) {
         val lap = LapMesg()
+        lap.setMessageIndex(messageIndex)
         lap.setTimestamp(DateTime(toFitTimestamp(endTimeMs)))
         lap.setStartTime(DateTime(toFitTimestamp(startTimeMs)))
         lap.setTotalElapsedTime((totalElapsedMs / 1000.0).toFloat())
@@ -838,7 +835,6 @@ class FitFileExporter(private val context: Context) {
         maxCadence: Int = 0,
         totalCalories: Double = 0.0,
         numLaps: Int = 1,
-        tss: Double = 0.0,
         avgInclinePower: Double = 0.0,
         avgRawPower: Double = 0.0
     ) {
@@ -881,11 +877,8 @@ class FitFileExporter(private val context: Context) {
             session.setTotalCalories(totalCalories.toInt())
         }
 
-        // Training Stress Score (TSS) - power or HR based
-        // Note: Load and TE are NOT written - let Garmin calculate them
-        if (tss > 0) {
-            session.setTrainingStressScore(tss.toFloat())
-        }
+        // Note: TSS, Load, and TE are NOT written - let Garmin calculate them
+        // Garmin's Firstbeat algorithms produce different (usually higher) values
 
         // Note: avg_incline_power and avg_raw_power available in WorkoutDataPoint for analysis
         // but not written to FIT file (developer fields require complex SDK setup)
@@ -904,6 +897,214 @@ class FitFileExporter(private val context: Context) {
         encoder.write(session)
     }
 
+    /**
+     * Write Time in Zone message - records time spent in each HR/Power zone.
+     * This data helps Garmin calculate training metrics and display zone distribution.
+     *
+     * @param endTimeMs Timestamp of the last data point
+     * @param workoutData All recorded data points for zone calculation
+     * @param userLthr User's Lactate Threshold HR for zone boundaries
+     * @param userHrRest User's resting HR
+     * @param userFtpWatts User's FTP for power zones
+     */
+    private fun writeTimeInZoneMessage(
+        encoder: FileEncoder,
+        endTimeMs: Long,
+        workoutData: List<WorkoutDataPoint>,
+        userLthr: Int,
+        userHrRest: Int,
+        userFtpWatts: Int
+    ) {
+        // Calculate time in each HR zone (7 zones: indices 0-6)
+        // We use 5 standard zones (1-5) mapped to indices 0-4, with indices 5-6 unused
+        val hrZoneTimeMs = LongArray(7) { 0L }
+
+        // Read zone boundaries from user settings (SharedPreferences)
+        val prefs = context.getSharedPreferences("TreadmillHUD", android.content.Context.MODE_PRIVATE)
+        val z2StartPercent = SettingsManager.Companion.getFloatOrInt(
+            prefs, SettingsManager.PREF_HR_ZONE2_START_PERCENT, SettingsManager.DEFAULT_HR_ZONE2_START_PERCENT
+        ).toInt()
+        val z3StartPercent = SettingsManager.Companion.getFloatOrInt(
+            prefs, SettingsManager.PREF_HR_ZONE3_START_PERCENT, SettingsManager.DEFAULT_HR_ZONE3_START_PERCENT
+        ).toInt()
+        val z4StartPercent = SettingsManager.Companion.getFloatOrInt(
+            prefs, SettingsManager.PREF_HR_ZONE4_START_PERCENT, SettingsManager.DEFAULT_HR_ZONE4_START_PERCENT
+        ).toInt()
+        val z5StartPercent = SettingsManager.Companion.getFloatOrInt(
+            prefs, SettingsManager.PREF_HR_ZONE5_START_PERCENT, SettingsManager.DEFAULT_HR_ZONE5_START_PERCENT
+        ).toInt()
+
+        // Max HR derived from LTHR (LTHR is typically ~90% of max HR)
+        val userMaxHr = (userLthr * 1.1).toInt()
+
+        // Garmin uses 7 HR zones (indices 0-6) with 6 boundaries defining upper limits.
+        // Zone boundaries are in BPM. Each boundary is the HIGH limit of that zone.
+        // To get zone N high boundary: convert zone N+1 START percent to BPM, then subtract 1.
+        val z0MaxPercent = (z2StartPercent - 20).coerceAtLeast(50).toDouble()  // ~60% LTHR
+        val z0MaxBpm = HeartRateZones.percentToBpm(z0MaxPercent, userLthr).toShort()
+        val z1MaxBpm = (HeartRateZones.percentToBpm(z2StartPercent.toDouble(), userLthr) - 1).toShort()
+        val z2MaxBpm = (HeartRateZones.percentToBpm(z3StartPercent.toDouble(), userLthr) - 1).toShort()
+        val z3MaxBpm = (HeartRateZones.percentToBpm(z4StartPercent.toDouble(), userLthr) - 1).toShort()
+        val z4MaxBpm = (HeartRateZones.percentToBpm(z5StartPercent.toDouble(), userLthr) - 1).toShort()
+        val z5MaxBpm = userMaxHr.toShort()
+
+        // Track time between consecutive samples using Garmin's 7-zone model
+        var lastTimestampMs: Long? = null
+        for (dp in workoutData) {
+            if (lastTimestampMs != null && dp.heartRateBpm > 0) {
+                val intervalMs = dp.timestampMs - lastTimestampMs
+                val hrBpm = dp.heartRateBpm.toInt()
+
+                // Classify into Garmin's 7-zone model (indices 0-6) using BPM boundaries
+                val zoneIndex = when {
+                    hrBpm <= z0MaxBpm -> 0  // Zone 0: warmup/rest
+                    hrBpm <= z1MaxBpm -> 1  // Zone 1: easy
+                    hrBpm <= z2MaxBpm -> 2  // Zone 2: aerobic
+                    hrBpm <= z3MaxBpm -> 3  // Zone 3: tempo
+                    hrBpm <= z4MaxBpm -> 4  // Zone 4: threshold
+                    hrBpm <= z5MaxBpm -> 5  // Zone 5: VO2max
+                    else -> 6               // Zone 6: anaerobic (above max)
+                }
+                hrZoneTimeMs[zoneIndex] += intervalMs
+            }
+            lastTimestampMs = dp.timestampMs
+        }
+
+        // Calculate time in each Power zone (if power data available)
+        val powerZoneTimeMs = LongArray(7) { 0L }
+        val hasPowerData = workoutData.any { it.powerWatts > 0 }
+
+        if (hasPowerData) {
+            // Read power zone boundaries from user settings (zone START percentages of FTP)
+            val pz2StartPercent = SettingsManager.Companion.getFloatOrInt(
+                prefs, SettingsManager.PREF_POWER_ZONE2_START_PERCENT, SettingsManager.DEFAULT_POWER_ZONE2_START_PERCENT
+            ).toInt()
+            val pz3StartPercent = SettingsManager.Companion.getFloatOrInt(
+                prefs, SettingsManager.PREF_POWER_ZONE3_START_PERCENT, SettingsManager.DEFAULT_POWER_ZONE3_START_PERCENT
+            ).toInt()
+            val pz4StartPercent = SettingsManager.Companion.getFloatOrInt(
+                prefs, SettingsManager.PREF_POWER_ZONE4_START_PERCENT, SettingsManager.DEFAULT_POWER_ZONE4_START_PERCENT
+            ).toInt()
+            val pz5StartPercent = SettingsManager.Companion.getFloatOrInt(
+                prefs, SettingsManager.PREF_POWER_ZONE5_START_PERCENT, SettingsManager.DEFAULT_POWER_ZONE5_START_PERCENT
+            ).toInt()
+            val pz6StartPercent = pz5StartPercent + 15  // Typically ~120% FTP
+
+            // Convert zone START percentages to zone HIGH boundaries in watts
+            // Zone N high = Zone N+1 start watts - 1
+            val pz0MaxWatts = (userFtpWatts * (pz2StartPercent - 20).coerceAtLeast(30) / 100.0).toInt()
+            val pz1MaxWatts = (userFtpWatts * pz2StartPercent / 100.0).toInt() - 1
+            val pz2MaxWatts = (userFtpWatts * pz3StartPercent / 100.0).toInt() - 1
+            val pz3MaxWatts = (userFtpWatts * pz4StartPercent / 100.0).toInt() - 1
+            val pz4MaxWatts = (userFtpWatts * pz5StartPercent / 100.0).toInt() - 1
+            val pz5MaxWatts = (userFtpWatts * pz6StartPercent / 100.0).toInt() - 1
+
+            lastTimestampMs = null
+            for (dp in workoutData) {
+                if (lastTimestampMs != null && dp.powerWatts > 0) {
+                    val intervalMs = dp.timestampMs - lastTimestampMs
+                    val watts = dp.powerWatts.toInt()
+
+                    // Classify into 7-zone model (indices 0-6) using watts boundaries
+                    val zoneIndex = when {
+                        watts <= pz0MaxWatts -> 0  // Zone 0: recovery
+                        watts <= pz1MaxWatts -> 1  // Zone 1: endurance
+                        watts <= pz2MaxWatts -> 2  // Zone 2: tempo
+                        watts <= pz3MaxWatts -> 3  // Zone 3: threshold
+                        watts <= pz4MaxWatts -> 4  // Zone 4: VO2max
+                        watts <= pz5MaxWatts -> 5  // Zone 5: anaerobic
+                        else -> 6                  // Zone 6: neuromuscular
+                    }
+                    powerZoneTimeMs[zoneIndex] += intervalMs
+                }
+                lastTimestampMs = dp.timestampMs
+            }
+        }
+
+        val timeInZone = TimeInZoneMesg()
+        timeInZone.setTimestamp(DateTime(toFitTimestamp(endTimeMs)))
+
+        // Reference the session message (mesg_num for session = 18)
+        timeInZone.setReferenceMesg(MesgNum.SESSION)
+        timeInZone.setReferenceIndex(0)  // First (only) session
+
+        // Set time in HR zones (values in seconds with scale 1000 = milliseconds)
+        // The SDK handles the scale conversion internally
+        for (i in 0 until 7) {
+            timeInZone.setTimeInHrZone(i, hrZoneTimeMs[i] / 1000.0f)
+        }
+
+        // Set HR zone boundaries (upper boundary for each zone in BPM)
+        // Garmin uses 6 boundaries: indices 0-5 for zones 0-5
+        timeInZone.setHrZoneHighBoundary(0, z0MaxBpm)
+        timeInZone.setHrZoneHighBoundary(1, z1MaxBpm)
+        timeInZone.setHrZoneHighBoundary(2, z2MaxBpm)
+        timeInZone.setHrZoneHighBoundary(3, z3MaxBpm)
+        timeInZone.setHrZoneHighBoundary(4, z4MaxBpm)
+        timeInZone.setHrZoneHighBoundary(5, z5MaxBpm)
+
+        // Set HR calculation type (LTHR-based)
+        timeInZone.setHrCalcType(HrZoneCalc.PERCENT_LTHR)
+        timeInZone.setThresholdHeartRate(userLthr.toShort())
+        timeInZone.setRestingHeartRate(userHrRest.toShort())
+        timeInZone.setMaxHeartRate(userMaxHr.toShort())
+
+        // Set power zones if we have power data
+        if (hasPowerData) {
+            for (i in 0 until 7) {
+                timeInZone.setTimeInPowerZone(i, powerZoneTimeMs[i] / 1000.0f)
+            }
+
+            // Read power zone boundaries from user settings (same as used for time calculation)
+            val pz2StartPercent = SettingsManager.Companion.getFloatOrInt(
+                prefs, SettingsManager.PREF_POWER_ZONE2_START_PERCENT, SettingsManager.DEFAULT_POWER_ZONE2_START_PERCENT
+            ).toInt()
+            val pz3StartPercent = SettingsManager.Companion.getFloatOrInt(
+                prefs, SettingsManager.PREF_POWER_ZONE3_START_PERCENT, SettingsManager.DEFAULT_POWER_ZONE3_START_PERCENT
+            ).toInt()
+            val pz4StartPercent = SettingsManager.Companion.getFloatOrInt(
+                prefs, SettingsManager.PREF_POWER_ZONE4_START_PERCENT, SettingsManager.DEFAULT_POWER_ZONE4_START_PERCENT
+            ).toInt()
+            val pz5StartPercent = SettingsManager.Companion.getFloatOrInt(
+                prefs, SettingsManager.PREF_POWER_ZONE5_START_PERCENT, SettingsManager.DEFAULT_POWER_ZONE5_START_PERCENT
+            ).toInt()
+            val pz6StartPercent = pz5StartPercent + 15
+
+            // Power zone high boundaries in watts (zone N high = zone N+1 start - 1)
+            val pz0MaxWatts = (userFtpWatts * (pz2StartPercent - 20).coerceAtLeast(30) / 100.0).toInt()
+            val pz1MaxWatts = (userFtpWatts * pz2StartPercent / 100.0).toInt() - 1
+            val pz2MaxWatts = (userFtpWatts * pz3StartPercent / 100.0).toInt() - 1
+            val pz3MaxWatts = (userFtpWatts * pz4StartPercent / 100.0).toInt() - 1
+            val pz4MaxWatts = (userFtpWatts * pz5StartPercent / 100.0).toInt() - 1
+            val pz5MaxWatts = (userFtpWatts * pz6StartPercent / 100.0).toInt() - 1
+
+            timeInZone.setPowerZoneHighBoundary(0, pz0MaxWatts)
+            timeInZone.setPowerZoneHighBoundary(1, pz1MaxWatts)
+            timeInZone.setPowerZoneHighBoundary(2, pz2MaxWatts)
+            timeInZone.setPowerZoneHighBoundary(3, pz3MaxWatts)
+            timeInZone.setPowerZoneHighBoundary(4, pz4MaxWatts)
+            timeInZone.setPowerZoneHighBoundary(5, pz5MaxWatts)
+
+            timeInZone.setPwrCalcType(PwrZoneCalc.PERCENT_FTP)
+            timeInZone.setFunctionalThresholdPower(userFtpWatts)
+        }
+
+        encoder.write(timeInZone)
+
+        // Log zone distribution for debugging (7 zones: indices 0-6)
+        val totalHrTimeMs = hrZoneTimeMs.sum()
+        Log.d(TAG, "Time in HR zones (total ${totalHrTimeMs / 1000}s): " +
+            "Z0=${hrZoneTimeMs[0] / 1000}s, Z1=${hrZoneTimeMs[1] / 1000}s, Z2=${hrZoneTimeMs[2] / 1000}s, " +
+            "Z3=${hrZoneTimeMs[3] / 1000}s, Z4=${hrZoneTimeMs[4] / 1000}s, Z5=${hrZoneTimeMs[5] / 1000}s, Z6=${hrZoneTimeMs[6] / 1000}s")
+
+        if (hasPowerData) {
+            val totalPowerTimeMs = powerZoneTimeMs.sum()
+            Log.d(TAG, "Time in Power zones (total ${totalPowerTimeMs / 1000}s): " +
+                "Z0=${powerZoneTimeMs[0] / 1000}s, Z1=${powerZoneTimeMs[1] / 1000}s, Z2=${powerZoneTimeMs[2] / 1000}s, " +
+                "Z3=${powerZoneTimeMs[3] / 1000}s, Z4=${powerZoneTimeMs[4] / 1000}s, Z5=${powerZoneTimeMs[5] / 1000}s, Z6=${powerZoneTimeMs[6] / 1000}s")
+        }
+    }
+
     private fun writeActivityMessage(
         encoder: FileEncoder,
         startTimeMs: Long,
@@ -917,6 +1118,11 @@ class FitFileExporter(private val context: Context) {
         activity.setType(Activity.MANUAL)
         activity.setEvent(Event.ACTIVITY)
         activity.setEventType(EventType.STOP)
+
+        // Local timestamp = UTC timestamp + timezone offset
+        // This is important for Garmin to correctly display the activity time
+        val timezoneOffsetMs = java.util.TimeZone.getDefault().getOffset(startTimeMs + totalElapsedMs).toLong()
+        activity.setLocalTimestamp(toFitTimestamp(startTimeMs + totalElapsedMs + timezoneOffsetMs))
 
         encoder.write(activity)
     }
