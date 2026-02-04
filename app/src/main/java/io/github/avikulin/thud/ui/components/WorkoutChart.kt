@@ -43,7 +43,7 @@ class WorkoutChart @JvmOverloads constructor(
 
     companion object {
         private const val INITIAL_TIME_RANGE_MINUTES = 30
-        private const val TIME_RANGE_INCREMENT_MINUTES = 30
+        private const val TIME_RANGE_INCREMENT_MINUTES = 5
 
         // Initial scale ranges (will expand as needed)
         private const val SPEED_MIN_KPH = 0.0
@@ -209,6 +209,7 @@ class WorkoutChart @JvmOverloads constructor(
     // Past segments (< currentStepIndex) are not drawn since actual data covers them
     // Current and future segments are drawn with coefficient applied
     private var currentStepIndex: Int = 0
+    private var previousStepIndex: Int = -1  // Track step changes to allow timeline shrinking on skip
     private var speedCoefficient: Double = 1.0
     private var inclineCoefficient: Double = 1.0
     private var currentStepElapsedMs: Long = 0  // How long we've been in current step
@@ -856,6 +857,12 @@ class WorkoutChart @JvmOverloads constructor(
             powerSegments.clear()
             lastProcessedIndex = -1
 
+            // Reset step tracking for timeline shrink detection
+            currentStepIndex = 0
+            previousStepIndex = -1
+            speedCoefficient = 1.0
+            inclineCoefficient = 1.0
+
             // Enable workout mode and set fixed time range to workout duration
             isWorkoutMode = true
             val totalDurationMs = segments.maxOf { it.endTimeMs }
@@ -908,15 +915,19 @@ class WorkoutChart @JvmOverloads constructor(
         // and step restarts (e.g., pressing Prev on first step)
         currentStepActualStartMs = currentElapsedMs - stepElapsedMs
 
+        // Detect step changes (Next/Prev button) to allow timeline shrinking
+        val stepChanged = stepIndex != previousStepIndex
+        previousStepIndex = stepIndex
+
         currentStepIndex = stepIndex
         speedCoefficient = speedCoeff
         inclineCoefficient = inclineCoeff
         currentStepElapsedMs = stepElapsedMs
         currentWorkoutElapsedMs = currentElapsedMs
 
-        // Update timeline if workout will extend past current range
+        // Update timeline - allow shrinking only on step change (not during speed adjustments)
         if (isWorkoutMode && plannedSegments.isNotEmpty()) {
-            updateTimelineForActualDuration()
+            updateTimelineForActualDuration(allowShrink = stepChanged)
         }
 
         invalidate()
@@ -926,8 +937,10 @@ class WorkoutChart @JvmOverloads constructor(
      * Update the timeline range based on expected actual workout end time.
      * When steps overrun, the workout extends past the original planned duration.
      * For distance-based steps, uses adjusted durations based on speed coefficient.
+     *
+     * @param allowShrink If true, allows timeline to contract (only on step changes, not speed adjustments)
      */
-    private fun updateTimelineForActualDuration() {
+    private fun updateTimelineForActualDuration(allowShrink: Boolean) {
         val currentSegment = plannedSegments.getOrNull(currentStepIndex) ?: return
         val currentSegmentAdjustedDuration = calculateAdjustedSegmentDurationMs(currentSegment, speedCoefficient)
 
@@ -945,13 +958,18 @@ class WorkoutChart @JvmOverloads constructor(
         // Expected actual end time (with adjusted durations)
         val expectedEndMs = currentStepActualEnd + remainingAdjustedMs
 
-        // Update timeline if needed (round up to nearest 5 minutes, minimum current duration)
+        // Update timeline if needed (round up to nearest 5 minutes)
         val expectedEndMinutes = (expectedEndMs / 60000.0).toInt() + 1
-        val newRangeMinutes = max(workoutDurationMinutes, ((expectedEndMinutes + 4) / 5) * 5)
+        val newRangeMinutes = ((expectedEndMinutes + 4) / 5) * 5
 
-        if (newRangeMinutes > timeRangeMinutes) {
+        // Expand always; shrink only when step changed (user pressed Next/Prev)
+        val shouldExpand = newRangeMinutes > timeRangeMinutes
+        val shouldShrink = allowShrink && newRangeMinutes < timeRangeMinutes
+
+        if (shouldExpand || shouldShrink) {
+            val action = if (shouldExpand) "expanded" else "contracted"
             timeRangeMinutes = newRangeMinutes
-            android.util.Log.d("WorkoutChart", "Timeline expanded to ${timeRangeMinutes}min (expected end: ${expectedEndMs/1000}s)")
+            android.util.Log.d("WorkoutChart", "Timeline $action to ${timeRangeMinutes}min (expected end: ${expectedEndMs/1000}s)")
             // Rebuild paths with new X coordinates
             rebuildAllPaths()
         }
@@ -966,6 +984,11 @@ class WorkoutChart @JvmOverloads constructor(
         plannedSegments = emptyList()
         isWorkoutMode = false
         workoutDurationMinutes = 0
+        // Reset step tracking
+        currentStepIndex = 0
+        previousStepIndex = -1
+        speedCoefficient = 1.0
+        inclineCoefficient = 1.0
         // Reset time range and all scales to initial values for free run mode
         timeRangeMinutes = INITIAL_TIME_RANGE_MINUTES
         speedMinKph = SPEED_MIN_KPH

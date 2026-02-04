@@ -52,7 +52,7 @@
     <!-- ==================== Workout Chart Colors ==================== -->
 
     <!-- Chart background (blue-tinted dark gray for DRM visibility) -->
-    <color name="chart_background">#772A2A48</color>
+    <color name="chart_background">#AA2A2A48</color>
     <!-- Grid: opaque blue-tinted gray (saturation 54 > 25, preserved in screenshots) -->
     <!-- Matches appearance of semi-transparent white over typical wallpaper -->
     <color name="chart_grid">#5A5A90</color>
@@ -92,7 +92,7 @@
     <!-- ==================== Workout Panel Colors ==================== -->
 
     <!-- Workout panel background (blue-tinted dark gray for DRM visibility) -->
-    <color name="workout_panel_background">#772A2A48</color>
+    <color name="workout_panel_background">#AA2A2A48</color>
     <color name="step_pending">#666688</color>
     <color name="step_active">#00FF00</color>
     <color name="step_completed">#8888A8</color>
