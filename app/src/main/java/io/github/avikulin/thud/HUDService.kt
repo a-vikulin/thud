@@ -1468,8 +1468,10 @@ class HUDService : Service(),
         Log.d(TAG, "Treadmill stopped (from $previousState), speed=${state.currentSpeedKph}, " +
             "isSecondStop=$isSecondStop, dataPoints=$dataPointCount")
 
-        // Pause recording if belt actually stopped
-        if (state.currentSpeedKph <= 0) {
+        // Pause recording only on first stop (RUNNING → PAUSED)
+        // On double-stop (PAUSED → IDLE): already paused, no screenshot wanted
+        // On stop-while-stopped (IDLE → IDLE): nothing to pause
+        if (state.currentSpeedKph <= 0 && !isSecondStop && !isStopWhileStopped) {
             pauseRun()
         }
 
@@ -1797,16 +1799,12 @@ class HUDService : Service(),
             is WorkoutEvent.StepStarted -> {
                 // Persist immediately on step transition
                 persistCurrentRunState()
+                // Take screenshot on step start (captures each transition)
+                screenshotManager.takeScreenshotIfEnabled("step_started")
             }
             is WorkoutEvent.StepCompleted -> {
                 // Persist immediately on step completion
                 persistCurrentRunState()
-                // Take screenshot if enabled, but NOT on final step (double-stop will clear data)
-                val totalSteps = workoutEngineManager.getExecutionSteps().size
-                val isFinalStep = event.step.flatIndex >= totalSteps - 1
-                if (!isFinalStep) {
-                    screenshotManager.takeScreenshotIfEnabled("step_completed")
-                }
             }
             is WorkoutEvent.WorkoutPlanFinished -> {
                 // All planned steps done, now in auto-cooldown
