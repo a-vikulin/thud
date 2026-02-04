@@ -151,7 +151,7 @@ class SettingsManager(
         // Treadmill capability defaults (typical home treadmill)
         const val DEFAULT_TREADMILL_MIN_SPEED_KPH = 2.0    // ~60:00/km
         const val DEFAULT_TREADMILL_MAX_SPEED_KPH = 20.0   // 3:00/km
-        const val DEFAULT_TREADMILL_MIN_INCLINE = -3.0
+        const val DEFAULT_TREADMILL_MIN_INCLINE = 0.0
         const val DEFAULT_TREADMILL_MAX_INCLINE = 15.0
         const val DEFAULT_TREADMILL_INCLINE_STEP = 0.5
 
@@ -193,7 +193,7 @@ class SettingsManager(
         const val DEFAULT_POWER_MAX_INCLINE_ADJUSTMENT_PERCENT = 5.0
 
         // FIT Export device identification defaults (Forerunner 970)
-        const val DEFAULT_FIT_MANUFACTURER = 95              // Stryd
+        const val DEFAULT_FIT_MANUFACTURER = 1              // Garmin
         const val DEFAULT_FIT_PRODUCT_ID = 4565             // Forerunner 970
         const val DEFAULT_FIT_DEVICE_SERIAL = 1234567890L
         const val DEFAULT_FIT_SOFTWARE_VERSION = 1552       // 15.52

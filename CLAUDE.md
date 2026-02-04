@@ -1,3 +1,5 @@
+# ⚠️ NEVER COMMIT WITHOUT USER CONSENT!!! ⚠️
+
 <system_prompt>
 <role>
 You are a senior software engineer embedded in an agentic coding workflow. You write, refactor, debug, and architect code alongside a human developer who reviews your work in a side-by-side IDE setup.
@@ -897,3 +899,43 @@ Settings → FTMS tab controls external app connectivity:
 - Tacx is a "known fitness equipment" manufacturer
 - Both Stryd and Garmin recognize it as a valid data source
 - Indoor trainer files are expected to be uploaded manually
+
+### FIT Time in Zone Message (mesg 216)
+
+**Garmin uses a 7-zone model (indices 0-6), not the typical 5-zone model:**
+- Zone 0: warmup/rest (HR < ~60% LTHR)
+- Zone 1: easy (~60-80% LTHR)
+- Zone 2: aerobic (~80-88% LTHR)
+- Zone 3: tempo (~88-95% LTHR)
+- Zone 4: threshold (~95-102% LTHR)
+- Zone 5: VO2max (~102-110% LTHR)
+- Zone 6: anaerobic (above max HR)
+
+**Zone boundary calculation (CRITICAL):**
+```kotlin
+// Zone N high boundary = Zone N+1 START converted to BPM, then -1
+// WRONG: subtract percent first, then convert
+val z1MaxBpm = HeartRateZones.percentToBpm(z2StartPercent - 1, userLthr)  // ❌
+
+// CORRECT: convert to BPM first, then subtract 1
+val z1MaxBpm = (HeartRateZones.percentToBpm(z2StartPercent.toDouble(), userLthr) - 1).toShort()  // ✅
+```
+
+**Message structure (from Garmin FIT files):**
+```
+time_in_zone (mesg 216):
+  reference_mesg: 18 (session)
+  reference_index: 0
+  time_in_hr_zone: [ms, ms, ms, ms, ms, ms, ms]  // 7 values, indices 0-6
+  hr_zone_high_boundary: [bpm, bpm, bpm, bpm, bpm, bpm]  // 6 boundaries
+  hr_calc_type: 3 (PERCENT_LTHR)
+  max_heart_rate: bpm
+  resting_heart_rate: bpm
+  threshold_heart_rate: bpm (LTHR)
+```
+
+**Important behaviors:**
+- Garmin Connect **recalculates** zone distribution using user's profile zone settings
+- The FIT file's boundaries may be ignored, but the time values are used
+- Time values are stored in milliseconds, SDK converts to/from seconds
+- Power zones follow the same pattern with 7 zones and 6 boundaries
