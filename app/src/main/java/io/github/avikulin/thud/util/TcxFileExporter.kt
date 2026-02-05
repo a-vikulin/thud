@@ -304,7 +304,8 @@ class TcxFileExporter(private val context: Context) {
 
     /**
      * Write Creator element (device info).
-     * Uses Forerunner 970 so Garmin Connect calculates TE/Load metrics.
+     * Uses Forerunner 970. Note: TE/Load requires syncing watch TWICE after upload.
+     * Serial must differ from user's watch for sync to work.
      */
     private fun writeCreator(writer: StringWriter) {
         writer.append("      <Creator xsi:type=\"Device_t\">\n")

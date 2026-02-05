@@ -87,10 +87,13 @@ blown away by Claude's capabilities!
 - Power and cadence from Stryd
 - TSS (Training Stress Score) calculation with 3-tier fallback: Power → HR → Pace
 - Files saved to Downloads/tHUD/
-- Settings for device parameters - you can configure FIT files to include your real watch identification
-- **IMPORTANT:**
-   1. **For your run to be calculated towards your acute and chronic load you MUST sync your watch after uploading the fit file to Garmin Connect, because acute load calculation is actually performed by the watch!**
-   2. **For fit files to be accepted by Stryd PowerCenter you must set manufacturer=95 in settings**
+- Settings for device parameters in FIT Export tab
+- **IMPORTANT for Garmin Training Load:**
+   1. **Device serial in FIT settings MUST be different from your main Garmin watch** (otherwise the watch won't sync the file - it thinks it already has it)
+   2. **After uploading the FIT file to Garmin Connect, sync your watch TWICE** - first sync downloads the file to watch for processing, second sync uploads calculated metrics back
+- **Platform compatibility by manufacturer setting:**
+   - `manufacturer=1` (Garmin): Works with Garmin Connect and Strava (shows as Run), but rejected by Stryd PowerCenter
+   - `manufacturer=89` (Tacx): Works with Garmin Connect and Stryd PowerCenter, but Strava shows as "Virtual Ride" (cannot change to Run)
 
 ### Reliability
 - Run crash recovery with periodic auto-save

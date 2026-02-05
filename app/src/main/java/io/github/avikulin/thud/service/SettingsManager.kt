@@ -1271,7 +1271,7 @@ class SettingsManager(
             }
             addView(description)
 
-            // Manufacturer ID (1 = Garmin, 23 = Suunto, 32 = Wahoo, etc.)
+            // Manufacturer ID: 1=Garmin (Strava shows Run), 89=Tacx (Stryd PowerCenter). Do NOT use 95.
             editFitManufacturer = createNumericEditText(state.fitManufacturer.toString())
             addView(createInputRow(service.getString(R.string.fit_manufacturer), editFitManufacturer!!))
 

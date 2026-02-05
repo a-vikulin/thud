@@ -16,7 +16,7 @@
     <string name="settings_tab_ftms">FTMS</string>
 
     <!-- FIT Export Tab -->
-    <string name="fit_export_description">Configure device identity to match your primary training device for Garmin Training Status compatibility.</string>
+    <string name="fit_export_description">Configure device identity. IMPORTANT: Serial must differ from your Garmin watch for Training Load sync. Manufacturer 1=Garmin (Strava), 89=Tacx (Stryd).</string>
     <string name="fit_manufacturer">Manufacturer ID</string>
     <string name="fit_product_id">Product ID</string>
     <string name="fit_device_serial">Unit ID (Serial)</string>

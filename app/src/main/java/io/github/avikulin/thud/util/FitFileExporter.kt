@@ -30,7 +30,8 @@ class FitFileExporter(private val context: Context) {
         private const val FIT_EPOCH_OFFSET_MS = 631065600000L
 
         // Default device info (Forerunner 970)
-        // User can configure via Settings to match their primary training device
+        // IMPORTANT: Serial MUST differ from user's watch for acute/chronic load sync to work.
+        // Manufacturer: 1=Garmin (works with Strava), 89=Tacx (works with Stryd PowerCenter)
         private const val DEFAULT_MANUFACTURER = 1          // Garmin
         private const val DEFAULT_PRODUCT_ID = 4565         // Forerunner 970
         private const val DEFAULT_DEVICE_SERIAL = 1234567890L

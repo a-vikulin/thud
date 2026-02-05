@@ -851,7 +851,26 @@ When uploading FIT files to Garmin Connect (manually or via auto-sync):
 - Files can be uploaded manually to Garmin Connect
 - After upload, user MUST sync their Garmin watch to trigger load calculation
 
-**The FIT device serial number does NOT affect this** - whether you use a bogus serial (`1234567890`) or your real watch serial, the key factor is syncing the watch after upload.
+### ⚠️ CRITICAL: Device Serial Must Differ from User's Watch ⚠️
+
+**The FIT file's device serial number MUST be different from the user's primary Garmin watch!**
+
+**Why this matters:**
+- When the watch syncs with Garmin Connect, it downloads new activities to process
+- If the FIT file's serial matches the watch's own serial, the watch skips it
+- The watch thinks: "This is my file, I already have it" → no sync → no load calculation
+
+**Correct configuration:**
+- Use a **different serial number** than the user's main training device
+- It can be any valid serial (e.g., `1234567890`, user's old watch serial, etc.)
+- The key is that it must NOT match the watch they use for syncing
+
+**Full sync process for acute/chronic load:**
+1. Upload FIT file to Garmin Connect (manual or auto-sync)
+2. **First sync:** Sync your Garmin watch → downloads the activity from Garmin Connect
+3. Watch processes the activity (Training Effect, Load, etc.)
+4. **Second sync:** Sync your watch again → uploads calculated metrics to Garmin Connect
+5. Now acute/chronic load reflects the treadmill run
 
 ### FTMS Settings Tab
 
@@ -874,31 +893,30 @@ Settings → FTMS tab controls external app connectivity:
 
 **Key finding:** The `manufacturer` field affects which platforms accept the file, but Garmin Connect uses `product` ID for device display.
 
-| Manufacturer ID | Name | Stryd PowerCenter | Garmin Connect |
-|-----------------|------|-------------------|----------------|
-| 1 | Garmin | ❌ Rejected | ✅ Works (sync watch) |
-| 89 | Tacx | ✅ Works | ✅ Works (sync watch) |
-| 95 | Stryd | ? (untested) | ? (untested) |
+| Manufacturer ID | Name | Stryd PowerCenter | Garmin Connect | Strava |
+|-----------------|------|-------------------|----------------|--------|
+| 1 | Garmin | ❌ Rejected | ✅ Works (sync watch) | ✅ Run |
+| 89 | Tacx | ✅ Works | ✅ Works (sync watch) | ⚠️ Virtual Ride (can't change to Run) |
+
+**Do NOT use manufacturer=95 (Stryd)** - rejected by all platforms.
 
 **Recommended approach:**
-- Use `manufacturer=89` (Tacx) for broad compatibility
+- Use `manufacturer=1` (Garmin) if you sync to Strava and want runs categorized correctly
+- Use `manufacturer=89` (Tacx) if you need Stryd PowerCenter compatibility (but Strava will show as Virtual Ride)
 - Keep `product=4565` (Forerunner 970) - Garmin uses this for device icon/name
-- Serial number doesn't affect acceptance
+- Use a serial number **different from user's main Garmin watch** (critical for acute/chronic load sync!)
 
 **Relevant manufacturer IDs (from FIT SDK Profile):**
 ```
-1   = Garmin
-85  = Woodway
-86  = Elite
-89  = Tacx
-95  = Stryd
-260 = Zwift
+1   = Garmin   ← Use for Strava compatibility
+89  = Tacx     ← Use for Stryd PowerCenter compatibility
+95  = Stryd    ← Do NOT use (rejected everywhere)
 ```
 
-**Why Tacx works everywhere:**
-- Tacx is a "known fitness equipment" manufacturer
-- Both Stryd and Garmin recognize it as a valid data source
-- Indoor trainer files are expected to be uploaded manually
+**Tacx (89) trade-offs:**
+- ✅ Tacx is a "known fitness equipment" manufacturer
+- ✅ Both Stryd and Garmin recognize it as a valid data source
+- ❌ Strava treats Tacx files as "Virtual Ride" with no option to change to Run
 
 ### FIT Time in Zone Message (mesg 216)
 
