@@ -715,22 +715,31 @@ class WorkoutChart @JvmOverloads constructor(
 
     /**
      * Calculate full scale to show ALL data for the entire run.
+     * In workout mode, also considers planned segments so workout outline isn't clipped.
      */
     private fun calculateLiveFullScale() {
         if (dataPoints.isEmpty()) return
 
-        // Speed: all data for this run
-        val minSpeed = dataPoints.minOf { it.speedKph }
-        val maxSpeed = dataPoints.maxOf { it.speedKph }
+        // Speed: all data for this run + workout structure (so planned segments aren't clipped)
+        val dataMinSpeed = dataPoints.minOf { it.speedKph }
+        val dataMaxSpeed = dataPoints.maxOf { it.speedKph }
+        val workoutMinSpeed = plannedSegments.minOfOrNull { it.paceKph } ?: dataMinSpeed
+        val workoutMaxSpeed = plannedSegments.maxOfOrNull { it.paceKph } ?: dataMaxSpeed
+        val minSpeed = minOf(dataMinSpeed, workoutMinSpeed)
+        val maxSpeed = maxOf(dataMaxSpeed, workoutMaxSpeed)
         targetSpeedMinKph = floor((minSpeed - 1.0) / 2.0) * 2.0
         targetSpeedMaxKph = ceil((maxSpeed + 1.0) / 2.0) * 2.0
         if (targetSpeedMaxKph - targetSpeedMinKph < 4.0) {
             targetSpeedMaxKph = targetSpeedMinKph + 4.0
         }
 
-        // Incline: all data for this run
-        val minIncline = dataPoints.minOf { it.inclinePercent }
-        val maxIncline = dataPoints.maxOf { it.inclinePercent }
+        // Incline: all data for this run + workout structure (so planned segments aren't clipped)
+        val dataMinIncline = dataPoints.minOf { it.inclinePercent }
+        val dataMaxIncline = dataPoints.maxOf { it.inclinePercent }
+        val workoutMinIncline = plannedSegments.minOfOrNull { it.inclinePercent } ?: dataMinIncline
+        val workoutMaxIncline = plannedSegments.maxOfOrNull { it.inclinePercent } ?: dataMaxIncline
+        val minIncline = minOf(dataMinIncline, workoutMinIncline)
+        val maxIncline = maxOf(dataMaxIncline, workoutMaxIncline)
         targetInclineMinPercent = floor(minIncline - 1.0)
         targetInclineMaxPercent = ceil(maxIncline + 1.0)
         if (targetInclineMaxPercent - targetInclineMinPercent < 3.0) {
