@@ -13,6 +13,7 @@ import io.github.avikulin.thud.service.dircon.FtmsCharacteristics
 import kotlinx.coroutines.*
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * BLE FTMS (Fitness Machine Service) server for fitness app connectivity.
@@ -147,8 +148,8 @@ class BleFtmsServer(
     private val connectedDevices = ConcurrentHashMap<String, BluetoothDevice>()
     private val notificationSubscriptions = ConcurrentHashMap<String, MutableSet<UUID>>()
 
-    // Track which device has control
-    private var controllingDevice: String? = null
+    // Track which device has control (atomic for thread safety across GATT callbacks)
+    private val controllingDevice = AtomicReference<String?>(null)
 
     // Service addition queue (addService is async, must wait for callback)
     private val pendingServices = mutableListOf<BluetoothGattService>()
@@ -228,7 +229,7 @@ class BleFtmsServer(
         connectedDevices.clear()
         notificationSubscriptions.clear()
         pendingServices.clear()
-        controllingDevice = null
+        controllingDevice.set(null)
 
         gattServer?.close()
         gattServer = null
@@ -452,9 +453,7 @@ class BleFtmsServer(
                     Log.i(TAG, "Client disconnected: $address (status=$status)")
                     connectedDevices.remove(address)
                     notificationSubscriptions.remove(address)
-                    if (controllingDevice == address) {
-                        controllingDevice = null
-                    }
+                    controllingDevice.compareAndSet(address, null)
                     listener.onClientDisconnected(address)
 
                     // Restart advertising if no clients connected (Android may have stopped it)
@@ -603,20 +602,23 @@ class BleFtmsServer(
                 if (!controlAllowed) {
                     Log.d(TAG, "Control request denied - control not allowed by settings")
                     FtmsCharacteristics.RESULT_CONTROL_NOT_PERMITTED
-                } else if (controllingDevice == null || controllingDevice == deviceAddress) {
-                    if (listener.onControlRequested()) {
-                        controllingDevice = deviceAddress
-                        FtmsCharacteristics.RESULT_SUCCESS
+                } else {
+                    val current = controllingDevice.get()
+                    if (current == null || current == deviceAddress) {
+                        if (listener.onControlRequested()) {
+                            controllingDevice.compareAndSet(current, deviceAddress)
+                            FtmsCharacteristics.RESULT_SUCCESS
+                        } else {
+                            FtmsCharacteristics.RESULT_CONTROL_NOT_PERMITTED
+                        }
                     } else {
                         FtmsCharacteristics.RESULT_CONTROL_NOT_PERMITTED
                     }
-                } else {
-                    FtmsCharacteristics.RESULT_CONTROL_NOT_PERMITTED
                 }
             }
 
             is FtmsCharacteristics.ControlCommand.Reset -> {
-                controllingDevice = null
+                controllingDevice.set(null)
                 FtmsCharacteristics.RESULT_SUCCESS
             }
 

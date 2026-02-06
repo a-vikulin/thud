@@ -2184,6 +2184,16 @@ class HUDService : Service(),
         stopDirConServer()
         stopBleFtmsServer()
 
+        // Null all listener references to break circular references and prevent memory leaks
+        telemetryManager.listener = null
+        settingsManager.listener = null
+        hudDisplayManager.listener = null
+        workoutPanelManager.listener = null
+        workoutEngineManager.listener = null
+        hrSensorManager.listener = null
+        strydManager.listener = null
+        workoutRecorder.onMetricsUpdated = null
+
         // Disconnect gRPC in background (use GlobalScope since serviceScope is cancelled)
         GlobalScope.launch(Dispatchers.IO) {
             telemetryManager.disconnect()

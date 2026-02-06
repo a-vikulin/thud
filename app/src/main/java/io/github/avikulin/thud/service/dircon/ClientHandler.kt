@@ -27,7 +27,7 @@ class ClientHandler(
     val enabledNotifications = ConcurrentHashMap.newKeySet<Int>()
 
     /** Whether this client has control permission */
-    var hasControl = false
+    @Volatile var hasControl = false
 
     private var isClosed = false
 
