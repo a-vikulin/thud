@@ -1738,7 +1738,14 @@ class HUDService : Service(),
     }
 
     override fun onResetToStepClicked() {
-        workoutEngineManager.applyCurrentStepTargets()
+        val engineState = workoutEngineManager.getState()
+        if (engineState is WorkoutExecutionState.Paused) {
+            // When paused, this button acts as Resume — apply effective (adjusted) targets
+            workoutEngineManager.resumeWorkoutWithTargets()
+        } else {
+            // When running, reset to step's base targets (undo manual adjustments)
+            workoutEngineManager.applyCurrentStepTargets()
+        }
     }
 
     // ==================== WorkoutEngineManager.Listener ====================

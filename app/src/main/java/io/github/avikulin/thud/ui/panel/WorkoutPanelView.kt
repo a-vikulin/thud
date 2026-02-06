@@ -392,8 +392,9 @@ class WorkoutPanelView(context: Context) : View(context) {
         drawControlButton(canvas, buttonX, buttonY, "prev", context.getString(R.string.btn_prev), buttonWidth.toFloat(), buttonHeight.toFloat(), buttonsEnabled)
         buttonX += buttonWidth + controlButtonMargin
 
-        // Reset to step button (circular arrow) - center for easy access
-        drawControlButton(canvas, buttonX, buttonY, "resetToStep", context.getString(R.string.btn_reset_to_step), buttonWidth.toFloat(), buttonHeight.toFloat(), buttonsEnabled)
+        // Center button: Play when paused, Reset to Step when running
+        val centerIcon = if (isPaused) context.getString(R.string.btn_play) else context.getString(R.string.btn_reset_to_step)
+        drawControlButton(canvas, buttonX, buttonY, "resetToStep", centerIcon, buttonWidth.toFloat(), buttonHeight.toFloat(), buttonsEnabled)
         buttonX += buttonWidth + controlButtonMargin
 
         // Next button
