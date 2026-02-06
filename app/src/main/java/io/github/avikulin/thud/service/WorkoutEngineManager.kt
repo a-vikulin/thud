@@ -293,11 +293,12 @@ class WorkoutEngineManager(
             if (treadmillState == WorkoutState.WORKOUT_STATE_PAUSED) {
                 Log.d(TAG, "Resuming treadmill...")
                 client?.resumeWorkout()
-                // Wait for treadmill to be running
-                delay(200)
             }
 
-            // Resume engine (step targets applied via WorkoutResumed event in handleWorkoutEvent())
+            // Resume engine - WorkoutResumed event handler will wait for belt ready
+            // and apply step targets automatically.
+            // Note: handlePhysicalStart() may have already called resume() via the
+            // RUNNING state change callback - that's fine, second call is a no-op.
             withContext(Dispatchers.Main) {
                 engine.resume()
             }
@@ -416,12 +417,8 @@ class WorkoutEngineManager(
                 }
             }
             is WorkoutExecutionState.Paused -> {
-                val step = engineState.currentStep
-                val effectivePace = engine.getEffectiveSpeed(step)
-                val effectiveIncline = engine.getEffectiveIncline(step)
-                Log.d(TAG, "Physical Start pressed - resuming paused workout, applying targets: $effectivePace kph, $effectiveIncline%")
-                // Apply targets immediately before resuming to ensure speed is set
-                applyStepTargets(effectivePace, effectiveIncline)
+                Log.d(TAG, "Physical Start pressed - resuming paused workout")
+                // Resume engine - WorkoutResumed event handler will apply targets after belt is ready
                 engine.resume()
             }
             is WorkoutExecutionState.Running -> {
@@ -577,7 +574,12 @@ class WorkoutEngineManager(
             }
             is WorkoutEvent.WorkoutResumed -> {
                 Log.d(TAG, "Workout resumed: ${event.step.displayName}, effective pace=${event.effectivePaceKph}, incline=${event.effectiveInclinePercent}")
-                applyStepTargets(event.effectivePaceKph, event.effectiveInclinePercent)
+                // Wait for belt to be ready before applying targets (belt may still be accelerating)
+                scope.launch(Dispatchers.IO) {
+                    waitForBeltReady()
+                    listener?.onSetTreadmillSpeed(event.effectivePaceKph)
+                    listener?.onSetTreadmillIncline(event.effectiveInclinePercent)
+                }
                 // Refresh chart timing/coefficients after resume so outlines/HR targets realign
                 updateChartCoefficients()
             }
@@ -631,14 +633,22 @@ class WorkoutEngineManager(
     private fun updateChartCoefficients() {
         val engine = workoutEngine ?: return
         val executionState = engine.state.value
-        if (executionState !is WorkoutExecutionState.Running) return
+
+        // Extract step index and timing from Running or Paused state
+        val (stepIndex, stepElapsedMs, workoutElapsedMs) = when (executionState) {
+            is WorkoutExecutionState.Running ->
+                Triple(executionState.currentStepIndex, executionState.stepElapsedMs, executionState.workoutElapsedMs)
+            is WorkoutExecutionState.Paused ->
+                Triple(executionState.currentStepIndex, executionState.stepElapsedMs, executionState.workoutElapsedMs)
+            else -> return
+        }
 
         chartManager?.setAdjustmentCoefficients(
-            currentStepIndex = executionState.currentStepIndex,
+            currentStepIndex = stepIndex,
             speedCoeff = engine.getSpeedAdjustmentCoefficient(),
             inclineCoeff = engine.getInclineAdjustmentCoefficient(),
-            stepElapsedMs = executionState.stepElapsedMs,
-            workoutElapsedMs = executionState.workoutElapsedMs
+            stepElapsedMs = stepElapsedMs,
+            workoutElapsedMs = workoutElapsedMs
         )
     }
 

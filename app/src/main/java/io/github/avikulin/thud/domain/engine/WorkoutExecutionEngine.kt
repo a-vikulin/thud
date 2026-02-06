@@ -223,6 +223,10 @@ class WorkoutExecutionEngine(
         // Reset HR adjustment settling timer (HR dropped during pause, need time to stabilize)
         adjustmentController.onWorkoutResumed(treadmillElapsedSeconds * 1000L)
 
+        // Reset acceleration flag — belt restarts from 0 after pause and needs time
+        // to reach target speed before coefficient tracking resumes
+        hasReachedTargetSpeed = false
+
         // Calculate effective pace/incline using the adjustment coefficients
         val effectivePace = getEffectiveSpeed(step)
         val effectiveIncline = getEffectiveIncline(step)
@@ -408,6 +412,9 @@ class WorkoutExecutionEngine(
      * capturing both HR auto-adjustments and manual button presses.
      */
     private fun updateAdjustmentCoefficients(step: ExecutionStep, actualSpeedKph: Double, actualInclinePercent: Double) {
+        // Don't update when belt is stopped — speed=0 during pause/deceleration isn't a real adjustment
+        if (actualSpeedKph <= 0) return
+
         // Don't calculate coefficient during initial acceleration
         // Wait until belt has reached close to target speed
         val effectiveTargetSpeed = step.paceTargetKph * speedAdjustmentCoefficient
@@ -619,20 +626,33 @@ class WorkoutExecutionEngine(
         // Apply step targets to treadmill
         applyStepTargets(step)
 
-        // Update state
-        _state.value = WorkoutExecutionState.Running(
-            workout = workout,
-            currentStepIndex = index,
-            currentStep = step,
-            stepElapsedMs = 0,
-            stepDistanceMeters = 0.0,
-            workoutElapsedMs = getWorkoutElapsedMs(),
-            workoutDistanceMeters = getWorkoutDistanceMeters(),
-            currentPaceKph = currentSpeedKph,
-            currentIncline = currentInclinePercent,
-            isHrAdjustmentActive = false,
-            hrAdjustmentDirection = null
-        )
+        // Update state - preserve Paused if we were Paused (Prev/Next while paused)
+        val wasPaused = _state.value is WorkoutExecutionState.Paused
+        if (wasPaused) {
+            _state.value = WorkoutExecutionState.Paused(
+                workout = workout,
+                currentStepIndex = index,
+                currentStep = step,
+                stepElapsedMs = 0,
+                stepDistanceMeters = 0.0,
+                workoutElapsedMs = getWorkoutElapsedMs(),
+                workoutDistanceMeters = getWorkoutDistanceMeters()
+            )
+        } else {
+            _state.value = WorkoutExecutionState.Running(
+                workout = workout,
+                currentStepIndex = index,
+                currentStep = step,
+                stepElapsedMs = 0,
+                stepDistanceMeters = 0.0,
+                workoutElapsedMs = getWorkoutElapsedMs(),
+                workoutDistanceMeters = getWorkoutDistanceMeters(),
+                currentPaceKph = currentSpeedKph,
+                currentIncline = currentInclinePercent,
+                isHrAdjustmentActive = false,
+                hrAdjustmentDirection = null
+            )
+        }
 
         // Calculate effective targets with adjustment coefficients
         val effectivePaceKph = step.paceTargetKph * speedAdjustmentCoefficient

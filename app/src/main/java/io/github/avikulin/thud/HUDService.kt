@@ -1783,6 +1783,14 @@ class HUDService : Service(),
                     workoutPanelManager.startRefresh()
                 }
                 is WorkoutExecutionState.Paused -> {
+                    // Update chart step index (Prev/Next can change steps while paused)
+                    chartManager.setAdjustmentCoefficients(
+                        currentStepIndex = executionState.currentStepIndex,
+                        speedCoeff = workoutEngineManager.getSpeedAdjustmentCoefficient(),
+                        inclineCoeff = workoutEngineManager.getInclineAdjustmentCoefficient(),
+                        stepElapsedMs = executionState.stepElapsedMs,
+                        workoutElapsedMs = executionState.workoutElapsedMs
+                    )
                     workoutPanelManager.stopRefresh()
                 }
                 is WorkoutExecutionState.Completed -> {

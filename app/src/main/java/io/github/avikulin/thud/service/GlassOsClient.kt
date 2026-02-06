@@ -430,7 +430,7 @@ class GlassOsClient(
     /**
      * Subscribe to manual start requests (physical Start button presses).
      * When the physical Start button is pressed, GlassOS sends a notification through this subscription.
-     * We respond by calling Start() to actually start the preloaded workout.
+     * We respond by calling Resume() if paused, or Start() to begin the preloaded workout.
      */
     fun subscribeToManualStart() {
         val empty = Empty.getDefaultInstance()
@@ -440,16 +440,24 @@ class GlassOsClient(
                     Log.d(TAG, "Manual start requested (physical Start button pressed)")
                     // Notify the listener
                     listener?.onManualStartRequested()
-                    // Actually start the workout
                     try {
-                        val startResponse = programmedWorkoutStub?.start(empty)
-                        if (startResponse?.hasSuccess() == true && startResponse.success) {
-                            Log.d(TAG, "Manual start: workout started successfully")
+                        // Check treadmill state: resume if paused, start if idle
+                        val currentState = workoutBlockingStub?.getWorkoutState(empty)?.workoutState
+                        if (currentState == WorkoutState.WORKOUT_STATE_PAUSED) {
+                            Log.d(TAG, "Manual start: treadmill paused, resuming...")
+                            val result = workoutBlockingStub?.resume(empty)
+                            val success = result?.hasSuccess() == true && result.success
+                            Log.d(TAG, "Manual start: resume result=$success")
                         } else {
-                            Log.e(TAG, "Manual start: failed to start workout")
+                            val startResponse = programmedWorkoutStub?.start(empty)
+                            if (startResponse?.hasSuccess() == true && startResponse.success) {
+                                Log.d(TAG, "Manual start: workout started successfully")
+                            } else {
+                                Log.e(TAG, "Manual start: failed to start workout")
+                            }
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Manual start: error starting workout: ${e.message}")
+                        Log.e(TAG, "Manual start: error: ${e.message}")
                     }
                 }
             }
