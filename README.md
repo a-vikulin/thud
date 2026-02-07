@@ -58,6 +58,8 @@ blown away by Claude's capabilities!
 - Optional HR and Power target zones per step with pace/incline auto-adjustment
 - Early step ending on HR reaching certain levels
 - Full undo/redo support in editor
+- Default Warmup and Cooldown templates — edit once, attach to any workout
+- Coefficient isolation between warmup/main/cooldown phases (HR auto-adjustments during warmup don't affect the main workout)
 
 ### Auto-Adjustment (HR or Power)
 - Each workout step can pick either HR or Power and define a target zone for it
@@ -191,8 +193,10 @@ Verify that auto-adjustment parameters are sensible
    - Target incline
    - HR or Power targets (optional)
 4. Use Undo/Redo buttons if needed
-5. Workout is saved after every edit 
-6. Click Run to run the workout
+5. Optionally enable "Use Default Warmup" / "Use Default Cooldown" checkboxes to attach reusable templates
+6. Edit the Default Warmup or Default Cooldown workouts (pinned at top of the list) to customize them
+7. Workout is saved after every edit
+8. Click Run to run the workout
 
 ## Usage
 
