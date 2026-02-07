@@ -368,10 +368,10 @@ class InlineStepAdapter(
             // Step type spinner adapter
             val typeAdapter = ArrayAdapter(
                 context,
-                android.R.layout.simple_spinner_item,
+                R.layout.spinner_item,
                 stepTypes.map { getStepTypeName(it) }
             )
-            typeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            typeAdapter.setDropDownViewResource(R.layout.spinner_dropdown_item)
             spinnerType.adapter = typeAdapter
 
             spinnerType.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -389,10 +389,10 @@ class InlineStepAdapter(
             // Duration type spinner adapter (Time/Distance)
             val durationTypeAdapter = ArrayAdapter(
                 context,
-                android.R.layout.simple_spinner_item,
+                R.layout.spinner_item,
                 durationTypes.map { getDurationTypeName(it) }
             )
-            durationTypeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            durationTypeAdapter.setDropDownViewResource(R.layout.spinner_dropdown_item)
             spinnerDurationType.adapter = durationTypeAdapter
 
             spinnerDurationType.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -421,10 +421,10 @@ class InlineStepAdapter(
             // Early end condition spinner adapter (None/Open/HR Range)
             val earlyEndAdapter = ArrayAdapter(
                 context,
-                android.R.layout.simple_spinner_item,
+                R.layout.spinner_item,
                 earlyEndConditions.map { getEarlyEndConditionName(it) }
             )
-            earlyEndAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            earlyEndAdapter.setDropDownViewResource(R.layout.spinner_dropdown_item)
             spinnerEarlyEnd.adapter = earlyEndAdapter
 
             spinnerEarlyEnd.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -454,10 +454,10 @@ class InlineStepAdapter(
             // Auto-adjust mode spinner adapter (No/HR/Power)
             val autoModeAdapter = ArrayAdapter(
                 context,
-                android.R.layout.simple_spinner_item,
+                R.layout.spinner_item,
                 autoAdjustModes.map { getAutoAdjustModeName(it) }
             )
-            autoModeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            autoModeAdapter.setDropDownViewResource(R.layout.spinner_dropdown_item)
             spinnerAutoMode.adapter = autoModeAdapter
 
             spinnerAutoMode.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -509,10 +509,10 @@ class InlineStepAdapter(
             // Adjustment type spinner adapter (Pace/Incline)
             val adjustTypeAdapter = ArrayAdapter(
                 context,
-                android.R.layout.simple_spinner_item,
+                R.layout.spinner_item,
                 adjustmentTypes.map { getAdjustmentTypeName(it) }
             )
-            adjustTypeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            adjustTypeAdapter.setDropDownViewResource(R.layout.spinner_dropdown_item)
             spinnerAdjustType.adapter = adjustTypeAdapter
 
             spinnerAdjustType.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {

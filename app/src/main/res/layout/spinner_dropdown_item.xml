@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/text1"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:padding="@dimen/editor_input_padding"
+    android:background="@color/editor_input_background"
+    android:textColor="@color/text_primary"
+    android:textSize="@dimen/text_step_type"
+    android:ellipsize="none"
+    android:singleLine="true" />

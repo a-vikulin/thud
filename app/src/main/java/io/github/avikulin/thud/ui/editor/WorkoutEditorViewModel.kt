@@ -9,6 +9,7 @@ import io.github.avikulin.thud.data.db.TreadmillHudDatabase
 import io.github.avikulin.thud.data.entity.Workout
 import io.github.avikulin.thud.data.entity.WorkoutStep
 import io.github.avikulin.thud.data.repository.WorkoutRepository
+import io.github.avikulin.thud.domain.model.AdjustmentScope
 import io.github.avikulin.thud.domain.model.DurationType
 import io.github.avikulin.thud.domain.model.StepType
 import io.github.avikulin.thud.service.SettingsManager
@@ -116,6 +117,9 @@ class WorkoutEditorViewModel(application: Application) : AndroidViewModel(applic
     private val _cooldownEnabled = MutableStateFlow(false)
     val cooldownEnabled: StateFlow<Boolean> = _cooldownEnabled.asStateFlow()
 
+    private val _adjustmentScope = MutableStateFlow(AdjustmentScope.ALL_STEPS)
+    val adjustmentScope: StateFlow<AdjustmentScope> = _adjustmentScope.asStateFlow()
+
     private val _warmupSummary = MutableStateFlow("")
     val warmupSummary: StateFlow<String> = _warmupSummary.asStateFlow()
 
@@ -213,6 +217,7 @@ class WorkoutEditorViewModel(application: Application) : AndroidViewModel(applic
                     _isSystemWorkout.value = workout.isSystemWorkout
                     _warmupEnabled.value = workout.useDefaultWarmup
                     _cooldownEnabled.value = workout.useDefaultCooldown
+                    _adjustmentScope.value = workout.adjustmentScope
 
                     // Refresh sentinel summaries when switching to a regular workout
                     // (covers returning from editing a system workout)
@@ -390,6 +395,12 @@ class WorkoutEditorViewModel(application: Application) : AndroidViewModel(applic
     fun setCooldownEnabled(enabled: Boolean) {
         if (enabled == _cooldownEnabled.value) return
         _cooldownEnabled.value = enabled
+        triggerAutoSave()
+    }
+
+    fun setAdjustmentScope(scope: AdjustmentScope) {
+        if (scope == _adjustmentScope.value) return
+        _adjustmentScope.value = scope
         triggerAutoSave()
     }
 
@@ -846,6 +857,7 @@ class WorkoutEditorViewModel(application: Application) : AndroidViewModel(applic
             systemWorkoutType = existing?.systemWorkoutType,
             useDefaultWarmup = _warmupEnabled.value,
             useDefaultCooldown = _cooldownEnabled.value,
+            adjustmentScope = _adjustmentScope.value,
             lastExecutedAt = existing?.lastExecutedAt
         )
 

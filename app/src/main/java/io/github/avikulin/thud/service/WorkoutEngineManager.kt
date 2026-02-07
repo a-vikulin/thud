@@ -7,6 +7,7 @@ import io.github.avikulin.thud.R
 import io.github.avikulin.thud.ui.components.WorkoutChart
 import io.github.avikulin.thud.data.db.TreadmillHudDatabase
 import io.github.avikulin.thud.data.repository.WorkoutRepository
+import io.github.avikulin.thud.domain.model.AdjustmentScope
 import io.github.avikulin.thud.domain.engine.ExecutionStep
 import io.github.avikulin.thud.domain.engine.MetricDataPoint
 import io.github.avikulin.thud.domain.engine.WorkoutExecutionEngine
@@ -550,10 +551,12 @@ class WorkoutEngineManager(
         if (executionState is WorkoutExecutionState.Running) {
             val step = executionState.currentStep
             Log.d(TAG, "Resetting to step targets: ${step.paceTargetKph} kph, ${step.inclineTargetPercent}%")
+            workoutEngine?.resetAdjustmentCoefficients()
             applyStepTargets(step.paceTargetKph, step.inclineTargetPercent)
         } else if (executionState is WorkoutExecutionState.Paused) {
             val step = executionState.currentStep
             Log.d(TAG, "Resetting to step targets (paused): ${step.paceTargetKph} kph, ${step.inclineTargetPercent}%")
+            workoutEngine?.resetAdjustmentCoefficients()
             applyStepTargets(step.paceTargetKph, step.inclineTargetPercent)
         } else {
             Log.d(TAG, "Cannot reset to step targets - not running or paused: $executionState")
@@ -610,7 +613,8 @@ class WorkoutEngineManager(
                     autoAdjustMode = step.autoAdjustMode,
                     durationType = step.durationType,
                     durationMeters = step.durationMeters,
-                    phase = phase
+                    phase = phase,
+                    stepIdentityKey = step.stepIdentityKey
                 )
             )
 
@@ -701,12 +705,17 @@ class WorkoutEngineManager(
             else -> return
         }
 
+        val perStepCoeffs = if (engine.getAdjustmentScope() == AdjustmentScope.ONE_STEP) {
+            engine.getStepCoefficients()
+        } else null
+
         chartManager?.setAdjustmentCoefficients(
             currentStepIndex = stepIndex,
             speedCoeff = engine.getSpeedAdjustmentCoefficient(),
             inclineCoeff = engine.getInclineAdjustmentCoefficient(),
             stepElapsedMs = stepElapsedMs,
-            workoutElapsedMs = workoutElapsedMs
+            workoutElapsedMs = workoutElapsedMs,
+            perStepCoefficients = perStepCoeffs
         )
     }
 
@@ -754,6 +763,17 @@ class WorkoutEngineManager(
         } catch (e: Exception) {
             1.0
         }
+    }
+
+    /**
+     * Get per-step coefficient map for ONE_STEP mode chart rendering.
+     * Returns null in ALL_STEPS mode (chart uses global coefficients).
+     */
+    fun getPerStepCoefficients(): Map<String, Pair<Double, Double>>? {
+        val engine = workoutEngine ?: return null
+        return if (engine.getAdjustmentScope() == AdjustmentScope.ONE_STEP) {
+            engine.getStepCoefficients()
+        } else null
     }
 
     // ==================== State Persistence ====================

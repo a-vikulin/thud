@@ -1794,7 +1794,8 @@ class HUDService : Service(),
                         speedCoeff = workoutEngineManager.getSpeedAdjustmentCoefficient(),
                         inclineCoeff = workoutEngineManager.getInclineAdjustmentCoefficient(),
                         stepElapsedMs = executionState.stepElapsedMs,
-                        workoutElapsedMs = executionState.workoutElapsedMs
+                        workoutElapsedMs = executionState.workoutElapsedMs,
+                        perStepCoefficients = workoutEngineManager.getPerStepCoefficients()
                     )
                     workoutPanelManager.startRefresh()
                 }
@@ -1805,7 +1806,8 @@ class HUDService : Service(),
                         speedCoeff = workoutEngineManager.getSpeedAdjustmentCoefficient(),
                         inclineCoeff = workoutEngineManager.getInclineAdjustmentCoefficient(),
                         stepElapsedMs = executionState.stepElapsedMs,
-                        workoutElapsedMs = executionState.workoutElapsedMs
+                        workoutElapsedMs = executionState.workoutElapsedMs,
+                        perStepCoefficients = workoutEngineManager.getPerStepCoefficients()
                     )
                     workoutPanelManager.stopRefresh()
                 }

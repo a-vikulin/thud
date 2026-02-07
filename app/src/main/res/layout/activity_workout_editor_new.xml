@@ -187,18 +187,33 @@
 
         </FrameLayout>
 
-        <!-- Stats bar under chart (single line) -->
-        <TextView
-            android:id="@+id/tvStats"
+        <!-- Stats bar under chart (single line with adjustment scope spinner) -->
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingVertical="@dimen/editor_input_padding"
+            android:layout_height="@dimen/inline_step_row_height"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
             android:paddingHorizontal="@dimen/editor_padding"
-            android:background="@color/editor_step_background"
-            android:gravity="center"
-            android:textSize="@dimen/text_step_type"
-            android:textColor="@color/text_label"
-            tools:text="Steps: 5    Distance: 4.5 km    Duration: 30:00    TSS: 45" />
+            android:background="@color/editor_step_background">
+
+            <Spinner
+                android:id="@+id/spinnerAdjustmentScope"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="@dimen/inline_step_padding"
+                android:background="@color/editor_input_background"
+                android:spinnerMode="dropdown" />
+
+            <TextView
+                android:id="@+id/tvStats"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:textSize="@dimen/text_step_type"
+                android:textColor="@color/text_label"
+                tools:text="Steps: 5    Distance: 4.5 km    Duration: 30:00    TSS: 45" />
+        </LinearLayout>
 
         <!-- Divider -->
         <View

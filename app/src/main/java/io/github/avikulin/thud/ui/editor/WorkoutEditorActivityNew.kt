@@ -6,10 +6,13 @@ import android.os.Bundle
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.viewModels
@@ -24,6 +27,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.github.avikulin.thud.HUDService
 import io.github.avikulin.thud.R
+import io.github.avikulin.thud.domain.model.AdjustmentScope
 import io.github.avikulin.thud.domain.model.StepType
 import io.github.avikulin.thud.service.SettingsManager
 import io.github.avikulin.thud.ui.components.WorkoutChart
@@ -65,6 +69,7 @@ class WorkoutEditorActivityNew : AppCompatActivity() {
 
     // Stats bar
     private lateinit var tvStats: TextView
+    private lateinit var spinnerAdjustmentScope: Spinner
 
     // Components
     private lateinit var workoutListAdapter: WorkoutListAdapter
@@ -156,6 +161,18 @@ class WorkoutEditorActivityNew : AppCompatActivity() {
 
         // Stats bar
         tvStats = findViewById(R.id.tvStats)
+        spinnerAdjustmentScope = findViewById(R.id.spinnerAdjustmentScope)
+
+        // Adjustment scope spinner
+        val scopeLabels = arrayOf(
+            getString(R.string.adjustment_scope_all_steps),
+            getString(R.string.adjustment_scope_one_step)
+        )
+        spinnerAdjustmentScope.adapter = ArrayAdapter(
+            this, R.layout.spinner_item, scopeLabels
+        ).apply {
+            setDropDownViewResource(R.layout.spinner_dropdown_item)
+        }
 
         // Create preview chart (reuses WorkoutChart from overlay)
         previewChart = WorkoutChart(this).apply {
@@ -266,6 +283,15 @@ class WorkoutEditorActivityNew : AppCompatActivity() {
             }
         }
 
+        // Adjustment scope spinner
+        spinnerAdjustmentScope.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val scope = if (position == 0) AdjustmentScope.ALL_STEPS else AdjustmentScope.ONE_STEP
+                viewModel.setAdjustmentScope(scope)
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
         // Undo/Redo
         btnUndo.setOnClickListener { viewModel.undo() }
         btnRedo.setOnClickListener { viewModel.redo() }
@@ -334,6 +360,18 @@ class WorkoutEditorActivityNew : AppCompatActivity() {
                         etWorkoutName.alpha = if (isSystem) 0.6f else 1.0f
                         // Hide sentinels in system workout editor (no self-referencing)
                         stepAdapter.showSentinels = !isSystem
+                        // Hide adjustment scope for system workouts (they're templates)
+                        spinnerAdjustmentScope.visibility = if (isSystem) View.GONE else View.VISIBLE
+                    }
+                }
+
+                // Adjustment scope
+                launch {
+                    viewModel.adjustmentScope.collect { scope ->
+                        val position = if (scope == AdjustmentScope.ALL_STEPS) 0 else 1
+                        if (spinnerAdjustmentScope.selectedItemPosition != position) {
+                            spinnerAdjustmentScope.setSelection(position)
+                        }
                     }
                 }
 

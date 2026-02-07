@@ -2,6 +2,7 @@ package io.github.avikulin.thud.data.entity
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import io.github.avikulin.thud.domain.model.AdjustmentScope
 
 /**
  * Represents a saved workout definition.
@@ -30,6 +31,9 @@ data class Workout(
     // Whether to attach default warmup/cooldown templates at execution time
     val useDefaultWarmup: Boolean = false,
     val useDefaultCooldown: Boolean = false,
+
+    // Effort adjustment scope: ALL_STEPS = global coefficients, ONE_STEP = per-step coefficients
+    val adjustmentScope: AdjustmentScope = AdjustmentScope.ALL_STEPS,
 
     // Timestamp of last execution (for list ordering)
     val lastExecutedAt: Long? = null

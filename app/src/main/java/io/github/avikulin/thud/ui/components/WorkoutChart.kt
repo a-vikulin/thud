@@ -189,7 +189,8 @@ class WorkoutChart @JvmOverloads constructor(
         val autoAdjustMode: AutoAdjustMode = AutoAdjustMode.NONE,
         val durationType: DurationType = DurationType.TIME,  // For dynamic duration recalculation
         val durationMeters: Int? = null,  // Distance for distance-based steps
-        val phase: WorkoutPhase = WorkoutPhase.MAIN
+        val phase: WorkoutPhase = WorkoutPhase.MAIN,
+        val stepIdentityKey: String = ""  // For per-step coefficient lookup in ONE_STEP mode
     ) {
         /** Get HR min target in BPM using provided LTHR. */
         fun getHrTargetMinBpm(lthrBpm: Int): Int? =
@@ -216,6 +217,7 @@ class WorkoutChart @JvmOverloads constructor(
     private var previousStepIndex: Int = -1  // Track step changes to allow timeline shrinking on skip
     private var speedCoefficient: Double = 1.0
     private var inclineCoefficient: Double = 1.0
+    private var perStepCoefficients: Map<String, Pair<Double, Double>>? = null  // ONE_STEP mode per-segment lookup
     private var currentStepElapsedMs: Long = 0  // How long we've been in current step
     private var currentStepActualStartMs: Long = 0  // When current step actually started (captured on step change)
     private var currentWorkoutElapsedMs: Long = 0  // Total workout elapsed from engine (more accurate than data points)
@@ -896,6 +898,7 @@ class WorkoutChart @JvmOverloads constructor(
             previousStepIndex = -1
             speedCoefficient = 1.0
             inclineCoefficient = 1.0
+            perStepCoefficients = null
 
             // Enable workout mode and set fixed time range to workout duration
             isWorkoutMode = true
@@ -940,7 +943,8 @@ class WorkoutChart @JvmOverloads constructor(
         speedCoeff: Double,
         inclineCoeff: Double,
         stepElapsedMs: Long = 0,
-        workoutElapsedMs: Long = 0
+        workoutElapsedMs: Long = 0,
+        perStepCoefficients: Map<String, Pair<Double, Double>>? = null
     ) {
         // Use engine's elapsed time (accurate) rather than data points (can be stale)
         val currentElapsedMs = if (workoutElapsedMs > 0) workoutElapsedMs else dataPoints.lastOrNull()?.elapsedMs ?: 0L
@@ -956,6 +960,7 @@ class WorkoutChart @JvmOverloads constructor(
         currentStepIndex = stepIndex
         speedCoefficient = speedCoeff
         inclineCoefficient = inclineCoeff
+        this.perStepCoefficients = perStepCoefficients
         currentStepElapsedMs = stepElapsedMs
         currentWorkoutElapsedMs = currentElapsedMs
 
@@ -965,6 +970,19 @@ class WorkoutChart @JvmOverloads constructor(
         }
 
         invalidate()
+    }
+
+    /**
+     * Resolve speed/incline coefficients for a specific segment.
+     * In ALL_STEPS mode (perStepCoefficients == null): uses global coefficients.
+     * In ONE_STEP mode: current step uses active coefficients, others use per-step map lookup.
+     */
+    private fun getSegmentCoefficients(segment: PlannedSegment, index: Int): Pair<Double, Double> {
+        val map = perStepCoefficients ?: return Pair(speedCoefficient, inclineCoefficient)
+        // Current step: use active coefficients (freshest from telemetry)
+        if (index == currentStepIndex) return Pair(speedCoefficient, inclineCoefficient)
+        // Future step: look up by identity key in map
+        return map[segment.stepIdentityKey] ?: Pair(1.0, 1.0)
     }
 
     /**
@@ -985,9 +1003,12 @@ class WorkoutChart @JvmOverloads constructor(
         )
 
         // Calculate remaining adjusted duration from future steps
-        val remainingAdjustedMs = plannedSegments
+        val remainingAdjustedMs = plannedSegments.withIndex()
             .drop(currentStepIndex + 1)
-            .sumOf { calculateAdjustedSegmentDurationMs(it, speedCoefficient) }
+            .sumOf { (idx, seg) ->
+                val segSpeedCoeff = getSegmentCoefficients(seg, idx).first
+                calculateAdjustedSegmentDurationMs(seg, segSpeedCoeff)
+            }
 
         // Expected actual end time (with adjusted durations)
         val expectedEndMs = currentStepActualEnd + remainingAdjustedMs
@@ -1023,6 +1044,7 @@ class WorkoutChart @JvmOverloads constructor(
         previousStepIndex = -1
         speedCoefficient = 1.0
         inclineCoefficient = 1.0
+        perStepCoefficients = null
         // Reset time range and all scales to initial values for free run mode
         timeRangeMinutes = INITIAL_TIME_RANGE_MINUTES
         speedMinKph = SPEED_MIN_KPH
@@ -1908,7 +1930,8 @@ class WorkoutChart @JvmOverloads constructor(
             if (index < currentStepIndex) continue
 
             // Calculate adjusted duration for this segment (handles distance-based steps)
-            val segmentAdjustedDuration = calculateAdjustedSegmentDurationMs(segment, speedCoefficient)
+            val (segSpeedCoeff, segInclineCoeff) = getSegmentCoefficients(segment, index)
+            val segmentAdjustedDuration = calculateAdjustedSegmentDurationMs(segment, segSpeedCoeff)
 
             val (segmentStartMs, segmentEndMs) = if (index == currentStepIndex) {
                 // Current step: position at actual start time so live data overlaps
@@ -2070,7 +2093,8 @@ class WorkoutChart @JvmOverloads constructor(
             if (index < currentStepIndex) continue
 
             // Calculate adjusted duration for this segment (handles distance-based steps)
-            val segmentAdjustedDuration = calculateAdjustedSegmentDurationMs(segment, speedCoefficient)
+            val (segSpeedCoeff, segInclineCoeff) = getSegmentCoefficients(segment, index)
+            val segmentAdjustedDuration = calculateAdjustedSegmentDurationMs(segment, segSpeedCoeff)
 
             val (segmentStartMs, segmentEndMs) = if (index == currentStepIndex) {
                 val endMs = maxOf(actualCurrentStepStart + segmentAdjustedDuration, currentElapsedMs)
@@ -2242,7 +2266,8 @@ class WorkoutChart @JvmOverloads constructor(
             if (index < currentStepIndex) continue
 
             // Calculate adjusted duration for this segment (handles distance-based steps)
-            val segmentAdjustedDuration = calculateAdjustedSegmentDurationMs(segment, speedCoefficient)
+            val (segSpeedCoeff, segInclineCoeff) = getSegmentCoefficients(segment, index)
+            val segmentAdjustedDuration = calculateAdjustedSegmentDurationMs(segment, segSpeedCoeff)
 
             val (segmentStartMs, segmentEndMs) = if (index == currentStepIndex) {
                 // Current step: position at actual start time so live data overlaps
@@ -2260,8 +2285,8 @@ class WorkoutChart @JvmOverloads constructor(
             val endX = timeToX(segmentEndMs)
 
             // Apply adjustment coefficients to current and future segments
-            val adjustedPace = segment.paceKph * speedCoefficient
-            val adjustedIncline = segment.inclinePercent * inclineCoefficient
+            val adjustedPace = segment.paceKph * segSpeedCoeff
+            val adjustedIncline = segment.inclinePercent * segInclineCoeff
 
             // Use target scale values so workout outline animates with data paths
             val speedY = speedToY(adjustedPace)

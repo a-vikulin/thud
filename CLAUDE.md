@@ -56,6 +56,7 @@
 | FTMS server settings | `ServiceStateHolder` (SharedPrefs) | `HUDService` → server start/stop |
 | System workouts | `WorkoutRepository` (DB, `systemWorkoutType`) | Engine stitching, editor sentinels |
 | Phase boundaries | `WorkoutExecutionEngine` (phase step counts) | Chart, panel, coefficient reset |
+| Per-step coefficients | `WorkoutExecutionEngine` (`stepCoefficients` map) | Chart via `WorkoutEngineManager` (ONE_STEP mode only) |
 
 ### ⚠️ SPEED - ABSOLUTE RULES ⚠️
 
@@ -159,6 +160,17 @@ ExecutionStep convenience: `step.getHrTargetMinBpm(lthrBpm)`, `step.getPowerTarg
 
 **paceCoefficient is NEVER changed by code!** AdjustmentController is stateless for values — WorkoutExecutionEngine owns coefficients, calculates from telemetry, provides `getEffectiveSpeed(step)`.
 
+### ⚠️ Adjustment Scope (Per-Workout Setting) ⚠️
+`Workout.adjustmentScope`: `ALL_STEPS` (default) or `ONE_STEP`.
+
+**ALL_STEPS:** Coefficients are global within a phase. All steps share the same speed/incline coefficient. "I'm tired today, scale everything down."
+
+**ONE_STEP:** Each step position has its own coefficient pair. On step transitions, the engine saves the current step's coefficients to a `Map<String, Pair<Double, Double>>` keyed by `stepIdentityKey`, then loads the next step's. Within repeat blocks, same-position children share keys across iterations (e.g., Run 1/4 through Run 4/4 all use key `r0_c0`).
+
+**Phase boundaries always clear the map** (warmup→main, main→cooldown) regardless of scope.
+
+**Chart rendering:** In ONE_STEP mode, the per-step coefficient map is passed through `WorkoutEngineManager` → `ChartManager` → `WorkoutChart`. The chart's `getSegmentCoefficients()` resolves each segment's coefficients by identity key. **CRITICAL:** ALL call sites of `setAdjustmentCoefficients()` (both `WorkoutEngineManager.updateChartCoefficients()` AND `HUDService.onWorkoutStateChanged()`) must pass the `perStepCoefficients` parameter — omitting it defaults to `null` which reverts to global mode.
+
 ### ⚠️ System Workouts & Phase Stitching ⚠️
 System workouts identified by `systemWorkoutType` column (`"WARMUP"`/`"COOLDOWN"`), NOT name. Permanent, cannot be deleted/duplicated. Created by `WorkoutRepository.ensureSystemWorkoutsExist()` at startup. Regular workouts opt in via `useDefaultWarmup`/`useDefaultCooldown`.
 
@@ -204,9 +216,9 @@ HUDService (Orchestrator)
     └── BluetoothSensorDialogManager → BT sensor connection dialog
 
 Data Layer
-├── TreadmillHudDatabase    → Room DB (version 7)
+├── TreadmillHudDatabase    → Room DB (version 8)
 ├── WorkoutRepository       → Clean CRUD API (use this, not DAO directly)
-├── Workout                 → Entity: metadata + systemWorkoutType, useDefaultWarmup/Cooldown
+├── Workout                 → Entity: metadata + systemWorkoutType, useDefaultWarmup/Cooldown, adjustmentScope
 └── WorkoutStep             → Entity: step with HR/Power targets (% of threshold)
 
 Domain Layer
@@ -232,7 +244,7 @@ app/src/main/java/io/github/avikulin/thud/
 │   └── repository/WorkoutRepository.kt
 │
 ├── domain/
-│   ├── model/StepType.kt, DurationType.kt, AdjustmentType.kt, AutoAdjustMode.kt, EarlyEndCondition.kt
+│   ├── model/StepType.kt, DurationType.kt, AdjustmentType.kt, AutoAdjustMode.kt, EarlyEndCondition.kt, AdjustmentScope.kt
 │   └── engine/
 │       ├── WorkoutExecutionEngine.kt, ExecutionStep.kt, AdjustmentController.kt
 │       ├── WorkoutStepFlattener.kt, WorkoutEvent.kt, WorkoutExecutionState.kt
@@ -300,6 +312,7 @@ app/src/main/java/io/github/avikulin/thud/
 | **AdjustmentType** | SPEED, INCLINE |
 | **AutoAdjustMode** | NONE, HR, POWER |
 | **EarlyEndCondition** | NONE, HR_RANGE |
+| **AdjustmentScope** | ALL_STEPS, ONE_STEP |
 
 ---
 

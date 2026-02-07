@@ -3,6 +3,7 @@ package io.github.avikulin.thud.service
 import android.content.Context
 import android.util.Log
 import io.github.avikulin.thud.data.model.WorkoutDataPoint
+import io.github.avikulin.thud.domain.model.AdjustmentScope
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -47,7 +48,9 @@ data class EnginePersistenceState(
     val lastDistanceKm: Double,
     val speedAdjustmentCoefficient: Double,
     val inclineAdjustmentCoefficient: Double,
-    val hasReachedTargetSpeed: Boolean
+    val hasReachedTargetSpeed: Boolean,
+    val adjustmentScope: AdjustmentScope = AdjustmentScope.ALL_STEPS,
+    val stepCoefficients: Map<String, Pair<Double, Double>>? = null
 )
 
 /**
@@ -276,6 +279,14 @@ class RunPersistenceManager(private val context: Context) {
             put("sac", state.speedAdjustmentCoefficient)
             put("iac2", state.inclineAdjustmentCoefficient)
             put("hrts", state.hasReachedTargetSpeed)
+            put("as", state.adjustmentScope.name)
+            if (!state.stepCoefficients.isNullOrEmpty()) {
+                val scm = JSONObject()
+                state.stepCoefficients.forEach { (key, pair) ->
+                    scm.put(key, JSONArray().apply { put(pair.first); put(pair.second) })
+                }
+                put("scm", scm)
+            }
         }
     }
 
@@ -338,6 +349,23 @@ class RunPersistenceManager(private val context: Context) {
     }
 
     private fun deserializeEngineState(json: JSONObject): EnginePersistenceState {
+        val adjustmentScope = if (json.has("as")) {
+            try { AdjustmentScope.valueOf(json.getString("as")) }
+            catch (_: Exception) { AdjustmentScope.ALL_STEPS }
+        } else AdjustmentScope.ALL_STEPS
+
+        val stepCoefficients = if (json.has("scm")) {
+            val scm = json.getJSONObject("scm")
+            val map = mutableMapOf<String, Pair<Double, Double>>()
+            scm.keys().forEach { key ->
+                val arr = scm.getJSONArray(key)
+                if (arr.length() == 2) {
+                    map[key] = Pair(arr.getDouble(0), arr.getDouble(1))
+                }
+            }
+            map.ifEmpty { null }
+        } else null
+
         return EnginePersistenceState(
             workoutId = json.getLong("wid"),
             currentStepIndex = json.getInt("csi"),
@@ -351,7 +379,9 @@ class RunPersistenceManager(private val context: Context) {
             lastDistanceKm = json.getDouble("ldk"),
             speedAdjustmentCoefficient = json.getDouble("sac"),
             inclineAdjustmentCoefficient = json.getDouble("iac2"),
-            hasReachedTargetSpeed = json.getBoolean("hrts")
+            hasReachedTargetSpeed = json.getBoolean("hrts"),
+            adjustmentScope = adjustmentScope,
+            stepCoefficients = stepCoefficients
         )
     }
 

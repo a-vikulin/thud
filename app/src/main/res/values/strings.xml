@@ -290,6 +290,10 @@
     <!-- Step HR end labels -->
     <string name="step_hr_end">HR End</string>
 
+    <!-- Adjustment scope -->
+    <string name="adjustment_scope_all_steps">Effort adjustment affects: All steps</string>
+    <string name="adjustment_scope_one_step">Effort adjustment affects: One step</string>
+
     <!-- Summary bar labels -->
     <string name="summary_steps_label">STEPS</string>
     <string name="summary_duration_label">DURATION</string>

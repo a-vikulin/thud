@@ -454,10 +454,11 @@ class ChartManager(
         speedCoeff: Double,
         inclineCoeff: Double,
         stepElapsedMs: Long = 0,
-        workoutElapsedMs: Long = 0
+        workoutElapsedMs: Long = 0,
+        perStepCoefficients: Map<String, Pair<Double, Double>>? = null
     ) {
         chartUpdateHandler.post {
-            chartView?.setAdjustmentCoefficients(currentStepIndex, speedCoeff, inclineCoeff, stepElapsedMs, workoutElapsedMs)
+            chartView?.setAdjustmentCoefficients(currentStepIndex, speedCoeff, inclineCoeff, stepElapsedMs, workoutElapsedMs, perStepCoefficients)
         }
     }
 

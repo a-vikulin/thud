@@ -1,6 +1,7 @@
 package io.github.avikulin.thud.data.db
 
 import androidx.room.TypeConverter
+import io.github.avikulin.thud.domain.model.AdjustmentScope
 import io.github.avikulin.thud.domain.model.AdjustmentType
 import io.github.avikulin.thud.domain.model.AutoAdjustMode
 import io.github.avikulin.thud.domain.model.DurationType
@@ -42,4 +43,10 @@ class Converters {
 
     @TypeConverter
     fun toEarlyEndCondition(value: String): EarlyEndCondition = EarlyEndCondition.valueOf(value)
+
+    @TypeConverter
+    fun fromAdjustmentScope(value: AdjustmentScope): String = value.name
+
+    @TypeConverter
+    fun toAdjustmentScope(value: String): AdjustmentScope = AdjustmentScope.valueOf(value)
 }

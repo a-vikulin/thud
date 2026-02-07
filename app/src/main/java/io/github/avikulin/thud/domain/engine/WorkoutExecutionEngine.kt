@@ -4,6 +4,7 @@ import android.util.Log
 import io.github.avikulin.thud.data.entity.Workout
 import io.github.avikulin.thud.data.entity.WorkoutStep
 import io.github.avikulin.thud.data.repository.WorkoutRepository
+import io.github.avikulin.thud.domain.model.AdjustmentScope
 import io.github.avikulin.thud.domain.model.AutoAdjustMode
 import io.github.avikulin.thud.domain.model.DurationType
 import io.github.avikulin.thud.domain.model.EarlyEndCondition
@@ -100,6 +101,11 @@ class WorkoutExecutionEngine(
     private var inclineAdjustmentCoefficient: Double = 1.0
     private var hasReachedTargetSpeed: Boolean = false  // Don't calc coefficient during initial acceleration
 
+    // Per-step coefficient scoping (ONE_STEP mode)
+    // Key: stepIdentityKey, Value: (speedCoeff, inclineCoeff)
+    private var adjustmentScope: AdjustmentScope = AdjustmentScope.ALL_STEPS
+    private val stepCoefficients: MutableMap<String, Pair<Double, Double>> = mutableMapOf()
+
     // Adjustment controller (HR and Power)
     private val adjustmentController = AdjustmentController()
     private var wasHrOutOfRange = false
@@ -139,6 +145,8 @@ class WorkoutExecutionEngine(
         plannedStepsCount = executionSteps.size
         inAutoCooldown = false
         currentStepIndex = -1
+        adjustmentScope = workout.adjustmentScope
+        stepCoefficients.clear()
 
         Log.d(TAG, "Loaded workout: ${workout.name} with ${executionSteps.size} steps (${steps.size} original)")
         return true
@@ -199,6 +207,8 @@ class WorkoutExecutionEngine(
         plannedStepsCount = executionSteps.size
         inAutoCooldown = false
         currentStepIndex = -1
+        adjustmentScope = workout.adjustmentScope
+        stepCoefficients.clear()
 
         Log.d(TAG, "Loaded stitched workout: ${workout.name} — " +
             "warmup=$warmupStepCount, main=$mainStepCount, cooldown=$cooldownStepCount " +
@@ -698,6 +708,31 @@ class WorkoutExecutionEngine(
                 speedAdjustmentCoefficient = 1.0
                 inclineAdjustmentCoefficient = 1.0
                 hasReachedTargetSpeed = false
+                stepCoefficients.clear()
+            }
+        }
+
+        // ONE_STEP mode: save current step's coefficients, load next step's
+        if (adjustmentScope == AdjustmentScope.ONE_STEP && previousIndex >= 0) {
+            val prevStep = executionSteps.getOrNull(previousIndex)
+            if (prevStep != null && prevStep.stepIdentityKey.isNotEmpty()) {
+                stepCoefficients[prevStep.stepIdentityKey] = Pair(
+                    speedAdjustmentCoefficient, inclineAdjustmentCoefficient
+                )
+            }
+            val nextStep = executionSteps[index]
+            if (nextStep.stepIdentityKey.isNotEmpty()) {
+                val saved = stepCoefficients[nextStep.stepIdentityKey]
+                if (saved != null) {
+                    speedAdjustmentCoefficient = saved.first
+                    inclineAdjustmentCoefficient = saved.second
+                    Log.d(TAG, "ONE_STEP: restored coefficients for '${nextStep.stepIdentityKey}': " +
+                        "speed=${"%.2f".format(saved.first)}, incline=${"%.2f".format(saved.second)}")
+                } else {
+                    speedAdjustmentCoefficient = 1.0
+                    inclineAdjustmentCoefficient = 1.0
+                    Log.d(TAG, "ONE_STEP: fresh coefficients for '${nextStep.stepIdentityKey}'")
+                }
             }
         }
 
@@ -1141,6 +1176,8 @@ class WorkoutExecutionEngine(
         speedAdjustmentCoefficient = 1.0
         inclineAdjustmentCoefficient = 1.0
         hasReachedTargetSpeed = false
+        adjustmentScope = AdjustmentScope.ALL_STEPS
+        stepCoefficients.clear()
         adjustmentController.reset()
         wasHrOutOfRange = false
     }
@@ -1196,6 +1233,48 @@ class WorkoutExecutionEngine(
      */
     fun getEffectiveIncline(step: ExecutionStep): Double = step.inclineTargetPercent * inclineAdjustmentCoefficient
 
+    /**
+     * Reset both adjustment coefficients to 1.0.
+     * In ONE_STEP mode, also updates the map entry for the current step's identity key.
+     */
+    fun resetAdjustmentCoefficients() {
+        speedAdjustmentCoefficient = 1.0
+        inclineAdjustmentCoefficient = 1.0
+        if (adjustmentScope == AdjustmentScope.ONE_STEP && currentStepIndex >= 0) {
+            val step = executionSteps.getOrNull(currentStepIndex)
+            if (step != null && step.stepIdentityKey.isNotEmpty()) {
+                stepCoefficients[step.stepIdentityKey] = Pair(1.0, 1.0)
+            }
+        }
+        Log.d(TAG, "Reset adjustment coefficients to 1.0")
+    }
+
+    /**
+     * Get the adjustment scope for this workout.
+     */
+    fun getAdjustmentScope(): AdjustmentScope = adjustmentScope
+
+    /**
+     * Get the per-step coefficient map (ONE_STEP mode).
+     * Returns a snapshot copy that includes the current step's live coefficients,
+     * so the chart can apply them to all segments sharing the same identity key.
+     */
+    fun getStepCoefficients(): Map<String, Pair<Double, Double>> {
+        val snapshot = stepCoefficients.toMutableMap()
+        // Overlay the current step's live coefficients into the map
+        // so other segments with the same identity key (e.g., Run 3/4 while on Run 2/4)
+        // see the up-to-date values, not the stale value from last departure
+        if (currentStepIndex >= 0) {
+            val currentStep = executionSteps.getOrNull(currentStepIndex)
+            if (currentStep != null && currentStep.stepIdentityKey.isNotEmpty()) {
+                snapshot[currentStep.stepIdentityKey] = Pair(
+                    speedAdjustmentCoefficient, inclineAdjustmentCoefficient
+                )
+            }
+        }
+        return snapshot
+    }
+
     // ==================== State Persistence ====================
 
     /**
@@ -1220,7 +1299,9 @@ class WorkoutExecutionEngine(
             lastDistanceKm = lastDistanceKm,
             speedAdjustmentCoefficient = speedAdjustmentCoefficient,
             inclineAdjustmentCoefficient = inclineAdjustmentCoefficient,
-            hasReachedTargetSpeed = hasReachedTargetSpeed
+            hasReachedTargetSpeed = hasReachedTargetSpeed,
+            adjustmentScope = adjustmentScope,
+            stepCoefficients = if (adjustmentScope == AdjustmentScope.ONE_STEP) stepCoefficients.toMap() else null
         )
     }
 
@@ -1258,6 +1339,11 @@ class WorkoutExecutionEngine(
         speedAdjustmentCoefficient = state.speedAdjustmentCoefficient
         inclineAdjustmentCoefficient = state.inclineAdjustmentCoefficient
         hasReachedTargetSpeed = state.hasReachedTargetSpeed
+        adjustmentScope = state.adjustmentScope
+        if (state.stepCoefficients != null) {
+            stepCoefficients.clear()
+            stepCoefficients.putAll(state.stepCoefficients)
+        }
         timingInitialized = true
 
         // Calculate cached timing from restored state

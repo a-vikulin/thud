@@ -39,6 +39,7 @@ object WorkoutStepFlattener {
         val result = mutableListOf<ExecutionStep>()
         var flatIndex = 0
         var stepIndex = 0
+        var topLevelIndex = 0  // Tracks position among top-level steps for identity keys
 
         while (stepIndex < steps.size) {
             val step = steps[stepIndex]
@@ -57,18 +58,20 @@ object WorkoutStepFlattener {
 
                 // Expand the repeat
                 for (iteration in 1..repeatCount) {
-                    for (childStep in childSteps) {
+                    for ((childPos, childStep) in childSteps.withIndex()) {
                         result.add(
                             createExecutionStep(
                                 step = childStep,
                                 flatIndex = flatIndex++,
                                 repeatIteration = iteration,
-                                repeatTotal = repeatCount
+                                repeatTotal = repeatCount,
+                                stepIdentityKey = "r${topLevelIndex}_c${childPos}"
                             )
                         )
                     }
                 }
 
+                topLevelIndex++
                 // Skip past the repeat and all its children
                 stepIndex = childIndex
             } else if (step.parentRepeatStepId == null) {
@@ -78,9 +81,11 @@ object WorkoutStepFlattener {
                         step = step,
                         flatIndex = flatIndex++,
                         repeatIteration = null,
-                        repeatTotal = null
+                        repeatTotal = null,
+                        stepIdentityKey = "s${topLevelIndex}"
                     )
                 )
+                topLevelIndex++
                 stepIndex++
             } else {
                 // Child step encountered outside of repeat context (shouldn't happen)
@@ -96,7 +101,8 @@ object WorkoutStepFlattener {
         step: WorkoutStep,
         flatIndex: Int,
         repeatIteration: Int?,
-        repeatTotal: Int?
+        repeatTotal: Int?,
+        stepIdentityKey: String = ""
     ): ExecutionStep {
         return ExecutionStep(
             stepId = step.id,
@@ -118,7 +124,8 @@ object WorkoutStepFlattener {
             hrEndTargetMaxPercent = step.hrEndTargetMaxPercent,
             repeatIteration = repeatIteration,
             repeatTotal = repeatTotal,
-            displayName = formatStepName(step, repeatIteration, repeatTotal)
+            displayName = formatStepName(step, repeatIteration, repeatTotal),
+            stepIdentityKey = stepIdentityKey
         )
     }
 

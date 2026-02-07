@@ -60,14 +60,15 @@ blown away by Claude's capabilities!
 - Full undo/redo support in editor
 - Default Warmup and Cooldown templates — edit once, attach to any workout
 - Coefficient isolation between warmup/main/cooldown phases (HR auto-adjustments during warmup don't affect the main workout)
+- Per-workout "Effort adjustment" scope: "All steps" (global scaling) or "One step" (independent per-step coefficients, but used for the same step within repeats)
 
 ### Auto-Adjustment (HR or Power)
 - Each workout step can pick either HR or Power and define a target zone for it
-- It also has to choose either pace or incline to be auto-adjusted in order to keep HR/Power in the target zone 
+- It also has to choose either pace or incline to be auto-adjusted in order to keep HR/Power in the target zone
 - Trend-aware algorithm prevents overcorrection
 - Visual feedback on adjustment state
-- The rest of the workout is adjusted too
-- Manual speed and incline adjustment buttons also adjust effort level for subsequent steps 
+- Adjustment scope per workout: "All steps" scales the entire phase uniformly (e.g., "I'm tired today"); "One step" keeps each step's coefficients independent, with repeat intervals sharing per step coefficients across repetitions
+- Manual speed and incline adjustment buttons also adjust effort level according to the chosen scope
 
 ### Power-Based Training (Stryd)
 - Connect Stryd foot pod via Bluetooth

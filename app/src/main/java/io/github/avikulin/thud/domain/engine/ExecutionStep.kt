@@ -75,7 +75,15 @@ data class ExecutionStep(
     val repeatTotal: Int?,
 
     /** Human-readable name (e.g., "Warmup", "Run 2/4"). */
-    val displayName: String
+    val displayName: String,
+
+    /**
+     * Identity key for coefficient scoping in ONE_STEP mode.
+     * Steps with the same key share coefficients across repeat iterations.
+     * E.g., all "Run" children in a 4x repeat share key "r0_c0".
+     * Non-repeat steps get unique keys like "s0", "s1".
+     */
+    val stepIdentityKey: String = ""
 ) {
     // ==================== Conversion Helpers ====================
 
