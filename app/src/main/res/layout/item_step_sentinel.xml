@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sentinel row for Default Warmup/Cooldown template attachment -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="@dimen/sentinel_row_height"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingHorizontal="@dimen/sentinel_padding_horizontal"
+    android:paddingVertical="@dimen/sentinel_padding_vertical"
+    android:layout_marginTop="@dimen/inline_step_item_margin"
+    android:background="@drawable/step_item_background">
+
+    <!-- Colored left border strip (warmup orange / cooldown purple) -->
+    <View
+        android:id="@+id/borderStrip"
+        android:layout_width="@dimen/sentinel_border_width"
+        android:layout_height="match_parent"
+        android:background="@color/sentinel_warmup_border" />
+
+    <!-- Checkbox: Use Default Warmup / Use Default Cooldown -->
+    <CheckBox
+        android:id="@+id/checkboxEnabled"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/inline_step_padding"
+        android:textColor="@color/text_primary"
+        android:textSize="@dimen/text_step_type"
+        android:buttonTint="@color/text_label"
+        tools:text="Use Default Warmup" />
+
+    <!-- Summary text (step count + duration) or "Edit" link -->
+    <TextView
+        android:id="@+id/tvSummary"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="@dimen/inline_step_padding"
+        android:textSize="@dimen/text_step_details"
+        android:textColor="@color/text_label"
+        android:ellipsize="end"
+        android:maxLines="1"
+        tools:text="3 steps, 5:00" />
+
+
+</LinearLayout>

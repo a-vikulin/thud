@@ -42,13 +42,48 @@ class InlineStepAdapter(
     private val onDelete: (Int) -> Unit,
     private val onAddSubstep: (Int, StepType) -> Unit,
     private val onAddStep: (StepType) -> Unit,
-    private val onAddRepeat: () -> Unit
+    private val onAddRepeat: () -> Unit,
+    private val onWarmupToggled: (Boolean) -> Unit = {},
+    private val onCooldownToggled: (Boolean) -> Unit = {}
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     companion object {
         private const val VIEW_TYPE_STEP = 0
         private const val VIEW_TYPE_FOOTER = 1
+        private const val VIEW_TYPE_WARMUP_HEADER = 2
+        private const val VIEW_TYPE_COOLDOWN_FOOTER = 3
     }
+
+    // Whether to show sentinel rows (hidden for system workouts)
+    var showSentinels: Boolean = true
+        set(value) {
+            if (field != value) {
+                field = value
+                notifyDataSetChanged()
+            }
+        }
+
+    // Sentinel state
+    var warmupEnabled: Boolean = false
+        set(value) {
+            field = value
+            if (showSentinels) notifyItemChanged(0)
+        }
+    var cooldownEnabled: Boolean = false
+        set(value) {
+            field = value
+            if (showSentinels) notifyItemChanged(steps.size + 1)
+        }
+    var warmupSummary: String = ""
+        set(value) {
+            field = value
+            if (showSentinels) notifyItemChanged(0)
+        }
+    var cooldownSummary: String = ""
+        set(value) {
+            field = value
+            if (showSentinels) notifyItemChanged(steps.size + 1)
+        }
 
     private var steps: List<WorkoutStep> = emptyList()
 
@@ -118,41 +153,80 @@ class InlineStepAdapter(
     var treadmillMaxIncline = 15.0
     var treadmillInclineStep = 0.5
 
+    /** Number of extra rows before steps (warmup sentinel when showSentinels). */
+    private val headerCount: Int get() = if (showSentinels) 1 else 0
+
+    /** Convert adapter position to step list index. Returns -1 if not a step row. */
+    private fun toStepIndex(adapterPosition: Int): Int = adapterPosition - headerCount
+
+    /** Convert step list index to adapter position. */
+    private fun toAdapterPosition(stepIndex: Int): Int = stepIndex + headerCount
+
     fun submitList(newSteps: List<WorkoutStep>) {
         val oldSteps = steps
+        val oldHeader = headerCount
+        val oldExtra = if (showSentinels) 3 else 1  // warmup + cooldown + footer OR just footer
+        val newExtra = oldExtra  // sentinel visibility doesn't change mid-submitList
+
         steps = newSteps
 
         // Use DiffUtil to compute minimal changes with move detection for animations
         val diffResult = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
-            override fun getOldListSize(): Int = oldSteps.size + 1  // +1 for footer
-            override fun getNewListSize(): Int = newSteps.size + 1  // +1 for footer
+            override fun getOldListSize(): Int = oldSteps.size + oldExtra
+            override fun getNewListSize(): Int = newSteps.size + newExtra
 
             override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
-                // Footer
-                if (oldItemPosition >= oldSteps.size && newItemPosition >= newSteps.size) return true
-                if (oldItemPosition >= oldSteps.size || newItemPosition >= newSteps.size) return false
-                // Compare by id - all steps now have unique IDs (negative temp IDs for unsaved)
-                return oldSteps[oldItemPosition].id == newSteps[newItemPosition].id
+                val oldStepIdx = oldItemPosition - oldHeader
+                val newStepIdx = newItemPosition - oldHeader
+                // Header sentinels
+                if (oldItemPosition < oldHeader && newItemPosition < oldHeader) return true
+                if (oldItemPosition < oldHeader || newItemPosition < oldHeader) return false
+                // Footer items (cooldown sentinel + add buttons)
+                if (oldStepIdx >= oldSteps.size && newStepIdx >= newSteps.size) {
+                    return (oldItemPosition - oldSteps.size) == (newItemPosition - newSteps.size)
+                }
+                if (oldStepIdx >= oldSteps.size || newStepIdx >= newSteps.size) return false
+                // Compare by id
+                return oldSteps[oldStepIdx].id == newSteps[newStepIdx].id
             }
 
             override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
-                if (oldItemPosition >= oldSteps.size && newItemPosition >= newSteps.size) return true
-                if (oldItemPosition >= oldSteps.size || newItemPosition >= newSteps.size) return false
-                return oldSteps[oldItemPosition] == newSteps[newItemPosition]
+                val oldStepIdx = oldItemPosition - oldHeader
+                val newStepIdx = newItemPosition - oldHeader
+                if (oldItemPosition < oldHeader && newItemPosition < oldHeader) return true
+                if (oldItemPosition < oldHeader || newItemPosition < oldHeader) return false
+                if (oldStepIdx >= oldSteps.size && newStepIdx >= newSteps.size) return true
+                if (oldStepIdx >= oldSteps.size || newStepIdx >= newSteps.size) return false
+                return oldSteps[oldStepIdx] == newSteps[newStepIdx]
             }
-        }, true)  // true = detect moves for animations
+        }, true)
 
         diffResult.dispatchUpdatesTo(this)
     }
 
-    override fun getItemCount(): Int = steps.size + 1  // +1 for footer
+    override fun getItemCount(): Int {
+        val sentinelCount = if (showSentinels) 2 else 0  // warmup + cooldown
+        return sentinelCount + steps.size + 1  // +1 for footer
+    }
 
     override fun getItemViewType(position: Int): Int {
+        if (showSentinels) {
+            if (position == 0) return VIEW_TYPE_WARMUP_HEADER
+            if (position == steps.size + 1) return VIEW_TYPE_COOLDOWN_FOOTER
+            if (position == steps.size + 2) return VIEW_TYPE_FOOTER
+            return VIEW_TYPE_STEP
+        }
+        // No sentinels (system workout editor)
         return if (position < steps.size) VIEW_TYPE_STEP else VIEW_TYPE_FOOTER
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         return when (viewType) {
+            VIEW_TYPE_WARMUP_HEADER, VIEW_TYPE_COOLDOWN_FOOTER -> {
+                val view = LayoutInflater.from(parent.context)
+                    .inflate(R.layout.item_step_sentinel, parent, false)
+                SentinelViewHolder(view)
+            }
             VIEW_TYPE_FOOTER -> {
                 val view = LayoutInflater.from(parent.context)
                     .inflate(R.layout.item_step_footer, parent, false)
@@ -168,8 +242,47 @@ class InlineStepAdapter(
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (holder) {
-            is StepViewHolder -> holder.bind(steps[position], position)
+            is SentinelViewHolder -> {
+                val isWarmup = position == 0
+                holder.bind(isWarmup)
+            }
+            is StepViewHolder -> {
+                val stepIndex = toStepIndex(position)
+                holder.bind(steps[stepIndex], stepIndex)
+            }
             is FooterViewHolder -> holder.bind()
+        }
+    }
+
+    // ==================== Sentinel ViewHolder ====================
+
+    inner class SentinelViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val borderStrip: View = itemView.findViewById(R.id.borderStrip)
+        private val checkboxEnabled: CheckBox = itemView.findViewById(R.id.checkboxEnabled)
+        private val tvSummary: TextView = itemView.findViewById(R.id.tvSummary)
+        fun bind(isWarmup: Boolean) {
+            val context = itemView.context
+
+            // Colored border
+            val borderColor = if (isWarmup) R.color.sentinel_warmup_border else R.color.sentinel_cooldown_border
+            borderStrip.setBackgroundColor(ContextCompat.getColor(context, borderColor))
+
+            // Checkbox text and state
+            checkboxEnabled.text = context.getString(
+                if (isWarmup) R.string.sentinel_warmup_label else R.string.sentinel_cooldown_label
+            )
+            checkboxEnabled.setOnCheckedChangeListener(null)  // Clear before setting
+            checkboxEnabled.isChecked = if (isWarmup) warmupEnabled else cooldownEnabled
+            checkboxEnabled.setOnCheckedChangeListener { _, checked ->
+                if (isWarmup) onWarmupToggled(checked) else onCooldownToggled(checked)
+            }
+
+            // Summary (only visible when enabled)
+            val enabled = if (isWarmup) warmupEnabled else cooldownEnabled
+            val summary = if (isWarmup) warmupSummary else cooldownSummary
+            tvSummary.visibility = if (enabled) View.VISIBLE else View.GONE
+            tvSummary.text = summary
+
         }
     }
 

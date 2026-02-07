@@ -15,7 +15,7 @@ import io.github.avikulin.thud.data.entity.WorkoutStep
  */
 @Database(
     entities = [Workout::class, WorkoutStep::class],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -209,6 +209,21 @@ abstract class TreadmillHudDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration from version 6 to 7:
+         * - Add systemWorkoutType column for warmup/cooldown templates
+         * - Add useDefaultWarmup/useDefaultCooldown flags to attach templates
+         * - Add lastExecutedAt for workout list ordering
+         */
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE workouts ADD COLUMN systemWorkoutType TEXT")
+                db.execSQL("ALTER TABLE workouts ADD COLUMN useDefaultWarmup INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE workouts ADD COLUMN useDefaultCooldown INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE workouts ADD COLUMN lastExecutedAt INTEGER")
+            }
+        }
+
         fun getInstance(context: Context): TreadmillHudDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: buildDatabase(context).also { INSTANCE = it }
@@ -221,7 +236,7 @@ abstract class TreadmillHudDatabase : RoomDatabase() {
                 TreadmillHudDatabase::class.java,
                 DATABASE_NAME
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .build()
         }
     }

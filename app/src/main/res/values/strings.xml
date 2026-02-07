@@ -302,6 +302,15 @@
     <string name="validation_pace_invalid">Invalid pace format (use min:sec)</string>
     <string name="validation_hr_invalid">Invalid HR range</string>
 
+    <!-- ==================== Warmup/Cooldown Templates ==================== -->
+
+    <!-- Sentinel row labels in workout editor -->
+    <string name="sentinel_warmup_label">Use Default Warmup</string>
+    <string name="sentinel_cooldown_label">Use Default Cooldown</string>
+    <string name="sentinel_warmup_summary">%1$d steps, %2$s</string>
+    <string name="sentinel_cooldown_summary">%1$d steps, %2$s</string>
+    <string name="sentinel_empty_summary">0 steps, 0:00</string>
+
     <!-- ==================== Workout Library ==================== -->
 
     <!-- Library -->

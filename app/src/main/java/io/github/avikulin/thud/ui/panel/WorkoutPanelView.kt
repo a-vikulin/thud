@@ -33,6 +33,9 @@ class WorkoutPanelView(context: Context) : View(context) {
     private var workoutName: String = ""
     private var steps: List<ExecutionStep> = emptyList()
     private var currentStepIndex: Int = -1
+    private var warmupStepCount: Int = 0
+    private var mainStepCount: Int = 0
+    private var cooldownStepCount: Int = 0
     private var stepElapsedMs: Long = 0
     private var stepDistanceMeters: Double = 0.0
     private var isRunning: Boolean = false
@@ -98,6 +101,12 @@ class WorkoutPanelView(context: Context) : View(context) {
     /** Get step type color using centralized utility. */
     private fun getStepTypeColor(type: StepType): Int =
         ContextCompat.getColor(context, HeartRateZones.getStepTypeColorResId(type))
+
+    private val phaseBarWidth = resources.getDimensionPixelSize(R.dimen.phase_bar_width).toFloat()
+
+    private fun isWarmupStep(index: Int): Boolean = index < warmupStepCount
+    private fun isCooldownStep(index: Int): Boolean =
+        cooldownStepCount > 0 && index >= warmupStepCount + mainStepCount
 
     // ==================== Paints ====================
 
@@ -264,11 +273,14 @@ class WorkoutPanelView(context: Context) : View(context) {
     }
 
     /**
-     * Set the list of execution steps.
+     * Set the list of execution steps with optional phase counts for stitched workouts.
      */
-    fun setSteps(executionSteps: List<ExecutionStep>) {
+    fun setSteps(executionSteps: List<ExecutionStep>, phaseCounts: Triple<Int, Int, Int>? = null) {
         steps = executionSteps
         isWorkoutLoaded = executionSteps.isNotEmpty()
+        warmupStepCount = phaseCounts?.first ?: 0
+        mainStepCount = phaseCounts?.second ?: executionSteps.size
+        cooldownStepCount = phaseCounts?.third ?: 0
         invalidate()
     }
 
@@ -513,6 +525,14 @@ class WorkoutPanelView(context: Context) : View(context) {
             indicatorPaint.style = Paint.Style.FILL
         }
 
+        // Draw left phase color bar for warmup/cooldown steps
+        if (isWarmupStep(index) || isCooldownStep(index)) {
+            indicatorPaint.color = getStepTypeColor(step.type)
+            canvas.drawRect(0f, y, phaseBarWidth, y + stepItemHeight, indicatorPaint)
+            // Reset indicator paint style after borrowing it
+            indicatorPaint.style = Paint.Style.FILL
+        }
+
         // Draw step name with type color
         stepNamePaint.color = getStepTypeColor(step.type)
         if (isCurrent) {
@@ -521,7 +541,12 @@ class WorkoutPanelView(context: Context) : View(context) {
             stepNamePaint.typeface = Typeface.DEFAULT
         }
 
-        val stepNumber = "${index + 1}. "
+        // Phase-aware step numbering: W1, C1 for warmup/cooldown steps
+        val stepNumber = when {
+            isWarmupStep(index) -> "W${index + 1}. "
+            isCooldownStep(index) -> "C${index - warmupStepCount - mainStepCount + 1}. "
+            else -> "${index - warmupStepCount + 1}. "
+        }
         val openSuffix = if (step.earlyEndCondition == EarlyEndCondition.OPEN) " ∞" else ""
         canvas.drawText(
             stepNumber + step.displayName + openSuffix,

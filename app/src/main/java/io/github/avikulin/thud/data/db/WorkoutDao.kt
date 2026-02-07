@@ -18,14 +18,40 @@ interface WorkoutDao {
 
     // ==================== Workouts ====================
 
-    @Query("SELECT * FROM workouts ORDER BY updatedAt DESC")
+    /**
+     * Get all workouts ordered: system workouts first (Warmup, Cooldown),
+     * then user workouts by most recently edited or executed.
+     */
+    @Query("""
+        SELECT * FROM workouts ORDER BY
+            CASE systemWorkoutType
+                WHEN 'WARMUP' THEN 0
+                WHEN 'COOLDOWN' THEN 1
+                ELSE 2
+            END,
+            MAX(updatedAt, COALESCE(lastExecutedAt, 0)) DESC
+    """)
     fun getAllWorkouts(): Flow<List<Workout>>
 
-    @Query("SELECT * FROM workouts ORDER BY updatedAt DESC")
+    @Query("""
+        SELECT * FROM workouts ORDER BY
+            CASE systemWorkoutType
+                WHEN 'WARMUP' THEN 0
+                WHEN 'COOLDOWN' THEN 1
+                ELSE 2
+            END,
+            MAX(updatedAt, COALESCE(lastExecutedAt, 0)) DESC
+    """)
     suspend fun getAllWorkoutsOnce(): List<Workout>
 
     @Query("SELECT * FROM workouts WHERE id = :id")
     suspend fun getWorkoutById(id: Long): Workout?
+
+    @Query("SELECT * FROM workouts WHERE systemWorkoutType = :type LIMIT 1")
+    suspend fun getSystemWorkout(type: String): Workout?
+
+    @Query("UPDATE workouts SET lastExecutedAt = :timestamp WHERE id = :workoutId")
+    suspend fun updateLastExecutedAt(workoutId: Long, timestamp: Long)
 
     @Insert
     suspend fun insertWorkout(workout: Workout): Long

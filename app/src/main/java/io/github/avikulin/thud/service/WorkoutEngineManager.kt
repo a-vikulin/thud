@@ -89,7 +89,7 @@ class WorkoutEngineManager(
     }
 
     /**
-     * Load a workout by ID.
+     * Load a workout by ID, stitching warmup/cooldown templates if enabled.
      * If a workout is currently in Completed state, it will be reset first.
      */
     fun loadWorkout(workoutId: Long) {
@@ -107,7 +107,7 @@ class WorkoutEngineManager(
                 engine.reset()
             }
 
-            val loaded = engine.loadWorkout(workoutId)
+            val loaded = loadWorkoutStitched(engine, workoutId)
             if (loaded) {
                 val workout = engine.getCurrentWorkout()
                 val steps = engine.getExecutionSteps()
@@ -116,6 +116,8 @@ class WorkoutEngineManager(
                         listener?.onWorkoutLoaded(workout, steps)
                     }
                 }
+                // Update lastExecutedAt for list ordering
+                repository.markAsExecuted(workoutId)
                 Log.d(TAG, "Workout loaded successfully")
             } else {
                 Log.e(TAG, "Failed to load workout $workoutId")
@@ -123,6 +125,41 @@ class WorkoutEngineManager(
                     Toast.makeText(context, context.getString(R.string.toast_failed_to_load_workout), Toast.LENGTH_SHORT).show()
                 }
             }
+        }
+    }
+
+    /**
+     * Load a workout with stitched warmup/cooldown templates.
+     * If the workout has useDefaultWarmup/useDefaultCooldown enabled,
+     * loads the system templates and passes them to the engine.
+     */
+    private suspend fun loadWorkoutStitched(engine: WorkoutExecutionEngine, workoutId: Long): Boolean {
+        val workoutWithSteps = repository.getWorkoutWithSteps(workoutId)
+        if (workoutWithSteps == null) {
+            Log.e(TAG, "Workout not found: $workoutId")
+            return false
+        }
+
+        val (workout, mainSteps) = workoutWithSteps
+        if (mainSteps.isEmpty()) {
+            Log.e(TAG, "Workout has no steps: $workoutId")
+            return false
+        }
+
+        // Load warmup/cooldown templates if enabled
+        val warmupSteps = if (workout.useDefaultWarmup) {
+            repository.getSystemWarmup()?.second
+        } else null
+
+        val cooldownSteps = if (workout.useDefaultCooldown) {
+            repository.getSystemCooldown()?.second
+        } else null
+
+        val hasStitching = warmupSteps != null || cooldownSteps != null
+        return if (hasStitching) {
+            engine.loadStitchedWorkout(workout, mainSteps, warmupSteps, cooldownSteps)
+        } else {
+            engine.loadWorkout(workoutId)
         }
     }
 
@@ -136,17 +173,21 @@ class WorkoutEngineManager(
         onStartingWorkout: (Boolean) -> Unit
     ) {
         scope.launch {
-            val loaded = workoutEngine?.loadWorkout(workoutId) ?: false
+            val engine = workoutEngine ?: run {
+                withContext(Dispatchers.Main) { onStartingWorkout(false) }
+                return@launch
+            }
+            val loaded = loadWorkoutStitched(engine, workoutId)
             if (loaded) {
-                workoutEngine?.let { engine ->
-                    val workout = engine.getCurrentWorkout()
-                    val steps = engine.getExecutionSteps()
-                    if (workout != null) {
-                        withContext(Dispatchers.Main) {
-                            listener?.onWorkoutLoaded(workout, steps)
-                        }
+                val workout = engine.getCurrentWorkout()
+                val steps = engine.getExecutionSteps()
+                if (workout != null) {
+                    withContext(Dispatchers.Main) {
+                        listener?.onWorkoutLoaded(workout, steps)
                     }
                 }
+                // Update lastExecutedAt for list ordering
+                repository.markAsExecuted(workoutId)
                 Log.d(TAG, "Workout loaded, now starting...")
                 // Now start the workout
                 startWorkoutInternal(onStartingWorkout)
@@ -354,6 +395,11 @@ class WorkoutEngineManager(
     fun getExecutionSteps(): List<ExecutionStep> = workoutEngine?.getExecutionSteps() ?: emptyList()
 
     /**
+     * Get phase counts for stitched workouts: (warmup, main, cooldown).
+     */
+    fun getPhaseCounts(): Triple<Int, Int, Int> = workoutEngine?.getPhaseCounts() ?: Triple(0, 0, 0)
+
+    /**
      * Get original hierarchical steps (for FIT export with proper repeat structure).
      */
     fun getOriginalSteps(): List<io.github.avikulin.thud.data.entity.WorkoutStep> =
@@ -518,9 +564,13 @@ class WorkoutEngineManager(
      * Convert execution steps to PlannedSegments for chart.
      * Includes durationType and durationMeters for dynamic segment duration recalculation
      * when pace changes (speed coefficient).
+     * Tags each segment with its workout phase (WARMUP/MAIN/COOLDOWN).
      */
     fun convertToPlannedSegments(steps: List<ExecutionStep>): List<WorkoutChart.PlannedSegment> {
         if (steps.isEmpty()) return emptyList()
+
+        val engine = workoutEngine
+        val (warmupCount, _, _) = engine?.getPhaseCounts() ?: Triple(0, 0, 0)
 
         val segments = mutableListOf<WorkoutChart.PlannedSegment>()
         var currentTimeMs = 0L
@@ -538,6 +588,13 @@ class WorkoutEngineManager(
                 }
             }
 
+            // Determine phase based on step index and boundary counts
+            val phase = when {
+                engine != null && engine.isWarmupStep(index) -> WorkoutChart.WorkoutPhase.WARMUP
+                engine != null && engine.isCooldownStep(index) -> WorkoutChart.WorkoutPhase.COOLDOWN
+                else -> WorkoutChart.WorkoutPhase.MAIN
+            }
+
             segments.add(
                 WorkoutChart.PlannedSegment(
                     startTimeMs = currentTimeMs,
@@ -552,7 +609,8 @@ class WorkoutEngineManager(
                     powerTargetMaxPercent = step.powerTargetMaxPercent,
                     autoAdjustMode = step.autoAdjustMode,
                     durationType = step.durationType,
-                    durationMeters = step.durationMeters
+                    durationMeters = step.durationMeters,
+                    phase = phase
                 )
             )
 
@@ -744,8 +802,8 @@ class WorkoutEngineManager(
                 return@launch
             }
 
-            // Load the workout
-            val loaded = engine.loadWorkout(engineState.workoutId)
+            // Load the workout (with stitched warmup/cooldown if applicable)
+            val loaded = loadWorkoutStitched(engine, engineState.workoutId)
             if (!loaded) {
                 Log.e(TAG, "Failed to load workout ${engineState.workoutId}")
                 withContext(Dispatchers.Main) { onRestored(false) }

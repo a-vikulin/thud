@@ -64,6 +64,11 @@ class WorkoutExecutionEngine(
     private var plannedStepsCount: Int = 0  // Original count before auto-cooldown added
     private var inAutoCooldown: Boolean = false
 
+    // Phase boundary tracking for stitched workouts (warmup + main + cooldown)
+    private var warmupStepCount: Int = 0
+    private var mainStepCount: Int = 0
+    private var cooldownStepCount: Int = 0
+
     // Timing - uses treadmill's elapsed time as single source of truth
     private var treadmillElapsedSeconds: Int = 0
     private var workoutStartSeconds: Int = -1  // -1 means not yet initialized
@@ -136,6 +141,68 @@ class WorkoutExecutionEngine(
         currentStepIndex = -1
 
         Log.d(TAG, "Loaded workout: ${workout.name} with ${executionSteps.size} steps (${steps.size} original)")
+        return true
+    }
+
+    /**
+     * Load a stitched workout with optional warmup/cooldown phases.
+     * Each phase's steps are flattened independently, then concatenated.
+     * Phase boundaries are tracked for coefficient reset logic.
+     *
+     * @param workout The main workout entity
+     * @param mainSteps The main workout's steps (from DB)
+     * @param warmupSteps System warmup steps (null = no warmup)
+     * @param cooldownSteps System cooldown steps (null = no cooldown)
+     * @return true if loaded successfully
+     */
+    fun loadStitchedWorkout(
+        workout: Workout,
+        mainSteps: List<WorkoutStep>,
+        warmupSteps: List<WorkoutStep>?,
+        cooldownSteps: List<WorkoutStep>?
+    ): Boolean {
+        if (_state.value !is WorkoutExecutionState.Idle) {
+            Log.w(TAG, "Cannot load workout while another is active")
+            return false
+        }
+
+        if (mainSteps.isEmpty()) {
+            Log.e(TAG, "Workout has no steps: ${workout.id}")
+            emitEvent(WorkoutEvent.Error("Workout has no steps"))
+            return false
+        }
+
+        // Flatten each phase independently
+        val warmupExecSteps = if (!warmupSteps.isNullOrEmpty()) {
+            WorkoutStepFlattener.flatten(warmupSteps)
+        } else emptyList()
+
+        val mainExecSteps = WorkoutStepFlattener.flatten(mainSteps)
+
+        val cooldownExecSteps = if (!cooldownSteps.isNullOrEmpty()) {
+            WorkoutStepFlattener.flatten(cooldownSteps)
+        } else emptyList()
+
+        // Store phase counts
+        warmupStepCount = warmupExecSteps.size
+        mainStepCount = mainExecSteps.size
+        cooldownStepCount = cooldownExecSteps.size
+
+        // Concatenate and re-index flatIndex sequentially
+        val allSteps = warmupExecSteps + mainExecSteps + cooldownExecSteps
+        executionSteps = allSteps.mapIndexed { index, step ->
+            step.copy(flatIndex = index)
+        }.toMutableList()
+
+        currentWorkout = workout
+        originalSteps = mainSteps  // Only main workout's original steps for FIT export
+        plannedStepsCount = executionSteps.size
+        inAutoCooldown = false
+        currentStepIndex = -1
+
+        Log.d(TAG, "Loaded stitched workout: ${workout.name} — " +
+            "warmup=$warmupStepCount, main=$mainStepCount, cooldown=$cooldownStepCount " +
+            "(total=${executionSteps.size} steps)")
         return true
     }
 
@@ -595,6 +662,20 @@ class WorkoutExecutionEngine(
         updateRunningState()
     }
 
+    // ==================== Phase Boundary Helpers ====================
+
+    /** Whether the step at the given index is in the warmup phase. */
+    fun isWarmupStep(index: Int): Boolean = index < warmupStepCount
+
+    /** Whether the step at the given index is in the main workout phase. */
+    fun isMainStep(index: Int): Boolean = index >= warmupStepCount && index < warmupStepCount + mainStepCount
+
+    /** Whether the step at the given index is in the cooldown phase. */
+    fun isCooldownStep(index: Int): Boolean = index >= warmupStepCount + mainStepCount
+
+    /** Get phase boundary counts for chart visualization. */
+    fun getPhaseCounts(): Triple<Int, Int, Int> = Triple(warmupStepCount, mainStepCount, cooldownStepCount)
+
     // ==================== Internal Methods ====================
 
     private fun startStep(index: Int) {
@@ -603,6 +684,21 @@ class WorkoutExecutionEngine(
         if (index < 0 || index >= executionSteps.size) {
             Log.e(TAG, "Invalid step index: $index")
             return
+        }
+
+        // Coefficient reset at phase boundaries
+        val previousIndex = currentStepIndex
+        if (previousIndex >= 0) {
+            val crossingWarmupToMain = isWarmupStep(previousIndex) && isMainStep(index)
+            val crossingMainToCooldown = isMainStep(previousIndex) && isCooldownStep(index)
+            if (crossingWarmupToMain || crossingMainToCooldown) {
+                val fromPhase = if (crossingWarmupToMain) "warmup" else "main"
+                val toPhase = if (crossingWarmupToMain) "main" else "cooldown"
+                Log.d(TAG, "Phase boundary crossed ($fromPhase -> $toPhase): resetting coefficients")
+                speedAdjustmentCoefficient = 1.0
+                inclineAdjustmentCoefficient = 1.0
+                hasReachedTargetSpeed = false
+            }
         }
 
         currentStepIndex = index
@@ -692,11 +788,24 @@ class WorkoutExecutionEngine(
 
     /**
      * Start auto-cooldown after all planned steps complete.
-     * Sets belt to easy pace and waits for user to stop.
+     * Uses last cooldown step's pace when a default cooldown is attached,
+     * otherwise falls back to hardcoded constants.
      */
     private fun startAutoCooldown() {
         Log.d(TAG, "All planned steps complete - entering auto-cooldown")
         inAutoCooldown = true
+
+        // Use last cooldown step's pace if a default cooldown was attached
+        val autoCooldownSpeed = if (cooldownStepCount > 0) {
+            executionSteps.last().paceTargetKph
+        } else {
+            AUTO_COOLDOWN_SPEED_KPH
+        }
+        val autoCooldownIncline = if (cooldownStepCount > 0) {
+            executionSteps.last().inclineTargetPercent
+        } else {
+            AUTO_COOLDOWN_INCLINE_PERCENT
+        }
 
         // Create auto-cooldown step (OPEN = runs until user stops)
         val cooldownStep = ExecutionStep(
@@ -706,8 +815,8 @@ class WorkoutExecutionEngine(
             durationType = DurationType.TIME,
             durationSeconds = null,
             durationMeters = null,
-            paceTargetKph = AUTO_COOLDOWN_SPEED_KPH,
-            inclineTargetPercent = AUTO_COOLDOWN_INCLINE_PERCENT,
+            paceTargetKph = autoCooldownSpeed,
+            inclineTargetPercent = autoCooldownIncline,
             earlyEndCondition = EarlyEndCondition.OPEN,
             repeatIteration = null,
             repeatTotal = null,
@@ -1017,6 +1126,9 @@ class WorkoutExecutionEngine(
         currentStepIndex = -1
         plannedStepsCount = 0
         inAutoCooldown = false
+        warmupStepCount = 0
+        mainStepCount = 0
+        cooldownStepCount = 0
         workoutStartSeconds = -1
         stepStartSeconds = -1
         totalPausedSeconds = 0

@@ -107,6 +107,14 @@
     <color name="control_button_background">#44FFFFFF</color>
     <color name="control_button_text">#FFFFFF</color>
 
+    <!-- Phase background tints (low alpha for chart warmup/cooldown regions) -->
+    <color name="phase_warmup_tint">#14FFA500</color>
+    <color name="phase_cooldown_tint">#149370DB</color>
+
+    <!-- Sentinel row border colors in workout editor -->
+    <color name="sentinel_warmup_border">#FFA500</color>
+    <color name="sentinel_cooldown_border">#9370DB</color>
+
     <!-- ==================== Workout Editor Colors ==================== -->
 
     <color name="editor_background">#1A1A38</color>

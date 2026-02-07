@@ -200,7 +200,9 @@ class WorkoutEditorActivityNew : AppCompatActivity() {
             onDelete = { index -> viewModel.deleteStep(index) },
             onAddSubstep = { index, type -> viewModel.addSubstepToRepeat(index, type) },
             onAddStep = { _ -> showStepTypeSelector { type -> viewModel.addStep(type) }},
-            onAddRepeat = { viewModel.addStep(StepType.REPEAT) }
+            onAddRepeat = { viewModel.addStep(StepType.REPEAT) },
+            onWarmupToggled = { enabled -> viewModel.setWarmupEnabled(enabled) },
+            onCooldownToggled = { enabled -> viewModel.setCooldownEnabled(enabled) }
         ).apply {
             hrZone2StartPercent = this@WorkoutEditorActivityNew.hrZone2StartPercent
             hrZone3StartPercent = this@WorkoutEditorActivityNew.hrZone3StartPercent
@@ -323,6 +325,39 @@ class WorkoutEditorActivityNew : AppCompatActivity() {
                         updateSummary(summary)
                     }
                 }
+
+                // System workout restrictions
+                launch {
+                    viewModel.isSystemWorkout.collect { isSystem ->
+                        // Disable rename for system workouts
+                        etWorkoutName.isEnabled = !isSystem
+                        etWorkoutName.alpha = if (isSystem) 0.6f else 1.0f
+                        // Hide sentinels in system workout editor (no self-referencing)
+                        stepAdapter.showSentinels = !isSystem
+                    }
+                }
+
+                // Warmup/cooldown sentinel state
+                launch {
+                    viewModel.warmupEnabled.collect { enabled ->
+                        stepAdapter.warmupEnabled = enabled
+                    }
+                }
+                launch {
+                    viewModel.cooldownEnabled.collect { enabled ->
+                        stepAdapter.cooldownEnabled = enabled
+                    }
+                }
+                launch {
+                    viewModel.warmupSummary.collect { summary ->
+                        stepAdapter.warmupSummary = summary
+                    }
+                }
+                launch {
+                    viewModel.cooldownSummary.collect { summary ->
+                        stepAdapter.cooldownSummary = summary
+                    }
+                }
             }
         }
     }
@@ -404,6 +439,8 @@ class WorkoutEditorActivityNew : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Refresh system workout summaries (may have been edited)
+        viewModel.refreshSystemWorkoutSummaries()
         // Hide all overlay panels while editor is in foreground
         val intent = Intent(this, HUDService::class.java).apply {
             action = HUDService.ACTION_EDITOR_FOREGROUND

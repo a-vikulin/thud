@@ -219,6 +219,16 @@
     <dimen name="inline_step_pace_width">80dp</dimen>
     <dimen name="inline_step_incline_width">70dp</dimen>
 
+    <!-- ==================== Sentinel Rows (Warmup/Cooldown) ==================== -->
+
+    <dimen name="sentinel_border_width">4dp</dimen>
+    <dimen name="sentinel_padding_horizontal">12dp</dimen>
+    <dimen name="sentinel_padding_vertical">8dp</dimen>
+    <dimen name="sentinel_row_height">48dp</dimen>
+
+    <!-- Phase bar in workout panel -->
+    <dimen name="phase_bar_width">3dp</dimen>
+
     <!-- ==================== Workout List ==================== -->
 
     <dimen name="workout_list_item_height">48dp</dimen>

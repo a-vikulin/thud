@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.avikulin.thud.R
 import io.github.avikulin.thud.data.db.TreadmillHudDatabase
 import io.github.avikulin.thud.data.entity.Workout
 import io.github.avikulin.thud.data.entity.WorkoutStep
@@ -66,6 +67,7 @@ class WorkoutEditorViewModel(application: Application) : AndroidViewModel(applic
             workouts
         } else {
             workouts.filter { workout ->
+                workout.isSystemWorkout ||
                 workout.id == selectedId ||
                 workout.name.contains(query, ignoreCase = true)
             }
@@ -106,6 +108,24 @@ class WorkoutEditorViewModel(application: Application) : AndroidViewModel(applic
     private val _summary = MutableStateFlow(WorkoutSummary())
     val summary: StateFlow<WorkoutSummary> = _summary.asStateFlow()
 
+    // ==================== Default Warmup/Cooldown ====================
+
+    private val _warmupEnabled = MutableStateFlow(false)
+    val warmupEnabled: StateFlow<Boolean> = _warmupEnabled.asStateFlow()
+
+    private val _cooldownEnabled = MutableStateFlow(false)
+    val cooldownEnabled: StateFlow<Boolean> = _cooldownEnabled.asStateFlow()
+
+    private val _warmupSummary = MutableStateFlow("")
+    val warmupSummary: StateFlow<String> = _warmupSummary.asStateFlow()
+
+    private val _cooldownSummary = MutableStateFlow("")
+    val cooldownSummary: StateFlow<String> = _cooldownSummary.asStateFlow()
+
+    /** Whether the selected workout is a system workout (no rename/delete). */
+    private val _isSystemWorkout = MutableStateFlow(false)
+    val isSystemWorkout: StateFlow<Boolean> = _isSystemWorkout.asStateFlow()
+
     // ==================== Settings ====================
 
     private var thresholdPaceKph: Double = SettingsManager.DEFAULT_THRESHOLD_PACE_KPH
@@ -119,6 +139,12 @@ class WorkoutEditorViewModel(application: Application) : AndroidViewModel(applic
 
         // Load settings
         loadSettings()
+
+        // Ensure system workouts exist and load summaries
+        viewModelScope.launch {
+            repository.ensureSystemWorkoutsExist()
+            loadSystemWorkoutSummaries()
+        }
 
         // Observe all workouts from repository
         viewModelScope.launch {
@@ -184,6 +210,15 @@ class WorkoutEditorViewModel(application: Application) : AndroidViewModel(applic
                     _workoutName.value = workout.name
                     _workoutDescription.value = workout.description ?: ""
                     _steps.value = steps.sortedBy { it.orderIndex }
+                    _isSystemWorkout.value = workout.isSystemWorkout
+                    _warmupEnabled.value = workout.useDefaultWarmup
+                    _cooldownEnabled.value = workout.useDefaultCooldown
+
+                    // Refresh sentinel summaries when switching to a regular workout
+                    // (covers returning from editing a system workout)
+                    if (!workout.isSystemWorkout) {
+                        loadSystemWorkoutSummaries()
+                    }
 
                     // Clear undo history when switching workouts
                     undoRedoManager.clear()
@@ -287,10 +322,12 @@ class WorkoutEditorViewModel(application: Application) : AndroidViewModel(applic
 
     /**
      * Delete a workout after confirmation.
+     * System workouts cannot be deleted.
      */
     fun deleteWorkout(workoutId: Long) {
         viewModelScope.launch {
             val workout = _allWorkouts.value.find { it.id == workoutId } ?: return@launch
+            if (workout.isSystemWorkout) return@launch  // System workouts are permanent
             repository.deleteWorkout(workout)
 
             // If deleted workout was selected, select another one
@@ -334,6 +371,67 @@ class WorkoutEditorViewModel(application: Application) : AndroidViewModel(applic
         saveCurrentStateForUndo()
         _workoutDescription.value = description
         triggerAutoSave()
+    }
+
+    // ==================== Default Warmup/Cooldown Operations ====================
+
+    /**
+     * Toggle the "Use Default Warmup" flag.
+     */
+    fun setWarmupEnabled(enabled: Boolean) {
+        if (enabled == _warmupEnabled.value) return
+        _warmupEnabled.value = enabled
+        triggerAutoSave()
+    }
+
+    /**
+     * Toggle the "Use Default Cooldown" flag.
+     */
+    fun setCooldownEnabled(enabled: Boolean) {
+        if (enabled == _cooldownEnabled.value) return
+        _cooldownEnabled.value = enabled
+        triggerAutoSave()
+    }
+
+    /**
+     * Load summaries for system warmup/cooldown workouts.
+     */
+    private suspend fun loadSystemWorkoutSummaries() {
+        val warmup = repository.getSystemWarmup()
+        _warmupSummary.value = if (warmup != null) formatStepSummary(warmup.second) else ""
+
+        val cooldown = repository.getSystemCooldown()
+        _cooldownSummary.value = if (cooldown != null) formatStepSummary(cooldown.second) else ""
+    }
+
+    /**
+     * Reload system workout summaries (called after editing a system workout).
+     */
+    fun refreshSystemWorkoutSummaries() {
+        viewModelScope.launch {
+            loadSystemWorkoutSummaries()
+        }
+    }
+
+    /**
+     * Format a step list into a summary string like "3 steps, 5:00".
+     */
+    private fun formatStepSummary(steps: List<WorkoutStep>): String {
+        if (steps.isEmpty()) {
+            return getApplication<android.app.Application>().getString(R.string.sentinel_empty_summary)
+        }
+
+        var totalSeconds = 0.0
+        var stepCount = 0
+        forEachEffectiveStep(steps) { step, repeatMultiplier ->
+            stepCount += repeatMultiplier
+            totalSeconds += calculateStepDurationAndDistance(step).first * repeatMultiplier
+        }
+
+        val formatted = PaceConverter.formatDuration(totalSeconds.toInt())
+        return getApplication<android.app.Application>().getString(
+            R.string.sentinel_warmup_summary, stepCount, formatted
+        )
     }
 
     // ==================== Step Operations ====================
@@ -738,11 +836,17 @@ class WorkoutEditorViewModel(application: Application) : AndroidViewModel(applic
         val name = _workoutName.value.trim()
         if (name.isEmpty()) return
 
+        // Preserve existing fields from the loaded workout
+        val existing = repository.getWorkout(workoutId)
         val workout = Workout(
             id = workoutId,
             name = name,
             description = _workoutDescription.value.trim().ifEmpty { null },
-            estimatedTss = _summary.value.estimatedTss
+            estimatedTss = _summary.value.estimatedTss,
+            systemWorkoutType = existing?.systemWorkoutType,
+            useDefaultWarmup = _warmupEnabled.value,
+            useDefaultCooldown = _cooldownEnabled.value,
+            lastExecutedAt = existing?.lastExecutedAt
         )
 
         repository.saveWorkout(workout, _steps.value)
@@ -840,46 +944,50 @@ class WorkoutEditorViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
-    private fun updateSummary() {
-        val steps = _steps.value
-        var totalSeconds = 0.0
-        var totalMeters = 0.0
-        var stepCount = 0
+    /**
+     * Traverse a step list, expanding REPEAT blocks into effective steps.
+     * Calls [action] for each executable step with its repeat multiplier
+     * (1 for top-level steps, repeatCount for children of REPEAT blocks).
+     */
+    private inline fun forEachEffectiveStep(
+        steps: List<WorkoutStep>,
+        action: (step: WorkoutStep, repeatMultiplier: Int) -> Unit
+    ) {
         var stepIndex = 0
-
         while (stepIndex < steps.size) {
             val step = steps[stepIndex]
-
             if (step.type == StepType.REPEAT) {
-                // Get child steps using position-based traversal
                 val childSteps = mutableListOf<WorkoutStep>()
                 var childIndex = stepIndex + 1
                 while (childIndex < steps.size && steps[childIndex].parentRepeatStepId != null) {
                     childSteps.add(steps[childIndex])
                     childIndex++
                 }
-
                 val repeatCount = step.repeatCount ?: 1
-                stepCount += childSteps.size * repeatCount
-
                 for (child in childSteps) {
-                    val (seconds, meters) = calculateStepDurationAndDistance(child)
-                    totalSeconds += seconds * repeatCount
-                    totalMeters += meters * repeatCount
+                    action(child, repeatCount)
                 }
-
-                // Skip past all children
                 stepIndex = childIndex
             } else if (step.parentRepeatStepId == null) {
-                stepCount++
-                val (seconds, meters) = calculateStepDurationAndDistance(step)
-                totalSeconds += seconds
-                totalMeters += meters
+                action(step, 1)
                 stepIndex++
             } else {
-                // Orphan substep (shouldn't happen)
                 stepIndex++
             }
+        }
+    }
+
+    private fun updateSummary() {
+        val steps = _steps.value
+        var totalSeconds = 0.0
+        var totalMeters = 0.0
+        var stepCount = 0
+
+        forEachEffectiveStep(steps) { step, repeatMultiplier ->
+            stepCount += repeatMultiplier
+            val (seconds, meters) = calculateStepDurationAndDistance(step)
+            totalSeconds += seconds * repeatMultiplier
+            totalMeters += meters * repeatMultiplier
         }
 
         // Calculate TSS (Power > HR > Pace priority)
@@ -927,39 +1035,12 @@ class WorkoutEditorViewModel(application: Application) : AndroidViewModel(applic
     private fun calculateWorkoutTss(steps: List<WorkoutStep>): Int? {
         var totalTss = 0.0
         var hasValidSteps = false
-        var stepIndex = 0
 
-        while (stepIndex < steps.size) {
-            val step = steps[stepIndex]
-
-            if (step.type == StepType.REPEAT) {
-                // Get child steps using position-based traversal
-                val childSteps = mutableListOf<WorkoutStep>()
-                var childIndex = stepIndex + 1
-                while (childIndex < steps.size && steps[childIndex].parentRepeatStepId != null) {
-                    childSteps.add(steps[childIndex])
-                    childIndex++
-                }
-
-                val repeatCount = step.repeatCount ?: 1
-                for (child in childSteps) {
-                    val tss = calculateStepTss(child, repeatCount)
-                    if (tss != null) {
-                        totalTss += tss
-                        hasValidSteps = true
-                    }
-                }
-
-                stepIndex = childIndex
-            } else if (step.parentRepeatStepId == null) {
-                val tss = calculateStepTss(step, 1)
-                if (tss != null) {
-                    totalTss += tss
-                    hasValidSteps = true
-                }
-                stepIndex++
-            } else {
-                stepIndex++
+        forEachEffectiveStep(steps) { step, repeatMultiplier ->
+            val tss = calculateStepTss(step, repeatMultiplier)
+            if (tss != null) {
+                totalTss += tss
+                hasValidSteps = true
             }
         }
 

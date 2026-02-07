@@ -108,11 +108,11 @@ class WorkoutPanelManager(
     /**
      * Update the panel with workout info.
      */
-    fun setWorkoutInfo(workout: Workout, steps: List<ExecutionStep>) {
+    fun setWorkoutInfo(workout: Workout, steps: List<ExecutionStep>, phaseCounts: Triple<Int, Int, Int>? = null) {
         workoutPanelView?.apply {
             userLthrBpm = state.userLthrBpm
             setWorkoutName(workout.name)
-            setSteps(steps)
+            setSteps(steps, phaseCounts)
         }
     }
 
@@ -126,8 +126,8 @@ class WorkoutPanelManager(
     /**
      * Update the panel steps.
      */
-    fun setSteps(steps: List<ExecutionStep>) {
-        workoutPanelView?.setSteps(steps)
+    fun setSteps(steps: List<ExecutionStep>, phaseCounts: Triple<Int, Int, Int>? = null) {
+        workoutPanelView?.setSteps(steps, phaseCounts)
     }
 
     /**

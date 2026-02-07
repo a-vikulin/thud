@@ -230,6 +230,8 @@ getSharedPreferences("TreadmillHUD", Context.MODE_PRIVATE)
 | FIT device identification | `ServiceStateHolder` (from SharedPreferences) | `UserExportSettings` → `FitFileExporter` |
 | Treadmill name | `GlassOsClient.treadmillName` | `ServiceStateHolder` → FTMS device names |
 | FTMS server settings | `ServiceStateHolder` (from SharedPreferences) | `HUDService` → server start/stop |
+| System workouts (warmup/cooldown templates) | `WorkoutRepository` (DB, `systemWorkoutType` column) | Engine stitching, editor sentinels |
+| Phase boundaries (warmup/main/cooldown) | `WorkoutExecutionEngine` (phase step counts) | Chart, panel, coefficient reset |
 
 ### ⚠️ SPEED SETTING - ABSOLUTE RULE ⚠️
 **NEVER call `glassOsClient.setSpeed()` or `glassOsClient.setIncline()` directly!**
@@ -603,6 +605,43 @@ This automatically captures both HR auto-adjustments AND manual button presses.
 - Provides `getEffectiveSpeed(step)` = `step.paceTargetKph * coefficient`
 - Chart uses these for showing adjusted future step targets
 
+### ⚠️ System Workouts & Phase Stitching ⚠️
+
+**System workouts** are special workouts identified by `systemWorkoutType` column (`"WARMUP"` or `"COOLDOWN"`). They serve as reusable templates attached to regular workouts.
+
+**Key rules:**
+- System workouts are **permanent** — cannot be deleted or duplicated
+- Identified by `systemWorkoutType` column, **NOT** by name matching
+- Created idempotently by `WorkoutRepository.ensureSystemWorkoutsExist()` at startup
+- Regular workouts opt in via `useDefaultWarmup` / `useDefaultCooldown` boolean fields
+
+**Phase stitching at execution time:**
+```
+WorkoutEngineManager.loadWorkoutStitched()
+    ↓
+Loads main workout + system warmup/cooldown from DB
+    ↓
+WorkoutExecutionEngine.loadStitchedWorkout(main, warmup?, cooldown?)
+    ↓
+Flattens each phase independently → concatenates → re-indexes flatIndex
+    ↓
+Phase counts stored: warmupStepCount, mainStepCount, cooldownStepCount
+```
+
+**Coefficient reset at phase boundaries:** When `startStep()` crosses warmup→main or main→cooldown, `speedAdjustmentCoefficient` and `inclineAdjustmentCoefficient` reset to 1.0. This prevents warmup HR adjustments from corrupting the main workout.
+
+**Editor shows sentinel rows** (warmup header + cooldown footer) with checkbox + summary text. System workouts are always visible in the workout list regardless of search filter. Editor preview chart does NOT include warmup/cooldown steps — only the live chart shows the full stitched outline.
+
+**Quick reference:**
+
+| Method | Purpose |
+|--------|---------|
+| `WorkoutRepository.ensureSystemWorkoutsExist()` | Idempotent system workout creation |
+| `WorkoutRepository.getSystemWarmup/Cooldown()` | Returns `Pair<Workout, List<WorkoutStep>>?` |
+| `WorkoutExecutionEngine.loadStitchedWorkout()` | Load with phase boundaries |
+| `WorkoutExecutionEngine.isWarmupStep/isMainStep/isCooldownStep()` | Phase query helpers |
+| `WorkoutExecutionEngine.getPhaseCounts()` | `Triple<Int, Int, Int>` for chart/panel |
+
 ---
 
 ## Reusable UI Components
@@ -639,9 +678,9 @@ HUDService (Orchestrator)
     └── BluetoothSensorDialogManager → BT sensor connection dialog
 
 Data Layer
-├── TreadmillHudDatabase    → Room DB (version 6)
+├── TreadmillHudDatabase    → Room DB (version 7)
 ├── WorkoutRepository       → Clean CRUD API (use this, not DAO directly)
-├── Workout                 → Entity: workout metadata
+├── Workout                 → Entity: workout metadata + systemWorkoutType, useDefaultWarmup/Cooldown
 └── WorkoutStep             → Entity: step with HR/Power targets (% of threshold)
 
 Domain Layer
@@ -798,6 +837,8 @@ WorkoutRecorder uses `Collections.synchronizedList()` for thread-safe data colle
 | Start workout | WorkoutEngineManager | `startWorkout()` |
 | Load workout | WorkoutEngineManager | `loadWorkout(id)` |
 | Save workout | WorkoutRepository | `saveWorkout(workout, steps)` |
+| Ensure system workouts | WorkoutRepository | `ensureSystemWorkoutsExist()` — call at startup |
+| Get system warmup/cooldown | WorkoutRepository | `getSystemWarmup()` / `getSystemCooldown()` |
 | Set treadmill speed | TelemetryManager | `setTreadmillSpeed(adjustedKph)` ⚠️ ONLY WAY |
 | Set treadmill incline | TelemetryManager | `setTreadmillIncline(percent)` ⚠️ ONLY WAY |
 | Start new run | HUDService | `startNewRun()` - exports existing data first |

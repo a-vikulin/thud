@@ -15,8 +15,13 @@ import kotlinx.coroutines.flow.Flow
 class WorkoutRepository(
     private val workoutDao: WorkoutDao
 ) {
+    companion object {
+        const val SYSTEM_TYPE_WARMUP = "WARMUP"
+        const val SYSTEM_TYPE_COOLDOWN = "COOLDOWN"
+    }
+
     /**
-     * Flow of all workouts, ordered by most recently updated.
+     * Flow of all workouts, ordered: system workouts first, then by most recently updated/executed.
      */
     val allWorkouts: Flow<List<Workout>> = workoutDao.getAllWorkouts()
 
@@ -69,6 +74,71 @@ class WorkoutRepository(
      */
     suspend fun deleteWorkout(workout: Workout) = workoutDao.deleteWorkout(workout)
 
+    // ==================== System Workouts ====================
+
+    /**
+     * Ensure system workouts (Default Warmup, Default Cooldown) exist.
+     * Idempotent — safe to call on every app startup.
+     */
+    suspend fun ensureSystemWorkoutsExist() {
+        if (workoutDao.getSystemWorkout(SYSTEM_TYPE_WARMUP) == null) {
+            val warmupId = workoutDao.insertWorkout(Workout(
+                name = "Default Warmup",
+                systemWorkoutType = SYSTEM_TYPE_WARMUP
+            ))
+            workoutDao.insertStep(WorkoutStep(
+                workoutId = warmupId,
+                orderIndex = 0,
+                type = StepType.WARMUP,
+                durationType = DurationType.TIME,
+                durationSeconds = 300,
+                paceTargetKph = 5.0,
+                inclineTargetPercent = 0.0
+            ))
+        }
+
+        if (workoutDao.getSystemWorkout(SYSTEM_TYPE_COOLDOWN) == null) {
+            val cooldownId = workoutDao.insertWorkout(Workout(
+                name = "Default Cooldown",
+                systemWorkoutType = SYSTEM_TYPE_COOLDOWN
+            ))
+            workoutDao.insertStep(WorkoutStep(
+                workoutId = cooldownId,
+                orderIndex = 0,
+                type = StepType.COOLDOWN,
+                durationType = DurationType.TIME,
+                durationSeconds = 300,
+                paceTargetKph = 4.0,
+                inclineTargetPercent = 0.0
+            ))
+        }
+    }
+
+    /**
+     * Get the system warmup workout with its steps.
+     */
+    suspend fun getSystemWarmup(): Pair<Workout, List<WorkoutStep>>? {
+        val workout = workoutDao.getSystemWorkout(SYSTEM_TYPE_WARMUP) ?: return null
+        val steps = workoutDao.getStepsForWorkoutOnce(workout.id)
+        return workout to steps
+    }
+
+    /**
+     * Get the system cooldown workout with its steps.
+     */
+    suspend fun getSystemCooldown(): Pair<Workout, List<WorkoutStep>>? {
+        val workout = workoutDao.getSystemWorkout(SYSTEM_TYPE_COOLDOWN) ?: return null
+        val steps = workoutDao.getStepsForWorkoutOnce(workout.id)
+        return workout to steps
+    }
+
+    /**
+     * Update the lastExecutedAt timestamp for a workout.
+     */
+    suspend fun markAsExecuted(workoutId: Long) {
+        workoutDao.updateLastExecutedAt(workoutId, System.currentTimeMillis())
+    }
+
     /**
      * Duplicate a workout with a new name.
      * Returns the ID of the new workout.
@@ -80,7 +150,9 @@ class WorkoutRepository(
             id = 0,
             name = newName,
             createdAt = System.currentTimeMillis(),
-            updatedAt = System.currentTimeMillis()
+            updatedAt = System.currentTimeMillis(),
+            systemWorkoutType = null,  // Copies are always regular workouts
+            lastExecutedAt = null
         )
 
         val newWorkoutId = workoutDao.insertWorkout(newWorkout)

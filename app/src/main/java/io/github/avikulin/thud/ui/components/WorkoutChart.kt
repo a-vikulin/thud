@@ -172,6 +172,9 @@ class WorkoutChart @JvmOverloads constructor(
      * For distance-based steps, durationType and durationMeters are used to recalculate
      * segment duration dynamically when pace changes (via speed coefficient).
      */
+    /** Workout phase for stitched warmup/main/cooldown visualization. */
+    enum class WorkoutPhase { WARMUP, MAIN, COOLDOWN }
+
     data class PlannedSegment(
         val startTimeMs: Long,
         val endTimeMs: Long,
@@ -185,7 +188,8 @@ class WorkoutChart @JvmOverloads constructor(
         val powerTargetMaxPercent: Double? = null, // Power target as % of FTP (1 decimal precision)
         val autoAdjustMode: AutoAdjustMode = AutoAdjustMode.NONE,
         val durationType: DurationType = DurationType.TIME,  // For dynamic duration recalculation
-        val durationMeters: Int? = null  // Distance for distance-based steps
+        val durationMeters: Int? = null,  // Distance for distance-based steps
+        val phase: WorkoutPhase = WorkoutPhase.MAIN
     ) {
         /** Get HR min target in BPM using provided LTHR. */
         fun getHrTargetMinBpm(lthrBpm: Int): Int? =
@@ -310,8 +314,21 @@ class WorkoutChart @JvmOverloads constructor(
     private val powerTargetRectPaint: Paint
     private val powerStripeOverlayPaint: Paint
     private val markerPaint: Paint
+    private val phaseBackgroundPaint: Paint
+    private val phaseXAxisPaint: Paint
+
+    // Phase tint colors
+    private val phaseWarmupTintColor: Int
+    private val phaseCooldownTintColor: Int
+    private val phaseWarmupBorderColor: Int
+    private val phaseCooldownBorderColor: Int
 
     init {
+        // Load phase colors
+        phaseWarmupTintColor = ContextCompat.getColor(context, R.color.phase_warmup_tint)
+        phaseCooldownTintColor = ContextCompat.getColor(context, R.color.phase_cooldown_tint)
+        phaseWarmupBorderColor = ContextCompat.getColor(context, R.color.step_warmup)
+        phaseCooldownBorderColor = ContextCompat.getColor(context, R.color.step_cooldown)
         // Load dimensions
         leftAxisWidth = resources.getDimensionPixelSize(R.dimen.chart_left_axis_width).toFloat()
         rightAxisWidth = resources.getDimensionPixelSize(R.dimen.chart_right_axis_width).toFloat()
@@ -435,6 +452,14 @@ class WorkoutChart @JvmOverloads constructor(
 
         markerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
+        }
+
+        phaseBackgroundPaint = Paint().apply {
+            style = Paint.Style.FILL
+        }
+
+        phaseXAxisPaint = Paint(gridPaint).apply {
+            strokeWidth = gridStrokeWidth * 2.5f
         }
     }
 
@@ -1034,6 +1059,7 @@ class WorkoutChart @JvmOverloads constructor(
         }
     }
 
+
     /**
      * Build PlannedSegments from WorkoutStep list.
      * Handles repeat blocks by expanding them into individual segments.
@@ -1484,6 +1510,9 @@ class WorkoutChart @JvmOverloads constructor(
         // 1. Background
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), backgroundPaint)
 
+        // 1.5. Phase backgrounds (subtle tint for warmup/cooldown regions)
+        drawPhaseBackgrounds(canvas)
+
         // 2. HR Target Rectangles (bottommost workout layer - semi-transparent zones)
         drawHrTargetRectangles(canvas)
 
@@ -1549,6 +1578,28 @@ class WorkoutChart @JvmOverloads constructor(
      * Calculate time tick interval to ensure max 11 vertical lines (12 intervals).
      * Rounds up to nearest 5 minutes.
      */
+    /**
+     * Draw subtle background tints for warmup/cooldown chart regions.
+     * Only drawn when the workout has stitched phases.
+     */
+    private fun drawPhaseBackgrounds(canvas: Canvas) {
+        if (plannedSegments.isEmpty()) return
+
+        for (segment in plannedSegments) {
+            val tintColor = when (segment.phase) {
+                WorkoutPhase.WARMUP -> phaseWarmupTintColor
+                WorkoutPhase.COOLDOWN -> phaseCooldownTintColor
+                WorkoutPhase.MAIN -> continue
+            }
+            phaseBackgroundPaint.color = tintColor
+            val x1 = timeToX(segment.startTimeMs).coerceIn(chartLeft, chartRight)
+            val x2 = timeToX(segment.endTimeMs).coerceIn(chartLeft, chartRight)
+            if (x2 > x1) {
+                canvas.drawRect(x1, chartTop, x2, chartBottom, phaseBackgroundPaint)
+            }
+        }
+    }
+
     private fun calculateTimeIntervalMinutes(): Int {
         // We want at most 12 intervals (11 lines + boundaries), so divide by 12 and round up
         val rawInterval = ceil(timeRangeMinutes / 12.0).toInt()
@@ -1557,9 +1608,11 @@ class WorkoutChart @JvmOverloads constructor(
     }
 
     private fun drawGrid(canvas: Canvas) {
-        // Top and bottom border lines
+        // Top border line
         canvas.drawLine(chartLeft, chartTop, chartRight, chartTop, gridPaint)
-        canvas.drawLine(chartLeft, chartBottom, chartRight, chartBottom, gridPaint)
+
+        // Bottom border line: phase-colored segments if stitched workout, normal otherwise
+        drawPhaseColoredXAxis(canvas)
 
         // Vertical grid lines with variable interval
         val intervalMinutes = calculateTimeIntervalMinutes()
@@ -1569,6 +1622,50 @@ class WorkoutChart @JvmOverloads constructor(
             val x = timeToX(minutes * 60 * 1000L)  // Convert to milliseconds
             canvas.drawLine(x, chartTop, x, chartBottom, gridPaint)
         }
+    }
+
+    /**
+     * Draw X-axis with phase-colored segments for stitched workouts.
+     * Warmup segment: orange, Main: default grid color, Cooldown: purple.
+     * Falls back to single grid-colored line when no phase boundaries exist.
+     */
+    private fun drawPhaseColoredXAxis(canvas: Canvas) {
+        val hasPhases = plannedSegments.any { it.phase != WorkoutPhase.MAIN }
+        if (!hasPhases) {
+            canvas.drawLine(chartLeft, chartBottom, chartRight, chartBottom, gridPaint)
+            return
+        }
+
+        // Draw X-axis as colored segments matching workout phases
+        var lastPhase: WorkoutPhase? = null
+        var phaseStartX = chartLeft
+
+        for (segment in plannedSegments) {
+            if (lastPhase == null) {
+                lastPhase = segment.phase
+            } else if (segment.phase != lastPhase) {
+                // Draw the completed phase segment
+                phaseXAxisPaint.color = phaseXAxisColor(lastPhase)
+                val endX = timeToX(segment.startTimeMs).coerceIn(chartLeft, chartRight)
+                canvas.drawLine(phaseStartX, chartBottom, endX, chartBottom, phaseXAxisPaint)
+                phaseStartX = endX
+                lastPhase = segment.phase
+            }
+        }
+
+        // Draw the last phase segment to chartRight
+        if (lastPhase != null) {
+            phaseXAxisPaint.color = phaseXAxisColor(lastPhase)
+            canvas.drawLine(phaseStartX, chartBottom, chartRight, chartBottom, phaseXAxisPaint)
+        } else {
+            canvas.drawLine(chartLeft, chartBottom, chartRight, chartBottom, gridPaint)
+        }
+    }
+
+    private fun phaseXAxisColor(phase: WorkoutPhase): Int = when (phase) {
+        WorkoutPhase.WARMUP -> phaseWarmupBorderColor
+        WorkoutPhase.COOLDOWN -> phaseCooldownBorderColor
+        WorkoutPhase.MAIN -> gridPaint.color
     }
 
     private fun drawLeftAxis(canvas: Canvas) {

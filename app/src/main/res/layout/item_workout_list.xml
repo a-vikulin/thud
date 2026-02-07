@@ -10,6 +10,13 @@
     android:paddingHorizontal="@dimen/workout_list_item_padding"
     android:background="?attr/selectableItemBackground">
 
+    <!-- Colored border strip for system workouts (warmup orange / cooldown purple) -->
+    <View
+        android:id="@+id/borderStrip"
+        android:layout_width="@dimen/sentinel_border_width"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
     <!-- Name and stats column -->
     <LinearLayout
         android:layout_width="0dp"

@@ -21,12 +21,14 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
+import io.github.avikulin.thud.data.db.TreadmillHudDatabase
+import io.github.avikulin.thud.data.entity.Workout
+import io.github.avikulin.thud.data.model.WorkoutDataPoint
+import io.github.avikulin.thud.data.repository.WorkoutRepository
 import io.github.avikulin.thud.domain.engine.ExecutionStep
 import io.github.avikulin.thud.domain.engine.MetricDataPoint
 import io.github.avikulin.thud.domain.engine.WorkoutExecutionState
 import io.github.avikulin.thud.domain.engine.WorkoutEvent
-import io.github.avikulin.thud.data.entity.Workout
-import io.github.avikulin.thud.data.model.WorkoutDataPoint
 import io.github.avikulin.thud.service.BluetoothSensorDialogManager
 import io.github.avikulin.thud.service.ChartManager
 import io.github.avikulin.thud.service.HUDDisplayManager
@@ -354,6 +356,13 @@ class HUDService : Service(),
             )
         } else {
             startForeground(NOTIFICATION_ID, buildNotification())
+        }
+
+        // Ensure system workouts exist (Default Warmup, Default Cooldown)
+        serviceScope.launch {
+            val database = TreadmillHudDatabase.getInstance(applicationContext)
+            val repository = WorkoutRepository(database.workoutDao())
+            repository.ensureSystemWorkoutsExist()
         }
 
         // Start connection to GlassOS
@@ -1139,7 +1148,7 @@ class HUDService : Service(),
                     val workout = workoutEngineManager.getCurrentWorkout()
                     if (workout != null) {
                         workoutPanelManager.showPanel()
-                        workoutPanelManager.setWorkoutInfo(workout, steps)
+                        workoutPanelManager.setWorkoutInfo(workout, steps, workoutEngineManager.getPhaseCounts())
                     }
 
                     // Store workout name for FIT export
@@ -1755,7 +1764,7 @@ class HUDService : Service(),
         workoutPanelManager.showPanel()
         chartManager.showChart()
 
-        workoutPanelManager.setWorkoutInfo(workout, steps)
+        workoutPanelManager.setWorkoutInfo(workout, steps, workoutEngineManager.getPhaseCounts())
 
         val segments = workoutEngineManager.convertToPlannedSegments(steps)
         chartManager.setPlannedSegments(segments)

@@ -11,6 +11,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import io.github.avikulin.thud.R
 import io.github.avikulin.thud.data.entity.Workout
+import io.github.avikulin.thud.data.repository.WorkoutRepository
 import io.github.avikulin.thud.util.PaceConverter
 
 /**
@@ -49,6 +50,7 @@ class WorkoutListAdapter(
     }
 
     inner class WorkoutViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val borderStrip: View = itemView.findViewById(R.id.borderStrip)
         private val tvName: TextView = itemView.findViewById(R.id.tvWorkoutName)
         private val tvStats: TextView = itemView.findViewById(R.id.tvStats)
         private val btnCopy: ImageButton = itemView.findViewById(R.id.btnCopy)
@@ -64,6 +66,23 @@ class WorkoutListAdapter(
                 durationSeconds = workout.estimatedDurationSeconds,
                 tss = workout.estimatedTss
             )
+
+            // System workout visual treatment
+            if (workout.isSystemWorkout) {
+                val borderColor = when (workout.systemWorkoutType) {
+                    WorkoutRepository.SYSTEM_TYPE_WARMUP -> R.color.sentinel_warmup_border
+                    WorkoutRepository.SYSTEM_TYPE_COOLDOWN -> R.color.sentinel_cooldown_border
+                    else -> R.color.sentinel_warmup_border
+                }
+                borderStrip.setBackgroundColor(ContextCompat.getColor(itemView.context, borderColor))
+                borderStrip.visibility = View.VISIBLE
+                btnCopy.visibility = View.GONE
+                btnDelete.visibility = View.GONE
+            } else {
+                borderStrip.visibility = View.GONE
+                btnCopy.visibility = View.VISIBLE
+                btnDelete.visibility = View.VISIBLE
+            }
 
             // Selection highlight
             if (isSelected) {

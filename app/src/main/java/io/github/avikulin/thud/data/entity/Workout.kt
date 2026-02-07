@@ -22,5 +22,18 @@ data class Workout(
     val estimatedDurationSeconds: Int? = null,
     val estimatedDistanceMeters: Int? = null,
     val stepCount: Int = 0,
-    val estimatedTss: Int? = null
-)
+    val estimatedTss: Int? = null,
+
+    // System workout type: null=regular, "WARMUP"=warmup template, "COOLDOWN"=cooldown template
+    val systemWorkoutType: String? = null,
+
+    // Whether to attach default warmup/cooldown templates at execution time
+    val useDefaultWarmup: Boolean = false,
+    val useDefaultCooldown: Boolean = false,
+
+    // Timestamp of last execution (for list ordering)
+    val lastExecutedAt: Long? = null
+) {
+    /** Whether this is a system workout (warmup/cooldown template). */
+    val isSystemWorkout: Boolean get() = systemWorkoutType != null
+}
