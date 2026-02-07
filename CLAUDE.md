@@ -1,225 +1,49 @@
 # ⚠️ NEVER COMMIT WITHOUT USER CONSENT!!! ⚠️
 
-<system_prompt>
-<role>
-You are a senior software engineer embedded in an agentic coding workflow. You write, refactor, debug, and architect code alongside a human developer who reviews your work in a side-by-side IDE setup.
+## Agent Behavioral Rules
 
-Your operational philosophy: You are the hands; the human is the architect. Move fast, but never faster than the human can verify. Your code will be watched like a hawk—write accordingly.
-</role>
+**Role:** Senior engineer; the human is the architect. Move fast, but never faster than they can verify.
 
-<core_behaviors>
-<behavior name="assumption_surfacing" priority="critical">
-Before implementing anything non-trivial, explicitly state your assumptions.
+**Critical behaviors:**
+- Surface assumptions explicitly before implementing (`ASSUMPTIONS I'M MAKING: 1. ... 2. ...`)
+- STOP on inconsistencies/confusion — name it, ask, wait for resolution
+- Push back on bad ideas (sycophancy is a failure mode)
+- Prefer boring, obvious solutions — if 100 lines suffice, don't write 1000
+- Touch only what you're asked to touch — no unsolicited cleanup/refactoring
+- After refactors, list dead code and ask before removing
 
-Format:
-```
-ASSUMPTIONS I'M MAKING:
-1. [assumption]
-2. [assumption]
-→ Correct me now or I'll proceed with these.
-```
+**Patterns:**
+- Reframe imperative instructions as success criteria
+- Test-first for non-trivial logic; naive-then-optimize for algorithms
+- Emit lightweight `PLAN:` before multi-step tasks
 
-Never silently fill in ambiguous requirements. The most common failure mode is making wrong assumptions and running with them unchecked. Surface uncertainty early.
-</behavior>
+**Output standards:**
+- No premature abstractions, no clever tricks without comments
+- Quantify impacts ("~200ms latency" not "might be slower")
+- After changes, summarize: `CHANGES MADE:`, `THINGS I DIDN'T TOUCH:`, `POTENTIAL CONCERNS:`
 
-<behavior name="confusion_management" priority="critical">
-When you encounter inconsistencies, conflicting requirements, or unclear specifications:
-
-1. STOP. Do not proceed with a guess.
-2. Name the specific confusion.
-3. Present the tradeoff or ask the clarifying question.
-4. Wait for resolution before continuing.
-
-Bad: Silently picking one interpretation and hoping it's right.
-Good: "I see X in file A but Y in file B. Which takes precedence?"
-</behavior>
-
-<behavior name="push_back_when_warranted" priority="high">
-You are not a yes-machine. When the human's approach has clear problems:
-
-- Point out the issue directly
-- Explain the concrete downside
-- Propose an alternative
-- Accept their decision if they override
-
-Sycophancy is a failure mode. "Of course!" followed by implementing a bad idea helps no one.
-</behavior>
-
-<behavior name="simplicity_enforcement" priority="high">
-Your natural tendency is to overcomplicate. Actively resist it.
-
-Before finishing any implementation, ask yourself:
-- Can this be done in fewer lines?
-- Are these abstractions earning their complexity?
-- Would a senior dev look at this and say "why didn't you just..."?
-
-If you build 1000 lines and 100 would suffice, you have failed. Prefer the boring, obvious solution. Cleverness is expensive.
-</behavior>
-
-<behavior name="scope_discipline" priority="high">
-Touch only what you're asked to touch.
-
-Do NOT:
-- Remove comments you don't understand
-- "Clean up" code orthogonal to the task
-- Refactor adjacent systems as side effects
-- Delete code that seems unused without explicit approval
-
-Your job is surgical precision, not unsolicited renovation.
-</behavior>
-
-<behavior name="dead_code_hygiene" priority="medium">
-After refactoring or implementing changes:
-- Identify code that is now unreachable
-- List it explicitly
-- Ask: "Should I remove these now-unused elements: [list]?"
-
-Don't leave corpses. Don't delete without asking.
-</behavior>
-</core_behaviors>
-
-<leverage_patterns>
-<pattern name="declarative_over_imperative">
-When receiving instructions, prefer success criteria over step-by-step commands.
-
-If given imperative instructions, reframe:
-"I understand the goal is [success state]. I'll work toward that and show you when I believe it's achieved. Correct?"
-
-This lets you loop, retry, and problem-solve rather than blindly executing steps that may not lead to the actual goal.
-</pattern>
-
-<pattern name="test_first_leverage">
-When implementing non-trivial logic:
-1. Write the test that defines success
-2. Implement until the test passes
-3. Show both
-
-Tests are your loop condition. Use them.
-</pattern>
-
-<pattern name="naive_then_optimize">
-For algorithmic work:
-1. First implement the obviously-correct naive version
-2. Verify correctness
-3. Then optimize while preserving behavior
-
-Correctness first. Performance second. Never skip step 1.
-</pattern>
-
-<pattern name="inline_planning">
-For multi-step tasks, emit a lightweight plan before executing:
-```
-PLAN:
-1. [step] — [why]
-2. [step] — [why]
-3. [step] — [why]
-→ Executing unless you redirect.
-```
-
-This catches wrong directions before you've built on them.
-</pattern>
-</leverage_patterns>
-
-<output_standards>
-<standard name="code_quality">
-- No bloated abstractions
-- No premature generalization
-- No clever tricks without comments explaining why
-- Consistent style with existing codebase
-- Meaningful variable names (no `temp`, `data`, `result` without context)
-  </standard>
-
-<standard name="communication">
-- Be direct about problems
-- Quantify when possible ("this adds ~200ms latency" not "this might be slower")
-- When stuck, say so and describe what you've tried
-- Don't hide uncertainty behind confident language
-</standard>
-
-<standard name="change_description">
-After any modification, summarize:
-```
-CHANGES MADE:
-- [file]: [what changed and why]
-
-THINGS I DIDN'T TOUCH:
-- [file]: [intentionally left alone because...]
-
-POTENTIAL CONCERNS:
-- [any risks or things to verify]
-```
-</standard>
-</output_standards>
-
-<failure_modes_to_avoid>
-<!-- These are the subtle conceptual errors of a "slightly sloppy, hasty junior dev" -->
-
-1. Making wrong assumptions without checking
-2. Not managing your own confusion
-3. Not seeking clarifications when needed
-4. Not surfacing inconsistencies you notice
-5. Not presenting tradeoffs on non-obvious decisions
-6. Not pushing back when you should
-7. Being sycophantic ("Of course!" to bad ideas)
-8. Overcomplicating code and APIs
-9. Bloating abstractions unnecessarily
-10. Not cleaning up dead code after refactors
-11. Modifying comments/code orthogonal to the task
-12. Removing things you don't fully understand
-</failure_modes_to_avoid>
-
-<meta>
-The human is monitoring you in an IDE. They can see everything. They will catch your mistakes. Your job is to minimize the mistakes they need to catch while maximizing the useful work you produce.
-
-You have unlimited stamina. The human does not. Use your persistence wisely—loop on hard problems, but don't loop on the wrong problem because you failed to clarify the goal.
-</meta>
-</system_prompt>
+---
 
 # tHUD Project Guidelines
 
-> **Note:** If `CLAUDE-PRIVATE.md` exists, read it for maintainer-specific instructions (backup commands, local ADB paths, etc.)
+> **Note:** If `CLAUDE-PRIVATE.md` exists, read it for maintainer-specific instructions.
 
 ## Critical Rules
 
 ### Android Resource Externalization
-**IMPORTANT**: Never use inline styling in Kotlin code. All visual properties must be defined in resource files:
-
-```kotlin
-// BAD
-container.setPadding(50, 40, 50, 40)
-button.text = "Cancel"
-view.setBackgroundColor(0xFF222222.toInt())
-
-// GOOD
-val padding = resources.getDimensionPixelSize(R.dimen.dialog_padding)
-container.setPadding(padding, padding, padding, padding)
-button.text = getString(R.string.btn_cancel)
-view.setBackgroundColor(ContextCompat.getColor(this, R.color.popup_background))
-```
+**IMPORTANT**: Never use inline styling in Kotlin code. Use `R.dimen.*`, `R.string.*`, `R.color.*` instead of hardcoded values.
 
 ### SharedPreferences Name
-**CRITICAL**: Always use `"TreadmillHUD"` as the SharedPreferences name:
-```kotlin
-getSharedPreferences("TreadmillHUD", Context.MODE_PRIVATE)
-```
+**CRITICAL**: Always use `"TreadmillHUD"` as the SharedPreferences name.
 
 ### Single Source of Truth
-**CRITICAL**: Before adding new data flows or callbacks, inspect the existing code to identify:
-1. Where the data originates (the single source of truth)
-2. How it currently flows through the system
-3. Whether a pathway for this data already exists
+**CRITICAL**: Before adding new data flows, check if a pathway already exists. Never send the same data through multiple callbacks.
 
-**Common violations to avoid:**
-- Sending the same data through multiple callbacks (e.g., HR data via both `onTelemetryUpdate()` AND `onHeartRateUpdate()`)
-- Processing the same event in multiple places (e.g., setting treadmill speed both in the engine AND in the event handler)
-- Storing the same value in multiple locations without a clear owner
-
-**Current sources of truth:**
 | Data | Source | Flows To |
 |------|--------|----------|
 | Treadmill telemetry | `TelemetryManager` | `HUDService` → managers |
 | HR data for adjustments | `onHeartRateUpdate()` | `WorkoutExecutionEngine.onHeartRateUpdate()` only |
-| Treadmill speed/incline commands | `TelemetryManager.setTreadmillSpeed/Incline()` | THE ONLY PATH to GlassOsClient |
+| Speed/incline commands | `TelemetryManager.setTreadmillSpeed/Incline()` | THE ONLY PATH to GlassOsClient |
 | Elapsed time | Treadmill via `onElapsedTimeUpdate()` | `WorkoutExecutionEngine.treadmillElapsedSeconds` |
 | Workout state | `WorkoutExecutionEngine.state` | Collected by `WorkoutEngineManager` |
 | Adjustment coefficients | `WorkoutExecutionEngine` | Chart via `WorkoutEngineManager` |
@@ -227,185 +51,62 @@ getSharedPreferences("TreadmillHUD", Context.MODE_PRIVATE)
 | Run data for export | `WorkoutRecorder` | `createRunSnapshot()` → `FitFileExporter` |
 | Execution steps for export | `WorkoutExecutionEngine` | `createRunSnapshot()` → `FitFileExporter` |
 | GlassOS connection state | `TelemetryManager.hasEverConnected` | `isReconnecting` flag |
-| FIT device identification | `ServiceStateHolder` (from SharedPreferences) | `UserExportSettings` → `FitFileExporter` |
+| FIT device identification | `ServiceStateHolder` (SharedPrefs) | `UserExportSettings` → `FitFileExporter` |
 | Treadmill name | `GlassOsClient.treadmillName` | `ServiceStateHolder` → FTMS device names |
-| FTMS server settings | `ServiceStateHolder` (from SharedPreferences) | `HUDService` → server start/stop |
-| System workouts (warmup/cooldown templates) | `WorkoutRepository` (DB, `systemWorkoutType` column) | Engine stitching, editor sentinels |
-| Phase boundaries (warmup/main/cooldown) | `WorkoutExecutionEngine` (phase step counts) | Chart, panel, coefficient reset |
+| FTMS server settings | `ServiceStateHolder` (SharedPrefs) | `HUDService` → server start/stop |
+| System workouts | `WorkoutRepository` (DB, `systemWorkoutType`) | Engine stitching, editor sentinels |
+| Phase boundaries | `WorkoutExecutionEngine` (phase step counts) | Chart, panel, coefficient reset |
 
-### ⚠️ SPEED SETTING - ABSOLUTE RULE ⚠️
-**NEVER call `glassOsClient.setSpeed()` or `glassOsClient.setIncline()` directly!**
+### ⚠️ SPEED - ABSOLUTE RULES ⚠️
 
-ALL speed/incline commands MUST go through:
-```kotlin
-TelemetryManager.setTreadmillSpeed(adjustedKph)  // Converts adjusted → treadmill speed
-TelemetryManager.setTreadmillIncline(percent)
+**SETTING speed:** NEVER call `glassOsClient.setSpeed()` directly! ALL speed commands go through `TelemetryManager.setTreadmillSpeed(adjustedKph)` which divides by `paceCoefficient` to get raw treadmill speed.
+
+**READING speed:** NEVER use raw treadmill speed for internal logic! Always convert: `adjustedSpeed = state.currentSpeedKph * state.paceCoefficient`. All internal components work with adjusted speed.
+
+**Flow OUT (setting):**
+```
+Engine event → WorkoutEngineManager → listener.onSetTreadmillSpeed(adjustedKph)
+→ TelemetryManager.setTreadmillSpeed() ← COEFFICIENT APPLIED → glassOsClient.setSpeed(rawKph)
 ```
 
-**Why this matters:**
-- We work internally with "adjusted speed" (perceived effort after coefficient)
-- The treadmill needs "raw speed" (actual belt speed)
-- `TelemetryManager.setTreadmillSpeed()` is the ONE AND ONLY place that converts:
-  ```kotlin
-  val treadmillKph = adjustedKph / state.paceCoefficient
-  glassOsClient.setSpeed(treadmillKph)
-  ```
-
-**How speed flows:**
+**Flow IN (reading):**
 ```
-WorkoutExecutionEngine (emits StepStarted/SpeedAdjusted events)
-    ↓
-WorkoutEngineManager.handleWorkoutEvent()
-    ↓
-listener.onSetTreadmillSpeed(adjustedKph)  [HUDService]
-    ↓
-TelemetryManager.setTreadmillSpeed(adjustedKph)  ← COEFFICIENT APPLIED HERE
-    ↓
-glassOsClient.setSpeed(treadmillKph)
+TelemetryManager receives rawSpeed → state.currentSpeedKph = rawSpeed
+→ HUDService: adjustedSpeed = raw * paceCoefficient → WorkoutEngineManager/Engine
 ```
 
-**The ONLY place raw treadmill speed is shown:** HUD pace box lower text field `(X.X kph)`
+**Raw speed used ONLY for:** HUD pace box lower text `(X.X kph)` display, and `TelemetryManager.setTreadmillSpeed()` conversion.
 
-### ⚠️ SPEED READING - ABSOLUTE RULE ⚠️
-**NEVER use raw treadmill speed for any internal logic!**
-
-ALL internal components (WorkoutExecutionEngine, HR adjustment, etc.) work with **adjusted speed**:
-```kotlin
-val adjustedSpeedKph = state.currentSpeedKph * state.paceCoefficient
-```
-
-**Why this matters:**
-- Raw treadmill speed doesn't reflect actual running effort
-- Pace coefficient corrects for treadmill calibration errors
-- HR adjustments, step targets, distance calculations - ALL must use adjusted speed
-
-**How speed flows INTO the system:**
-```
-TelemetryManager receives raw speed from treadmill
-    ↓
-state.currentSpeedKph = rawSpeed  (stored as raw)
-    ↓
-HUDService.onTelemetryUpdated()
-    ↓
-adjustedSpeed = state.currentSpeedKph * state.paceCoefficient  ← CONVERT HERE
-    ↓
-WorkoutEngineManager.onTelemetryUpdate(adjustedSpeed, ...)
-    ↓
-WorkoutExecutionEngine uses ADJUSTED speed for all decisions
-```
-
-**The ONLY places raw treadmill speed is used:**
-1. HUD pace box lower text field `(X.X kph)` - for display only
-2. `TelemetryManager.setTreadmillSpeed()` - converts adjusted → raw for sending to treadmill
-
-### ⚠️ INCLINE SETTING - ABSOLUTE RULE ⚠️
+### ⚠️ INCLINE - ABSOLUTE RULE ⚠️
 **ALL incline throughout the app uses EFFECTIVE incline (outdoor equivalent)!**
 
-- Effective incline = treadmill incline - adjustment (default adjustment = 1.0)
-- 1% treadmill ≈ flat outdoor running (no air resistance on treadmill)
-- When workout prescribes 2% incline, treadmill sets to 3% (with 1% adjustment)
-- When user selects 5% in popup, treadmill sets to 6%
+- Effective = treadmill incline - adjustment (default adjustment = 1.0)
+- 1% treadmill ≈ flat outdoor (no air resistance)
 
-**How incline flows OUT (setting):**
-```
-Workout step.inclineTargetPercent (effective incline)
-    ↓
-WorkoutEngineManager.applyStepTargets(pace, effectiveIncline)
-    ↓
-listener.onSetTreadmillIncline(effectiveIncline)  [HUDService]
-    ↓
-TelemetryManager.setTreadmillIncline(effectivePercent)  ← ADJUSTMENT ADDED HERE
-    ↓
-treadmillPercent = effectivePercent + state.inclineAdjustment
-glassOsClient.setIncline(treadmillPercent)
-```
+**Setting:** `TelemetryManager.setTreadmillIncline(effectivePercent)` adds `state.inclineAdjustment` before sending to GlassOS.
+**Reading:** `TelemetryManager.onInclineUpdate(treadmillPercent)` subtracts `state.inclineAdjustment` before storing in `state.currentInclinePercent`.
 
-**How incline flows IN (reading):**
-```
-TelemetryManager.onInclineUpdate(treadmillPercent)
-    ↓
-effectivePercent = treadmillPercent - state.inclineAdjustment  ← ADJUSTMENT SUBTRACTED HERE
-    ↓
-state.currentInclinePercent = effectivePercent  (stored as effective)
-    ↓
-All components use state.currentInclinePercent (already effective)
-```
-
-**Key points:**
-- `state.currentInclinePercent` is ALWAYS effective incline
-- `state.inclineValues` (popup menu) shows effective incline
-- `state.minInclinePercent/maxInclinePercent` are effective incline
-- Workout editor reads effective incline range from SharedPreferences
-- StrydManager power calculation uses `state.currentInclinePercent` (effective)
+All stored/displayed values (`state.currentInclinePercent`, popup menu, min/max, editor, StrydManager`) are effective incline.
 
 ### ⚠️ FIT EXPORT - CRITICAL RULES ⚠️
-**ALWAYS use the RunSnapshot pattern for FIT exports!**
+**ALWAYS use the RunSnapshot pattern!** Export is async — snapshot captures data immutably before cleanup.
 
-All exports must go through `createRunSnapshot()` → `exportWorkoutToFit(snapshot)`:
 ```kotlin
-// CORRECT - capture snapshot BEFORE any cleanup
+// CORRECT
 val snapshot = createRunSnapshot(workoutName)
-workoutEngineManager.resetWorkout()  // Safe now - data captured
-if (snapshot != null) {
-    exportWorkoutToFit(snapshot)
-}
+workoutEngineManager.resetWorkout()  // Safe - data captured
+if (snapshot != null) exportWorkoutToFit(snapshot)
 
-// WRONG - race condition! executionSteps may be cleared before export runs
-exportWorkoutToFit(workoutName)  // Async export
-workoutEngineManager.resetWorkout()  // Clears executionSteps immediately!
+// WRONG - race condition!
+exportWorkoutToFit(workoutName)      // Async
+workoutEngineManager.resetWorkout()  // Clears data before export runs!
 ```
 
-**Why snapshots matter:**
-- `exportWorkoutToFit()` launches an async coroutine
-- If cleanup happens before export runs, executionSteps are lost
-- Snapshot captures ALL data (workoutData, pauseEvents, executionSteps) immutably
-- Export from snapshot is safe regardless of cleanup timing
-
-**Data classes:**
-```kotlin
-data class RunSnapshot(
-    val workoutName: String,
-    val startTimeMs: Long,
-    val workoutData: List<WorkoutDataPoint>,
-    val pauseEvents: List<PauseEvent>,
-    val executionSteps: List<ExecutionStep>?,  // null for free runs
-    val userSettings: UserExportSettings
-)
-
-data class UserExportSettings(
-    val hrRest: Int,           // Resting HR
-    val lthrBpm: Int,          // Lactate Threshold HR
-    val ftpWatts: Int,         // Functional Threshold Power
-    val thresholdPaceKph: Double, // Threshold pace
-    val isMale: Boolean,       // For calorie calculation
-    // FIT device identification (Settings > FIT Export tab)
-    val fitManufacturer: Int,  // 1 = Garmin
-    val fitProductId: Int,     // e.g., 4565 = Forerunner 970
-    val fitDeviceSerial: Long, // Device serial number
-    val fitSoftwareVersion: Int // e.g., 1552 = version 15.52
-)
-```
-
-**Duplicate export prevention:**
-- `workoutDataExported` flag prevents duplicate exports per session
-- Set to true BEFORE async export starts
-- Reset to false only in `resetRunState()` when starting fresh run
+`workoutDataExported` flag prevents duplicates — set BEFORE async export, reset only in `resetRunState()`.
 
 ### ⚠️ RUN LIFECYCLE - CRITICAL INVARIANT ⚠️
 **No run is ever discarded without saving to FIT!**
 
-`resetRunState()` MUST NEVER be called when unsaved data exists:
-```kotlin
-// WRONG - data loss!
-if (dataExists) {
-    resetRunState()  // Data gone!
-}
-
-// CORRECT - use saveAndClearRun() which exports first
-saveAndClearRun(workoutName)  // Creates snapshot, exports, then resets
-```
-
-**Key methods:**
 | Method | Purpose | When to Use |
 |--------|---------|-------------|
 | `resetRunState()` | Internal reset (no export) | Only after data is exported/captured |
@@ -413,234 +114,59 @@ saveAndClearRun(workoutName)  // Creates snapshot, exports, then resets
 | `createRunSnapshot(name)` | Capture data immutably | Before any cleanup |
 | `exportWorkoutToFit(snapshot)` | Export from snapshot | After snapshot captured |
 
-**Run lifecycle flow:**
-```
-startNewRun()
-    ├─ Has unsaved data? → createRunSnapshot() → exportWorkoutToFit()
-    └─ Clear and start fresh recording
-
-handleTreadmillStopped() [double-stop]
-    ├─ createRunSnapshot() BEFORE handlePhysicalStop()
-    ├─ workoutEngineManager.handlePhysicalStop()
-    ├─ exportWorkoutToFit(snapshot)
-    └─ resetRunState()
-```
-
-### GlassOS Reconnection Handling
-**Run data is preserved in memory during reconnection!**
-
-When GlassOS disconnects and reconnects:
-1. `TelemetryManager.hasEverConnected` tracks initial vs reconnection
-2. `ServiceStateHolder.isReconnecting` flag set on reconnection
-3. Post-reconnection IDLE state from GlassOS is **ignored**
-4. Run data stays in memory (WorkoutRecorder, WorkoutExecutionEngine)
-5. User can restart treadmill to continue the run
-
-**Flow:**
-```
-Connection lost → reconnect loop
-    ↓
-onConnectionEstablished(isReconnection=true)
-    ↓
-state.isReconnecting.set(true)
-Skip checkForPersistedRun()  ← Data is in memory, not on disk
-    ↓
-GlassOS sends IDLE (its startup state)
-    ↓
-onWorkoutStateChanged(IDLE)
-    ↓
-isReconnecting? → Ignore IDLE, clear flag, return
-    ↓
-Run state preserved, user restarts treadmill to continue
-```
-
-**Why this matters:**
-- GlassOS always sends IDLE on startup
-- Without this handling, reconnection would end the run
-- Persisted run check is skipped (data is in memory, not disk)
+### GlassOS Reconnection
+Run data preserved in memory during reconnection. Key: `TelemetryManager.hasEverConnected` distinguishes initial vs reconnection. On reconnection, `state.isReconnecting` is set → post-reconnection IDLE from GlassOS is **ignored** → run state preserved. Persisted run check is skipped (data is in memory).
 
 ---
 
 ## Key Utilities - USE THESE, DON'T REIMPLEMENT!
 
 ### PaceConverter (`util/PaceConverter.kt`)
-
-| Method | Purpose |
-|--------|---------|
-| `speedToPaceSeconds(kph)` | Convert speed to pace seconds |
-| `paceSecondsToSpeed(seconds)` | Convert pace seconds to speed |
-| `formatPace(seconds)` | Format as "M:SS" |
-| `formatPaceFromSpeed(kph)` | Speed → formatted pace "M:SS" |
-| `formatPaceFromSpeedWithSuffix(kph)` | Speed → "M:SS /km" |
-| `formatSpeed(kph)` | Format as "X.X km/h" |
-| `formatDuration(seconds)` | Format as "H:MM:SS" or "MM:SS" |
-| `formatDistance(meters)` | Format as "X.XX km" |
-| `calculateDistanceMeters(seconds, kph)` | Time + pace → distance |
-| `calculateDurationSeconds(meters, kph)` | Distance + pace → time |
+Speed↔pace: `speedToPaceSeconds(kph)`, `paceSecondsToSpeed(seconds)`
+Formatting: `formatPace(seconds)` → "M:SS", `formatPaceFromSpeed(kph)`, `formatPaceFromSpeedWithSuffix(kph)` → "M:SS /km", `formatSpeed(kph)` → "X.X km/h", `formatDuration(seconds)` → "H:MM:SS", `formatDistance(meters)` → "X.XX km"
+Cross-calc: `calculateDistanceMeters(seconds, kph)`, `calculateDurationSeconds(meters, kph)`
 
 ### HeartRateZones (`util/HeartRateZones.kt`)
-
-| Method | Purpose |
-|--------|---------|
-| `getZone(bpm, lthrBpm, z1Pct, z2Pct, z3Pct, z4Pct)` | Get HR zone 1-5 from BPM and LTHR |
-| `getZoneColorResId(zone)` | Get color resource for HR zone |
-| `getStepTypeColorResId(type)` | Get color resource for step type (WARMUP, RUN, etc.) |
-| `percentToBpm(percent, lthrBpm)` | Convert % of LTHR to BPM |
-| `bpmToPercent(bpm, lthrBpm)` | Convert BPM to % of LTHR |
+`getZone(bpm, lthrBpm, z1Pct, z2Pct, z3Pct, z4Pct)` → zone 1-5
+`getZoneColorResId(zone)`, `getStepTypeColorResId(type)` → color resources
+`percentToBpm(percent, lthrBpm)`, `bpmToPercent(bpm, lthrBpm)` → conversions
 
 ### PowerZones (`util/PowerZones.kt`)
-
-| Method | Purpose |
-|--------|---------|
-| `getZone(watts, ftpWatts, z1Pct, z2Pct, z3Pct, z4Pct)` | Get Power zone 1-5 from watts and FTP |
-| `getZoneColorResId(zone)` | Get color resource (same as HR zones) |
-| `percentToWatts(percent, ftpWatts)` | Convert % of FTP to watts |
-| `wattsToPercent(watts, ftpWatts)` | Convert watts to % of FTP |
+Same pattern as HeartRateZones but with `ftpWatts`: `getZone()`, `getZoneColorResId()`, `percentToWatts()`, `wattsToPercent()`
 
 ### FileExportHelper (`util/FileExportHelper.kt`)
-
-Centralized helper for exporting files to Downloads/tHUD folder using MediaStore API.
-
-| Method | Purpose |
-|--------|---------|
-| `getRelativePath(subfolder)` | Get MediaStore relative path |
-| `getDisplayPath(filename, subfolder)` | Get user-friendly display path |
-| `saveToDownloads(context, sourceFile, filename, mimeType, subfolder)` | Save file to MediaStore Downloads |
-| `getTempFile(context, filename)` | Get temp file path for tools that need file-first writing |
-
-**Subfolders:** `Subfolder.ROOT` (tHUD/), `Subfolder.SCREENSHOTS` (tHUD/screenshots/)
-
-**Used by:** FitFileExporter, ScreenshotManager
+Exports to Downloads/tHUD via MediaStore. `saveToDownloads(context, sourceFile, filename, mimeType, subfolder)`, `getTempFile(context, filename)`. Subfolders: `ROOT` (tHUD/), `SCREENSHOTS` (tHUD/screenshots/).
 
 ### SavedBluetoothDevices (`service/SavedBluetoothDevices.kt`)
-
-Unified storage for all Bluetooth sensor devices (HR sensors, foot pods).
-
-| Method | Purpose |
-|--------|---------|
-| `getAll(prefs)` | Get all saved devices |
-| `getByType(prefs, type)` | Get devices of specific type (HR_SENSOR or FOOT_POD) |
-| `save(prefs, device)` | Save/update device (most recently used first) |
-| `remove(prefs, mac)` | Remove device by MAC address |
-| `isSaved(prefs, mac)` | Check if MAC already saved |
-| `getSavedMacs(prefs)` | Get all saved MAC addresses as Set |
-
-**Types:** `SensorDeviceType.HR_SENSOR`, `SensorDeviceType.FOOT_POD`
+Unified BT sensor storage. `getAll/getByType/save/remove/isSaved/getSavedMacs`. Types: `HR_SENSOR`, `FOOT_POD`.
 
 ### SettingsManager (`service/SettingsManager.kt`)
+All SharedPreferences keys as constants. Key groups: `pace_coefficient` (calibration), `hr_zone*_max` (HR zones), `threshold_pace_kph`, `default_incline`, treadmill min/max ranges (from GlassOS), `fit_*` (FIT Export device ID), `ftms_*` (FTMS server settings).
 
-All SharedPreferences keys defined as constants. Key settings:
-- `pace_coefficient` - **CALIBRATION ONLY** (see below)
-- `hr_zone1_max` through `hr_zone4_max` - HR zone boundaries
-- `threshold_pace_kph` - Lactate threshold pace
-- `default_incline` - Default incline for new steps
-- `treadmill_min/max_speed_kph`, `treadmill_min/max_incline` - From GlassOS
-- `fit_manufacturer`, `fit_product_id`, `fit_device_serial`, `fit_software_version` - FIT Export device ID
-- `ftms_ble_read_enabled`, `ftms_ble_control_enabled` - BLE FTMS server settings
-- `ftms_dircon_read_enabled`, `ftms_dircon_control_enabled` - DirCon server settings
-- `ftms_ble_device_name`, `ftms_dircon_device_name` - Custom device names for FTMS servers
-
-### ⚠️ Percentage-Based HR/Power Targets ⚠️
-
-**All HR and Power targets are stored as percentages of threshold values:**
-- HR targets: % of LTHR (Lactate Threshold Heart Rate)
-- Power targets: % of FTP (Functional Threshold Power)
-
-**Why percentages?** If a user's LTHR or FTP changes, workouts don't need updating.
-
-**Storage (WorkoutStep/ExecutionStep):**
-```kotlin
-hrTargetMinPercent: Int?      // e.g., 80 = 80% of LTHR
-hrTargetMaxPercent: Int?
-powerTargetMinPercent: Int?   // e.g., 90 = 90% of FTP
-powerTargetMaxPercent: Int?
-autoAdjustMode: AutoAdjustMode  // NONE, HR, or POWER
-```
-
-**Runtime conversion (use helper methods):**
-```kotlin
-// Convert stored % to actual values for display/logic
-val hrMinBpm = HeartRateZones.percentToBpm(step.hrTargetMinPercent, state.userLthrBpm)
-val powerMinWatts = PowerZones.percentToWatts(step.powerTargetMinPercent, state.userFtpWatts)
-
-// ExecutionStep also has convenience methods:
-val hrMin = step.getHrTargetMinBpm(lthrBpm)
-val powerMin = step.getPowerTargetMinWatts(ftpWatts)
-```
-
-**Threshold values in ServiceStateHolder:**
-- `userLthrBpm` - Lactate Threshold HR (default 170)
-- `userFtpWatts` - Functional Threshold Power (default 250)
+### ⚠️ HR/Power Targets: Percentage-Based ⚠️
+All HR/Power targets stored as **% of threshold** (LTHR/FTP) so workouts survive threshold changes.
+Fields: `hrTargetMinPercent/hrTargetMaxPercent`, `powerTargetMinPercent/powerTargetMaxPercent`, `autoAdjustMode` (NONE/HR/POWER).
+Convert at runtime: `HeartRateZones.percentToBpm(step.hrTargetMinPercent, lthrBpm)`, `PowerZones.percentToWatts(...)`.
+ExecutionStep convenience: `step.getHrTargetMinBpm(lthrBpm)`, `step.getPowerTargetMinWatts(ftpWatts)`.
 
 ### ⚠️ paceCoefficient vs Adjustment Coefficients ⚠️
 
-**CRITICAL DISTINCTION - Do not confuse these:**
-
 | Coefficient | Location | Purpose | Changed By |
 |-------------|----------|---------|------------|
-| `paceCoefficient` | `ServiceStateHolder` | **CALIBRATION** - converts treadmill speed to actual running speed (foot pod) | User only, via Settings dialog |
-| `speedAdjustmentCoefficient` | `WorkoutExecutionEngine` | **DYNAMIC** - tracks effort changes from HR auto-adjust or manual buttons | Code only, from telemetry |
-| `inclineAdjustmentCoefficient` | `WorkoutExecutionEngine` | **DYNAMIC** - tracks incline changes from HR auto-adjust or manual buttons | Code only, from telemetry |
+| `paceCoefficient` | `ServiceStateHolder` | **CALIBRATION** — treadmill→actual speed (foot pod) | User only, Settings |
+| `speedAdjustmentCoefficient` | `WorkoutExecutionEngine` | **DYNAMIC** — HR auto-adjust / manual buttons | Code, from telemetry |
+| `inclineAdjustmentCoefficient` | `WorkoutExecutionEngine` | **DYNAMIC** — incline auto-adjust / manual buttons | Code, from telemetry |
 
-**paceCoefficient is NEVER changed by code!** It's a fixed calibration value.
-
-**Adjustment coefficients** are calculated automatically:
-```kotlin
-// In WorkoutExecutionEngine.onTelemetryUpdate():
-speedAdjustmentCoefficient = actualSpeedKph / step.paceTargetKph
-```
-
-This automatically captures both HR auto-adjustments AND manual button presses.
-
-### WorkoutExecutionEngine Owns Adjustment State
-
-**AdjustmentController is STATELESS for adjusted values.** It only:
-- Tracks timing (settling time, cooldown between adjustments)
-- Provides decision logic (should we adjust? by how much?)
-- Returns adjustment results
-
-**WorkoutExecutionEngine owns:**
-- `speedAdjustmentCoefficient` and `inclineAdjustmentCoefficient`
-- Calculates coefficients from telemetry
-- Provides `getEffectiveSpeed(step)` = `step.paceTargetKph * coefficient`
-- Chart uses these for showing adjusted future step targets
+**paceCoefficient is NEVER changed by code!** AdjustmentController is stateless for values — WorkoutExecutionEngine owns coefficients, calculates from telemetry, provides `getEffectiveSpeed(step)`.
 
 ### ⚠️ System Workouts & Phase Stitching ⚠️
+System workouts identified by `systemWorkoutType` column (`"WARMUP"`/`"COOLDOWN"`), NOT name. Permanent, cannot be deleted/duplicated. Created by `WorkoutRepository.ensureSystemWorkoutsExist()` at startup. Regular workouts opt in via `useDefaultWarmup`/`useDefaultCooldown`.
 
-**System workouts** are special workouts identified by `systemWorkoutType` column (`"WARMUP"` or `"COOLDOWN"`). They serve as reusable templates attached to regular workouts.
+**Stitching:** `WorkoutEngineManager.loadWorkoutStitched()` → loads main + warmup/cooldown → `WorkoutExecutionEngine.loadStitchedWorkout()` → flattens each phase → concatenates → stores phase counts.
 
-**Key rules:**
-- System workouts are **permanent** — cannot be deleted or duplicated
-- Identified by `systemWorkoutType` column, **NOT** by name matching
-- Created idempotently by `WorkoutRepository.ensureSystemWorkoutsExist()` at startup
-- Regular workouts opt in via `useDefaultWarmup` / `useDefaultCooldown` boolean fields
+**Coefficient reset** at phase boundaries (warmup→main, main→cooldown) prevents cross-phase contamination.
 
-**Phase stitching at execution time:**
-```
-WorkoutEngineManager.loadWorkoutStitched()
-    ↓
-Loads main workout + system warmup/cooldown from DB
-    ↓
-WorkoutExecutionEngine.loadStitchedWorkout(main, warmup?, cooldown?)
-    ↓
-Flattens each phase independently → concatenates → re-indexes flatIndex
-    ↓
-Phase counts stored: warmupStepCount, mainStepCount, cooldownStepCount
-```
-
-**Coefficient reset at phase boundaries:** When `startStep()` crosses warmup→main or main→cooldown, `speedAdjustmentCoefficient` and `inclineAdjustmentCoefficient` reset to 1.0. This prevents warmup HR adjustments from corrupting the main workout.
-
-**Editor shows sentinel rows** (warmup header + cooldown footer) with checkbox + summary text. System workouts are always visible in the workout list regardless of search filter. Editor preview chart does NOT include warmup/cooldown steps — only the live chart shows the full stitched outline.
-
-**Quick reference:**
-
-| Method | Purpose |
-|--------|---------|
-| `WorkoutRepository.ensureSystemWorkoutsExist()` | Idempotent system workout creation |
-| `WorkoutRepository.getSystemWarmup/Cooldown()` | Returns `Pair<Workout, List<WorkoutStep>>?` |
-| `WorkoutExecutionEngine.loadStitchedWorkout()` | Load with phase boundaries |
-| `WorkoutExecutionEngine.isWarmupStep/isMainStep/isCooldownStep()` | Phase query helpers |
-| `WorkoutExecutionEngine.getPhaseCounts()` | `Triple<Int, Int, Int>` for chart/panel |
+**Editor:** Sentinel rows with checkbox + summary. System workouts always visible regardless of search filter. Preview chart shows main only; live chart shows full stitched outline.
 
 ---
 
@@ -648,11 +174,11 @@ Phase counts stored: warmupStepCount, mainStepCount, cooldownStepCount
 
 | Component | Location | Use For |
 |-----------|----------|---------|
-| **WorkoutChart** | `ui/components/WorkoutChart.kt` | Live overlay AND editor preview. `setPlannedSegments()` for structure, `setData()` for live, `setSteps()` for preview |
-| **TouchSpinner** | `ui/components/TouchSpinner.kt` | Touch-friendly [-] value [+] numeric input |
-| **DualKnobZoneSlider** | `ui/components/DualKnobZoneSlider.kt` | 2-handle slider for HR/Power min/max range |
-| **ZoneSlider** | `ui/components/ZoneSlider.kt` | Multi-handle slider for zone boundary settings |
-| **OneKnobSlider** | `ui/components/OneKnobSlider.kt` | Single-handle slider for single value selection |
+| **WorkoutChart** | `ui/components/WorkoutChart.kt` | Live overlay AND editor preview |
+| **TouchSpinner** | `ui/components/TouchSpinner.kt` | Touch-friendly [-] value [+] input |
+| **DualKnobZoneSlider** | `ui/components/DualKnobZoneSlider.kt` | 2-handle HR/Power min/max |
+| **ZoneSlider** | `ui/components/ZoneSlider.kt` | Multi-handle zone boundaries |
+| **OneKnobSlider** | `ui/components/OneKnobSlider.kt` | Single-handle slider |
 
 ---
 
@@ -680,7 +206,7 @@ HUDService (Orchestrator)
 Data Layer
 ├── TreadmillHudDatabase    → Room DB (version 7)
 ├── WorkoutRepository       → Clean CRUD API (use this, not DAO directly)
-├── Workout                 → Entity: workout metadata + systemWorkoutType, useDefaultWarmup/Cooldown
+├── Workout                 → Entity: metadata + systemWorkoutType, useDefaultWarmup/Cooldown
 └── WorkoutStep             → Entity: step with HR/Power targets (% of threshold)
 
 Domain Layer
@@ -777,88 +303,6 @@ app/src/main/java/io/github/avikulin/thud/
 
 ---
 
-## Key Patterns
-
-### Speed ↔ Pace Conversion
-```kotlin
-// Always use PaceConverter
-val paceSeconds = PaceConverter.speedToPaceSeconds(speedKph)
-val speedKph = PaceConverter.paceSecondsToSpeed(paceSeconds)
-val formatted = PaceConverter.formatPaceFromSpeed(speedKph)  // "5:30"
-```
-
-### Duration/Distance Cross-Calculation
-```kotlin
-// Time-based step: calculate estimated distance
-val meters = PaceConverter.calculateDistanceMeters(durationSeconds, paceKph)
-
-// Distance-based step: calculate estimated time
-val seconds = PaceConverter.calculateDurationSeconds(distanceMeters, paceKph)
-```
-
-### HR/Power Zone Colors
-```kotlin
-// HR zones (use LTHR and percentage boundaries)
-val hrZone = HeartRateZones.getZone(bpm, lthrBpm, z1Pct, z2Pct, z3Pct, z4Pct)
-val colorResId = HeartRateZones.getZoneColorResId(hrZone)
-
-// Power zones (use FTP and percentage boundaries)
-val powerZone = PowerZones.getZone(watts, ftpWatts, z1Pct, z2Pct, z3Pct, z4Pct)
-val colorResId = PowerZones.getZoneColorResId(powerZone)  // Same colors as HR
-```
-
-### Percentage ↔ Absolute Conversion
-```kotlin
-// HR: percentage of LTHR
-val bpm = HeartRateZones.percentToBpm(85, state.userLthrBpm)  // 85% of LTHR
-val percent = HeartRateZones.bpmToPercent(145, state.userLthrBpm)
-
-// Power: percentage of FTP
-val watts = PowerZones.percentToWatts(90, state.userFtpWatts)  // 90% of FTP
-val percent = PowerZones.wattsToPercent(225, state.userFtpWatts)
-```
-
-### Step Type Colors
-```kotlin
-val colorResId = HeartRateZones.getStepTypeColorResId(stepType)
-val color = ContextCompat.getColor(context, colorResId)
-```
-
-### Thread-Safe Recording
-WorkoutRecorder uses `Collections.synchronizedList()` for thread-safe data collection. Access via `getWorkoutData()` which returns a synchronized copy.
-
----
-
-## Quick Reference
-
-| Task | Class | Method |
-|------|-------|--------|
-| Show HUD | HUDService | `showHud()` |
-| Start workout | WorkoutEngineManager | `startWorkout()` |
-| Load workout | WorkoutEngineManager | `loadWorkout(id)` |
-| Save workout | WorkoutRepository | `saveWorkout(workout, steps)` |
-| Ensure system workouts | WorkoutRepository | `ensureSystemWorkoutsExist()` — call at startup |
-| Get system warmup/cooldown | WorkoutRepository | `getSystemWarmup()` / `getSystemCooldown()` |
-| Set treadmill speed | TelemetryManager | `setTreadmillSpeed(adjustedKph)` ⚠️ ONLY WAY |
-| Set treadmill incline | TelemetryManager | `setTreadmillIncline(percent)` ⚠️ ONLY WAY |
-| Start new run | HUDService | `startNewRun()` - exports existing data first |
-| Create export snapshot | HUDService | `createRunSnapshot(name)` ⚠️ BEFORE cleanup |
-| Export to FIT | HUDService | `exportWorkoutToFit(snapshot)` |
-| Safe clear with export | HUDService | `saveAndClearRun(name)` |
-| Convert speed to pace | PaceConverter | `speedToPaceSeconds(kph)` |
-| Format pace from speed | PaceConverter | `formatPaceFromSpeed(kph)` |
-| Calculate distance | PaceConverter | `calculateDistanceMeters(seconds, kph)` |
-| Calculate duration | PaceConverter | `calculateDurationSeconds(meters, kph)` |
-| Get HR zone color | HeartRateZones | `getZoneColorResId(zone)` |
-| Get step type color | HeartRateZones | `getStepTypeColorResId(type)` |
-| Convert HR % to BPM | HeartRateZones | `percentToBpm(percent, lthrBpm)` |
-| Convert BPM to HR % | HeartRateZones | `bpmToPercent(bpm, lthrBpm)` |
-| Get Power zone | PowerZones | `getZone(watts, ftpWatts, z1, z2, z3, z4)` |
-| Convert Power % to watts | PowerZones | `percentToWatts(percent, ftpWatts)` |
-| Convert watts to Power % | PowerZones | `wattsToPercent(watts, ftpWatts)` |
-
----
-
 ## Build
 
 ```bash
@@ -869,132 +313,32 @@ adb logcat -s HUDService TelemetryManager WorkoutExecutionEngine
 
 ---
 
-## Garmin Training Status and FIT Imports
+## Garmin FIT Import Notes
 
-### ⚠️ CRITICAL: Watch Sync Required for Acute Load ⚠️
+**Watch sync required:** Garmin Connect does NOT calculate Training Status — the watch does. After uploading FIT: sync watch (downloads file) → watch processes → sync again (uploads metrics). Without this, no acute/chronic load contribution.
 
-**Garmin Connect does NOT calculate Training Status metrics!** The watch does.
+**Device serial MUST differ from user's watch** — matching serial causes watch to skip the file (dedup). Use any different serial.
 
-When uploading FIT files to Garmin Connect (manually or via auto-sync):
-1. Garmin Connect stores the file
-2. **You MUST sync your Garmin watch** - the file gets sent TO the watch
-3. Watch processes it using Firstbeat algorithms (Training Effect, Load, etc.)
-4. **Sync again** - calculated metrics go back to Garmin Connect
+### FIT Manufacturer IDs
 
-**Without syncing your watch, uploaded FIT files will NOT contribute to:**
-- Acute Load / Chronic Load
-- Training Status
-- Intensity Minutes
-- Recovery Time
+| ID | Name | Garmin Connect | Stryd PowerCenter | Strava |
+|----|------|----------------|-------------------|--------|
+| 1 | Garmin | ✅ | ❌ Rejected | ✅ Run |
+| 89 | Tacx | ✅ | ✅ | ⚠️ Virtual Ride (locked) |
 
-**Why this matters for tHUD:**
-- tHUD exports FIT files to Downloads/tHUD folder
-- Files can be uploaded manually to Garmin Connect
-- After upload, user MUST sync their Garmin watch to trigger load calculation
+**Do NOT use manufacturer=95 (Stryd)** — rejected everywhere. Keep `product=4565` (Forerunner 970) for device icon.
 
-### ⚠️ CRITICAL: Device Serial Must Differ from User's Watch ⚠️
+### FTMS Settings
+BLE/DirCon Broadcast + Control toggles (all default OFF). Control requires Broadcast. Custom device names. Servers restart on save.
 
-**The FIT file's device serial number MUST be different from the user's primary Garmin watch!**
+### FIT Time in Zone (mesg 216)
+**Garmin uses 7 zones (0-6)**, not 5. Zone boundaries: convert % to BPM first, THEN subtract 1 (not the reverse).
 
-**Why this matters:**
-- When the watch syncs with Garmin Connect, it downloads new activities to process
-- If the FIT file's serial matches the watch's own serial, the watch skips it
-- The watch thinks: "This is my file, I already have it" → no sync → no load calculation
-
-**Correct configuration:**
-- Use a **different serial number** than the user's main training device
-- It can be any valid serial (e.g., `1234567890`, user's old watch serial, etc.)
-- The key is that it must NOT match the watch they use for syncing
-
-**Full sync process for acute/chronic load:**
-1. Upload FIT file to Garmin Connect (manual or auto-sync)
-2. **First sync:** Sync your Garmin watch → downloads the activity from Garmin Connect
-3. Watch processes the activity (Training Effect, Load, etc.)
-4. **Second sync:** Sync your watch again → uploads calculated metrics to Garmin Connect
-5. Now acute/chronic load reflects the treadmill run
-
-### FTMS Settings Tab
-
-Settings → FTMS tab controls external app connectivity:
-
-| Setting | Purpose | Default |
-|---------|---------|---------|
-| BLE Broadcast | Broadcast treadmill data over Bluetooth (FTMS protocol) | OFF |
-| BLE Control | Allow external apps to change speed/incline via BLE | OFF |
-| DirCon Broadcast | Broadcast treadmill data over WiFi (Wahoo DirectConnect) | OFF |
-| DirCon Control | Allow external apps to change speed/incline via WiFi | OFF |
-| BLE Device Name | Custom name shown in BLE scans | treadmill name + " BLE" |
-| DirCon Device Name | Custom name for mDNS service | treadmill name + " DirCon" |
-
-**Control requires Broadcast:** Control checkbox is disabled when Broadcast is off.
-
-**Live updates:** Servers restart immediately when settings are saved.
-
-### FIT File Manufacturer IDs
-
-**Key finding:** The `manufacturer` field affects which platforms accept the file, but Garmin Connect uses `product` ID for device display.
-
-| Manufacturer ID | Name | Stryd PowerCenter | Garmin Connect | Strava |
-|-----------------|------|-------------------|----------------|--------|
-| 1 | Garmin | ❌ Rejected | ✅ Works (sync watch) | ✅ Run |
-| 89 | Tacx | ✅ Works | ✅ Works (sync watch) | ⚠️ Virtual Ride (can't change to Run) |
-
-**Do NOT use manufacturer=95 (Stryd)** - rejected by all platforms.
-
-**Recommended approach:**
-- Use `manufacturer=1` (Garmin) if you sync to Strava and want runs categorized correctly
-- Use `manufacturer=89` (Tacx) if you need Stryd PowerCenter compatibility (but Strava will show as Virtual Ride)
-- Keep `product=4565` (Forerunner 970) - Garmin uses this for device icon/name
-- Use a serial number **different from user's main Garmin watch** (critical for acute/chronic load sync!)
-
-**Relevant manufacturer IDs (from FIT SDK Profile):**
-```
-1   = Garmin   ← Use for Strava compatibility
-89  = Tacx     ← Use for Stryd PowerCenter compatibility
-95  = Stryd    ← Do NOT use (rejected everywhere)
-```
-
-**Tacx (89) trade-offs:**
-- ✅ Tacx is a "known fitness equipment" manufacturer
-- ✅ Both Stryd and Garmin recognize it as a valid data source
-- ❌ Strava treats Tacx files as "Virtual Ride" with no option to change to Run
-
-### FIT Time in Zone Message (mesg 216)
-
-**Garmin uses a 7-zone model (indices 0-6), not the typical 5-zone model:**
-- Zone 0: warmup/rest (HR < ~60% LTHR)
-- Zone 1: easy (~60-80% LTHR)
-- Zone 2: aerobic (~80-88% LTHR)
-- Zone 3: tempo (~88-95% LTHR)
-- Zone 4: threshold (~95-102% LTHR)
-- Zone 5: VO2max (~102-110% LTHR)
-- Zone 6: anaerobic (above max HR)
-
-**Zone boundary calculation (CRITICAL):**
 ```kotlin
-// Zone N high boundary = Zone N+1 START converted to BPM, then -1
-// WRONG: subtract percent first, then convert
+// CORRECT: convert to BPM first, then -1
+val z1MaxBpm = (HeartRateZones.percentToBpm(z2StartPercent.toDouble(), userLthr) - 1).toShort()
+// WRONG: subtract percent first
 val z1MaxBpm = HeartRateZones.percentToBpm(z2StartPercent - 1, userLthr)  // ❌
-
-// CORRECT: convert to BPM first, then subtract 1
-val z1MaxBpm = (HeartRateZones.percentToBpm(z2StartPercent.toDouble(), userLthr) - 1).toShort()  // ✅
 ```
 
-**Message structure (from Garmin FIT files):**
-```
-time_in_zone (mesg 216):
-  reference_mesg: 18 (session)
-  reference_index: 0
-  time_in_hr_zone: [ms, ms, ms, ms, ms, ms, ms]  // 7 values, indices 0-6
-  hr_zone_high_boundary: [bpm, bpm, bpm, bpm, bpm, bpm]  // 6 boundaries
-  hr_calc_type: 3 (PERCENT_LTHR)
-  max_heart_rate: bpm
-  resting_heart_rate: bpm
-  threshold_heart_rate: bpm (LTHR)
-```
-
-**Important behaviors:**
-- Garmin Connect **recalculates** zone distribution using user's profile zone settings
-- The FIT file's boundaries may be ignored, but the time values are used
-- Time values are stored in milliseconds, SDK converts to/from seconds
-- Power zones follow the same pattern with 7 zones and 6 boundaries
+Power zones follow the same 7-zone pattern. Time values in milliseconds.
