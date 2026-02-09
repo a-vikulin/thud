@@ -118,6 +118,9 @@ class SettingsManager(
         const val PREF_FIT_DEVICE_SERIAL = "fit_device_serial"
         const val PREF_FIT_SOFTWARE_VERSION = "fit_software_version"
 
+        // Garmin Connect upload
+        const val PREF_GARMIN_AUTO_UPLOAD = "garmin_auto_upload"
+
         // FTMS Server settings
         const val PREF_FTMS_BLE_READ_ENABLED = "ftms_ble_read_enabled"
         const val PREF_FTMS_BLE_CONTROL_ENABLED = "ftms_ble_control_enabled"
@@ -217,6 +220,8 @@ class SettingsManager(
      */
     interface Listener {
         fun onSettingsSaved()
+        fun onGarminLoginRequested()
+        fun isGarminAuthenticated(): Boolean
     }
 
     var listener: Listener? = null
@@ -275,6 +280,10 @@ class SettingsManager(
     private var spinnerPowerUrgentThreshold: TouchSpinner? = null
     private var spinnerPowerMaxSpeedAdj: TouchSpinner? = null
     private var spinnerPowerMaxInclineAdj: TouchSpinner? = null
+
+    // FIT Export tab fields - Garmin Connect
+    private var checkGarminAutoUpload: CheckBox? = null
+    private var btnGarminLogin: Button? = null
 
     // FIT Export tab fields
     private var editFitManufacturer: EditText? = null
@@ -354,6 +363,9 @@ class SettingsManager(
         state.fitProductId = prefs.getInt(PREF_FIT_PRODUCT_ID, DEFAULT_FIT_PRODUCT_ID)
         state.fitDeviceSerial = prefs.getLong(PREF_FIT_DEVICE_SERIAL, DEFAULT_FIT_DEVICE_SERIAL)
         state.fitSoftwareVersion = prefs.getInt(PREF_FIT_SOFTWARE_VERSION, DEFAULT_FIT_SOFTWARE_VERSION)
+
+        // Garmin Connect upload
+        state.garminAutoUploadEnabled = prefs.getBoolean(PREF_GARMIN_AUTO_UPLOAD, false)
 
         // FTMS Server settings (all disabled by default)
         state.ftmsBleReadEnabled = prefs.getBoolean(PREF_FTMS_BLE_READ_ENABLED, false)
@@ -1286,6 +1298,52 @@ class SettingsManager(
             // Software Version (e.g., 1552 = version 15.52)
             editFitSoftwareVersion = createNumericEditText(state.fitSoftwareVersion.toString())
             addView(createInputRow(service.getString(R.string.fit_software_version), editFitSoftwareVersion!!))
+
+            // ===== Garmin Connect Section =====
+            val garminHeader = TextView(service).apply {
+                text = service.getString(R.string.garmin_upload_section)
+                setTextColor(textColor)
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, service.resources.getDimension(R.dimen.dialog_section_title_size))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = rowSpacing * 2
+                }
+            }
+            addView(garminHeader)
+
+            // Auto-upload checkbox
+            checkGarminAutoUpload = CheckBox(service).apply {
+                text = service.getString(R.string.garmin_auto_upload)
+                setTextColor(textColor)
+                isChecked = state.garminAutoUploadEnabled
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = rowSpacing
+                }
+            }
+            addView(checkGarminAutoUpload)
+
+            // Sign in button
+            val isLoggedIn = listener?.isGarminAuthenticated() ?: false
+            btnGarminLogin = Button(service).apply {
+                text = service.getString(
+                    if (isLoggedIn) R.string.garmin_logged_in else R.string.garmin_login
+                )
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = rowSpacing
+                }
+                setOnClickListener {
+                    listener?.onGarminLoginRequested()
+                }
+            }
+            addView(btnGarminLogin)
         }
     }
 
@@ -1552,6 +1610,9 @@ class SettingsManager(
         spinnerPowerMaxSpeedAdj?.let { state.powerMaxSpeedAdjustmentKph = it.value }
         spinnerPowerMaxInclineAdj?.let { state.powerMaxInclineAdjustmentPercent = it.value }
 
+        // Save Garmin Connect upload setting
+        state.garminAutoUploadEnabled = checkGarminAutoUpload?.isChecked ?: state.garminAutoUploadEnabled
+
         // Save FIT Export device identification from text fields
         editFitManufacturer?.text?.toString()?.toIntOrNull()?.let { state.fitManufacturer = it }
         editFitProductId?.text?.toString()?.toIntOrNull()?.let { state.fitProductId = it }
@@ -1621,6 +1682,9 @@ class SettingsManager(
             putLong(PREF_FIT_DEVICE_SERIAL, state.fitDeviceSerial)
             putInt(PREF_FIT_SOFTWARE_VERSION, state.fitSoftwareVersion)
 
+            // Garmin Connect upload
+            putBoolean(PREF_GARMIN_AUTO_UPLOAD, state.garminAutoUploadEnabled)
+
             // FTMS Server settings
             putBoolean(PREF_FTMS_BLE_READ_ENABLED, state.ftmsBleReadEnabled)
             putBoolean(PREF_FTMS_BLE_CONTROL_ENABLED, state.ftmsBleControlEnabled)
@@ -1633,6 +1697,15 @@ class SettingsManager(
         Log.d(TAG, "Power zones saved: Z2>=${state.powerZone2StartPercent}%, Z3>=${state.powerZone3StartPercent}%, Z4>=${state.powerZone4StartPercent}%, Z5>=${state.powerZone5StartPercent}%")
 
         listener?.onSettingsSaved()
+    }
+
+    /**
+     * Update the Garmin login button text (e.g., after successful authentication).
+     */
+    fun updateGarminLoginButton(isLoggedIn: Boolean) {
+        btnGarminLogin?.text = service.getString(
+            if (isLoggedIn) R.string.garmin_logged_in else R.string.garmin_login
+        )
     }
 
     /**
@@ -1703,6 +1776,8 @@ class SettingsManager(
         editFitProductId = null
         editFitDeviceSerial = null
         editFitSoftwareVersion = null
+        checkGarminAutoUpload = null
+        btnGarminLogin = null
 
         // Clean up FTMS tab controls
         checkFtmsBleRead = null

@@ -22,6 +22,17 @@ import java.util.*
  */
 class FitFileExporter(private val context: Context) {
 
+    /**
+     * Result of a successful FIT export, containing both the display path
+     * (for user feedback) and the raw bytes (for upload to Garmin Connect).
+     * FIT files are typically 50-200KB, so holding bytes in memory is negligible.
+     */
+    data class FitExportResult(
+        val displayPath: String,
+        val fitData: ByteArray,
+        val filename: String
+    )
+
     companion object {
         private const val TAG = "FitFileExporter"
         private const val MIME_TYPE = "application/octet-stream"
@@ -52,7 +63,7 @@ class FitFileExporter(private val context: Context) {
      * @param pauseEvents List of pause/resume events for timer time calculation
      * @param executionSteps List of flattened execution steps for runtime (null for free runs)
      * @param originalSteps Original hierarchical workout steps for FIT export (preserves REPEAT structure)
-     * @return File path/URI description if successful, null otherwise
+     * @return FitExportResult with display path and raw bytes if successful, null otherwise
      */
     fun exportWorkout(
         workoutData: List<WorkoutDataPoint>,
@@ -70,7 +81,7 @@ class FitFileExporter(private val context: Context) {
         fitProductId: Int = DEFAULT_PRODUCT_ID,
         fitDeviceSerial: Long = DEFAULT_DEVICE_SERIAL,
         fitSoftwareVersion: Int = DEFAULT_SOFTWARE_VERSION
-    ): String? {
+    ): FitExportResult? {
         if (workoutData.isEmpty()) {
             Log.w(TAG, "No workout data to export")
             return null
@@ -78,14 +89,14 @@ class FitFileExporter(private val context: Context) {
 
         return try {
             val filename = createFilename(workoutName, startTimeMs)
-            val displayPath = writeFitFileToMediaStore(
+            val result = writeFitFileToMediaStore(
                 filename, workoutData, workoutName, startTimeMs,
                 userHrRest, userLthr, userFtpWatts, thresholdPaceKph, userIsMale, pauseEvents,
                 executionSteps, originalSteps,
                 fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion
             )
-            Log.i(TAG, "FIT file exported: $displayPath")
-            displayPath
+            Log.i(TAG, "FIT file exported: ${result.displayPath}")
+            result
         } catch (e: Exception) {
             Log.e(TAG, "Failed to export FIT file: ${e.message}", e)
             null
@@ -125,20 +136,29 @@ class FitFileExporter(private val context: Context) {
         fitProductId: Int,
         fitDeviceSerial: Long,
         fitSoftwareVersion: Int
-    ): String {
+    ): FitExportResult {
         // Create temp file for FIT SDK (it requires a File, not OutputStream)
         val tempFile = FileExportHelper.getTempFile(context, filename)
         try {
             // Write FIT file to temp location
             writeFitFile(tempFile, workoutData, workoutName, startTimeMs, userHrRest, userLthr, userFtpWatts, thresholdPaceKph, userIsMale, pauseEvents, executionSteps, originalSteps, fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion)
 
+            // Read bytes before saving to MediaStore (for Garmin Connect upload)
+            val fitData = tempFile.readBytes()
+
             // Copy to MediaStore Downloads using shared helper
-            return FileExportHelper.saveToDownloads(
+            val displayPath = FileExportHelper.saveToDownloads(
                 context = context,
                 sourceFile = tempFile,
                 filename = filename,
                 mimeType = MIME_TYPE
             ) ?: throw IllegalStateException("Failed to save to MediaStore")
+
+            return FitExportResult(
+                displayPath = displayPath,
+                fitData = fitData,
+                filename = filename
+            )
         } finally {
             // Clean up temp file
             tempFile.delete()

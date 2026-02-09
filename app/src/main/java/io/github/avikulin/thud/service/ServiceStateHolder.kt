@@ -114,6 +114,9 @@ class ServiceStateHolder {
     @Volatile var fitDeviceSerial: Long = 1234567890L
     @Volatile var fitSoftwareVersion: Int = 1552       // 15.52
 
+    // ==================== Garmin Connect Upload ====================
+    @Volatile var garminAutoUploadEnabled = false
+
     // ==================== FTMS Server Settings ====================
     // Control BLE and DirCon (WiFi) FTMS server behavior
     @Volatile var ftmsBleReadEnabled = false           // BLE: broadcast treadmill data

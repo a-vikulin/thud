@@ -353,6 +353,17 @@
     <string name="fit_export_no_data">No workout data to save</string>
     <string name="fit_export_too_short">Export skipped - run shorter than 1 minute</string>
 
+    <!-- Garmin Connect Upload -->
+    <string name="garmin_upload_section">Garmin Connect</string>
+    <string name="garmin_auto_upload">Auto-upload after export</string>
+    <string name="garmin_login">Sign in to Garmin Connect</string>
+    <string name="garmin_logged_in">Signed in</string>
+    <string name="garmin_login_success">Garmin Connect: Signed in</string>
+    <string name="garmin_login_failed">Garmin Connect: Sign-in failed</string>
+    <string name="garmin_upload_success">Uploaded to Garmin Connect</string>
+    <string name="garmin_upload_failed">Garmin Connect upload failed</string>
+    <string name="garmin_upload_skipped">Garmin upload skipped</string>
+
     <!-- Pace Popup Resume Button -->
     <string name="btn_resume_workout">▶ RESUME WORKOUT</string>
 

@@ -99,4 +99,7 @@ dependencies {
 
     // Garmin FIT SDK (for workout export)
     implementation(libs.garmin.fit)
+
+    // Encrypted SharedPreferences (for Garmin Connect tokens)
+    implementation(libs.security.crypto)
 }

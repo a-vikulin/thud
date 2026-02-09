@@ -98,6 +98,14 @@ blown away by Claude's capabilities!
    - `manufacturer=1` (Garmin): Works with Garmin Connect and Strava (shows as Run), but rejected by Stryd PowerCenter
    - `manufacturer=89` (Tacx): Works with Garmin Connect and Stryd PowerCenter, but Strava shows as "Virtual Ride" (cannot change to Run)
 
+### Garmin Connect Auto-Upload
+- Automatic upload to Garmin Connect after FIT export (opt-in)
+- Sign in via embedded Garmin SSO WebView (supports MFA)
+- OAuth tokens stored securely in encrypted storage on-device
+- Screenshot auto-attachment as activity photo
+- Automatic token refresh (~1 hour OAuth2 lifecycle, ~1 year OAuth1)
+- Re-authentication prompt on token expiry
+
 ### Reliability
 - Run crash recovery with periodic auto-save
 - Reconnection handling preserves run data
@@ -222,10 +230,9 @@ Verify that auto-adjustment parameters are sensible
 
 ## Privacy
 
-- All data stays on your treadmill
-- No cloud services or accounts required
 - No telemetry or analytics
 - FIT files are stored locally until you transfer them
+- Garmin Connect auto-upload is opt-in and disabled by default. When enabled, FIT files and screenshots are sent to Garmin Connect using your Garmin account credentials, which are stored encrypted on the treadmill
 
 ## License
 

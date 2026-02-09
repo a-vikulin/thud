@@ -47,6 +47,7 @@ import io.github.avikulin.thud.service.ScreenshotManager
 import io.github.avikulin.thud.service.PersistedRunType
 import io.github.avikulin.thud.service.PersistedRunState
 import io.github.avikulin.thud.ui.editor.WorkoutEditorActivityNew
+import io.github.avikulin.thud.service.garmin.GarminConnectUploader
 import io.github.avikulin.thud.util.FitFileExporter
 import io.github.avikulin.thud.util.HeartRateZones
 import io.github.avikulin.thud.util.TcxFileExporter
@@ -163,6 +164,7 @@ class HUDService : Service(),
     private val workoutRecorder = WorkoutRecorder()
     private lateinit var fitFileExporter: FitFileExporter
     private lateinit var tcxFileExporter: TcxFileExporter
+    private lateinit var garminUploader: GarminConnectUploader
     private var workoutStartTimeMs: Long = 0
     private var workoutDataExported = false  // Tracks if FIT export already happened for current session
     private var lastWorkoutName: String? = null  // Stores workout name before engine stop (since getCurrentWorkout() returns null after stop)
@@ -182,6 +184,10 @@ class HUDService : Service(),
 
     // Certificate error dialog
     private var certificateErrorDialogView: LinearLayout? = null
+
+    // Garmin login overlay
+    private var garminLoginOverlayView: LinearLayout? = null
+    private var garminLoginCallback: ((ticket: String?) -> Unit)? = null
 
     // Run persistence
     private lateinit var runPersistenceManager: RunPersistenceManager
@@ -254,6 +260,7 @@ class HUDService : Service(),
         // Initialize FIT and TCX file exporters
         fitFileExporter = FitFileExporter(applicationContext)
         tcxFileExporter = TcxFileExporter(applicationContext)
+        garminUploader = GarminConnectUploader(applicationContext)
 
         // Set up workout recorder callback for UI updates
         workoutRecorder.onMetricsUpdated = { distanceKm, elevationM ->
@@ -517,6 +524,8 @@ class HUDService : Service(),
         chartManager.clearPlannedSegments()
         hudDisplayManager.updateTrainingMetrics(0.0)  // Reset TSS display
         hudDisplayManager.updateDistance(0.0)  // Reset distance display
+        screenshotManager.disable()
+        hudDisplayManager.updateCameraButtonState(false)
         workoutDataExported = false
         lastWorkoutName = null
         // Clear persisted data and stop persistence
@@ -660,9 +669,14 @@ class HUDService : Service(),
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         this@HUDService,
-                        getString(R.string.fit_export_success, fitResult),
+                        getString(R.string.fit_export_success, fitResult.displayPath),
                         Toast.LENGTH_LONG
                     ).show()
+                }
+
+                // Auto-upload to Garmin Connect if enabled
+                if (state.garminAutoUploadEnabled) {
+                    uploadToGarminConnect(fitResult, snapshot.workoutName, snapshot.startTimeMs)
                 }
             } else {
                 withContext(Dispatchers.Main) {
@@ -673,6 +687,141 @@ class HUDService : Service(),
                     ).show()
                 }
             }
+        }
+    }
+
+    /**
+     * Upload FIT file to Garmin Connect and optionally attach a screenshot.
+     * Handles auth failures by launching re-auth WebView.
+     * Must be called from a coroutine on Dispatchers.IO.
+     */
+    /**
+     * Upload FIT file to Garmin Connect and optionally attach a screenshot.
+     * Handles auth failures by launching re-auth WebView.
+     *
+     * @param isRetryAfterLogin true when called after re-auth (prevents infinite login loops)
+     */
+    private suspend fun uploadToGarminConnect(
+        fitResult: FitFileExporter.FitExportResult,
+        workoutName: String,
+        startTimeMs: Long,
+        isRetryAfterLogin: Boolean = false
+    ) {
+        if (!garminUploader.isAuthenticated()) {
+            if (isRetryAfterLogin) return
+            withContext(Dispatchers.Main) {
+                launchGarminLoginForUpload(fitResult, workoutName, startTimeMs)
+            }
+            return
+        }
+
+        val uploadResult = garminUploader.uploadFitFile(fitResult.fitData, fitResult.filename)
+
+        if (uploadResult != null) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    this@HUDService,
+                    getString(R.string.garmin_upload_success),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+
+            // Try to attach screenshot (only if we got an activity ID)
+            if (uploadResult.activityId > 0) {
+                val screenshot = findLastScreenshot(workoutName, startTimeMs)
+                if (screenshot != null) {
+                    val photoResult = garminUploader.uploadScreenshot(uploadResult.activityId, screenshot)
+                    Log.d(TAG, "Screenshot upload: $photoResult")
+                }
+            } else {
+                Log.d(TAG, "Upload accepted (uploadId=${uploadResult.uploadId}) but no activity ID — skipping screenshot")
+            }
+        } else if (!isRetryAfterLogin && garminUploader.isOAuth2Expired()) {
+            Log.d(TAG, "Garmin upload auth failed, launching re-auth")
+            withContext(Dispatchers.Main) {
+                launchGarminLoginForUpload(fitResult, workoutName, startTimeMs)
+            }
+        } else {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    this@HUDService,
+                    getString(R.string.garmin_upload_failed),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    /**
+     * Launch Garmin login WebView for re-auth, then retry upload on success.
+     * Must be called on Main thread.
+     */
+    private fun launchGarminLoginForUpload(
+        fitResult: FitFileExporter.FitExportResult,
+        workoutName: String,
+        startTimeMs: Long
+    ) {
+        showGarminLoginOverlay { ticket ->
+            if (ticket != null) {
+                serviceScope.launch(Dispatchers.IO) {
+                    val success = garminUploader.exchangeTicketForTokens(ticket)
+                    if (success) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                this@HUDService,
+                                getString(R.string.garmin_login_success),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        uploadToGarminConnect(fitResult, workoutName, startTimeMs, isRetryAfterLogin = true)
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                this@HUDService,
+                                getString(R.string.garmin_login_failed),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                }
+            } else {
+                Toast.makeText(
+                    this@HUDService,
+                    getString(R.string.garmin_upload_skipped),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    /**
+     * Find the last screenshot taken for this workout run.
+     * Screenshots are saved to Downloads/tHUD/screenshots/ with format:
+     * {sanitizedWorkoutName}_{runStartTimestamp}_{screenshotTimestamp}.png
+     *
+     * @param workoutName Original workout name (will be sanitized)
+     * @param startTimeMs Run start time in milliseconds
+     * @return The most recently modified matching screenshot file, or null
+     */
+    private fun findLastScreenshot(workoutName: String, startTimeMs: Long): java.io.File? {
+        return try {
+            val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(
+                android.os.Environment.DIRECTORY_DOWNLOADS
+            )
+            val screenshotsDir = java.io.File(downloadsDir, "tHUD/screenshots")
+            if (!screenshotsDir.exists()) return null
+
+            val sanitizedName = workoutName.replace(Regex("[^a-zA-Z0-9_-]"), "_")
+            val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.US)
+            val runStartStr = dateFormat.format(java.util.Date(startTimeMs))
+            val prefix = "${sanitizedName}_${runStartStr}_"
+
+            screenshotsDir.listFiles()
+                ?.filter { it.name.startsWith(prefix) && it.name.endsWith(".png") }
+                ?.maxByOrNull { it.lastModified() }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding screenshot: ${e.message}")
+            null
         }
     }
 
@@ -1008,6 +1157,222 @@ class HUDService : Service(),
             }
         }
         certificateErrorDialogView = null
+    }
+
+    // ==================== Garmin Login Overlay ====================
+
+    // Garmin SSO URLs — matching garth/garmin-connect library flow
+    private val garminSsoEmbed = "https://sso.garmin.com/sso/embed"
+    private val garminSsoSignin = "https://sso.garmin.com/sso/signin" +
+        "?id=gauth-widget&embedWidget=true&clientId=GarminConnect&locale=en" +
+        "&gauthHost=${java.net.URLEncoder.encode("https://sso.garmin.com/sso/embed", "UTF-8")}" +
+        "&service=${java.net.URLEncoder.encode("https://sso.garmin.com/sso/embed", "UTF-8")}" +
+        "&source=${java.net.URLEncoder.encode("https://sso.garmin.com/sso/embed", "UTF-8")}" +
+        "&redirectAfterAccountLoginUrl=${java.net.URLEncoder.encode("https://sso.garmin.com/sso/embed", "UTF-8")}" +
+        "&redirectAfterAccountCreationUrl=${java.net.URLEncoder.encode("https://sso.garmin.com/sso/embed", "UTF-8")}"
+
+    /**
+     * Show a dialog-sized overlay WebView for Garmin SSO login.
+     *
+     * Flow (matches garth/garmin-connect libraries):
+     * 1. GET /sso/embed — initializes session cookies
+     * 2. GET /sso/signin?embedWidget=true... — shows login form
+     * 3. User submits → AJAX POST → response contains ticket in HTML
+     * 4. onPageFinished extracts ticket via JS: embed?ticket=<TICKET>
+     */
+    private fun showGarminLoginOverlay(callback: (ticket: String?) -> Unit) {
+        if (garminLoginOverlayView != null) return  // Already showing
+
+        garminLoginCallback = callback
+
+        val borderPad = resources.getDimensionPixelSize(R.dimen.popup_padding) // 8dp dark border
+        val titlePad = resources.getDimensionPixelSize(R.dimen.dialog_input_padding)
+        val formPad = resources.getDimensionPixelSize(R.dimen.dialog_padding_vertical) // 40dp white padding
+
+        // Dark opaque container — padding creates a visible border around the white form area
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(ContextCompat.getColor(this@HUDService, R.color.editor_background))
+            setPadding(borderPad, borderPad, borderPad, borderPad)
+        }
+
+        // Title + cancel row
+        val topBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(titlePad, 0, titlePad, borderPad)
+        }
+        val title = android.widget.TextView(this).apply {
+            text = getString(R.string.garmin_upload_section)
+            setTextColor(ContextCompat.getColor(this@HUDService, R.color.text_primary))
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,
+                resources.getDimension(R.dimen.dialog_title_text_size))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        topBar.addView(title)
+        val cancelBtn = Button(this).apply {
+            text = getString(R.string.btn_cancel)
+            setOnClickListener { dismissGarminLoginOverlay(ticket = null) }
+        }
+        topBar.addView(cancelBtn)
+        container.addView(topBar)
+
+        val webView = android.webkit.WebView(this).apply {
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.useWideViewPort = false
+            settings.loadWithOverviewMode = false
+
+            // Enable cookies — SSO requires session cookies across requests
+            val cookieManager = android.webkit.CookieManager.getInstance()
+            cookieManager.setAcceptCookie(true)
+            cookieManager.setAcceptThirdPartyCookies(this, true)
+
+            webViewClient = object : android.webkit.WebViewClient() {
+                override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    if (view == null || url == null) return
+                    Log.d(TAG, "Garmin SSO page finished: $url")
+
+                    // Step 1 done: cookie init page loaded → navigate to signin form
+                    if (url.contains("/sso/embed") && !url.contains("signin")) {
+                        Log.d(TAG, "Garmin SSO cookies initialized, loading signin form")
+                        view.loadUrl(garminSsoSignin)
+                        return
+                    }
+
+                    // After form submission, check if page contains a ticket.
+                    // On success, Garmin returns HTML with <title>Success</title>
+                    // and a URL containing embed?ticket=ST-XXXXX
+                    if (url.contains("/sso/signin")) {
+                        view.evaluateJavascript(
+                            """
+                            (function() {
+                                var title = document.title || '';
+                                if (title.indexOf('Success') >= 0) {
+                                    var html = document.documentElement.innerHTML;
+                                    var match = html.match(/embed\\?ticket=([^"&]+)/);
+                                    if (match) return match[1];
+                                }
+                                return null;
+                            })()
+                            """.trimIndent()
+                        ) { result ->
+                            val ticket = result?.trim('"')
+                            if (ticket != null && ticket != "null" && ticket.startsWith("ST-")) {
+                                Log.d(TAG, "Garmin SSO ticket extracted from page")
+                                dismissGarminLoginOverlay(ticket = ticket)
+                            }
+                        }
+                    }
+                }
+
+                // Backup: catch ticket in URL redirects
+                override fun shouldOverrideUrlLoading(
+                    view: android.webkit.WebView?,
+                    request: android.webkit.WebResourceRequest?
+                ): Boolean {
+                    val url = request?.url?.toString() ?: return false
+                    return checkGarminTicket(url)
+                }
+
+                @Suppress("DEPRECATION")
+                override fun shouldOverrideUrlLoading(view: android.webkit.WebView?, url: String?): Boolean {
+                    return url != null && checkGarminTicket(url)
+                }
+
+                // Backup: catch ticket in sub-resource requests
+                override fun shouldInterceptRequest(
+                    view: android.webkit.WebView?,
+                    request: android.webkit.WebResourceRequest?
+                ): android.webkit.WebResourceResponse? {
+                    val url = request?.url?.toString()
+                    if (url != null && url.contains("ticket=ST-")) {
+                        mainHandler.post { checkGarminTicket(url) }
+                    }
+                    return null
+                }
+            }
+        }
+        // White frame with 40dp padding around SSO form — looks like a clean card
+        val whiteFrame = android.widget.FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+            )
+            setBackgroundColor(android.graphics.Color.WHITE)
+            setPadding(formPad, formPad, formPad, formPad)
+        }
+        whiteFrame.addView(webView)
+        container.addView(whiteFrame)
+
+        garminLoginOverlayView = container
+
+        // Compact overlay: ~25% width, ~40% height on 1920x1080 @ density 1.0
+        val density = resources.displayMetrics.density
+        val dialogWidth = (480 * density).toInt()
+        val dialogHeight = (430 * density).toInt()
+        val params = OverlayHelper.createOverlayParams(
+            width = dialogWidth,
+            height = dialogHeight,
+            focusable = true,
+            touchModal = true
+        )
+        windowManager.addView(container, params)
+
+        // Step 1: Load /sso/embed to initialize session cookies, then
+        // onPageFinished redirects to the signin form (Step 2)
+        webView.loadUrl("$garminSsoEmbed?clientId=GarminConnect&locale=en" +
+            "&service=${java.net.URLEncoder.encode(garminSsoEmbed, "UTF-8")}")
+        Log.d(TAG, "Garmin login overlay shown (${dialogWidth}x${dialogHeight})")
+    }
+
+    /**
+     * Check if a URL contains a Garmin SSO ticket.
+     * @return true if ticket found (stops navigation)
+     */
+    private fun checkGarminTicket(url: String): Boolean {
+        if (garminLoginOverlayView == null) return false  // Already dismissed
+        val uri = android.net.Uri.parse(url)
+        val ticket = uri.getQueryParameter("ticket")
+        if (ticket != null && ticket.startsWith("ST-")) {
+            Log.d(TAG, "SSO ticket intercepted")
+            dismissGarminLoginOverlay(ticket)
+            return true
+        }
+        return false
+    }
+
+    private fun dismissGarminLoginOverlay(ticket: String?) {
+        garminLoginOverlayView?.let { container ->
+            // Destroy WebView to release native rendering resources.
+            // Must detach from parent before calling destroy().
+            fun findAndDestroyWebView(view: android.view.View) {
+                if (view is android.webkit.WebView) {
+                    (view.parent as? android.view.ViewGroup)?.removeView(view)
+                    view.destroy()
+                    return
+                }
+                if (view is android.view.ViewGroup) {
+                    for (i in 0 until view.childCount) {
+                        findAndDestroyWebView(view.getChildAt(i))
+                    }
+                }
+            }
+            findAndDestroyWebView(container)
+            try {
+                windowManager.removeView(container)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removing Garmin login overlay: ${e.message}")
+            }
+        }
+        garminLoginOverlayView = null
+        val cb = garminLoginCallback
+        garminLoginCallback = null
+        cb?.invoke(ticket)
     }
 
     // ==================== Run Persistence ====================
@@ -1609,6 +1974,34 @@ class HUDService : Service(),
         restartFtmsServers()
     }
 
+    override fun onGarminLoginRequested() {
+        showGarminLoginOverlay { ticket ->
+            if (ticket != null) {
+                serviceScope.launch(Dispatchers.IO) {
+                    val success = garminUploader.exchangeTicketForTokens(ticket)
+                    withContext(Dispatchers.Main) {
+                        if (success) {
+                            Toast.makeText(
+                                this@HUDService,
+                                getString(R.string.garmin_login_success),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            settingsManager.updateGarminLoginButton(true)
+                        } else {
+                            Toast.makeText(
+                                this@HUDService,
+                                getString(R.string.garmin_login_failed),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    override fun isGarminAuthenticated(): Boolean = garminUploader.isAuthenticated()
+
     /**
      * Restart FTMS servers to apply new settings.
      * Stops servers that should be disabled, starts servers that should be enabled.
@@ -2198,6 +2591,7 @@ class HUDService : Service(),
         dismissFreeRunDialog()
         dismissResumeRunDialog()
         dismissCertificateErrorDialog()
+        dismissGarminLoginOverlay(ticket = null)
         screenshotManager.cleanup()
         workoutPanelManager.cleanup()
         chartManager.cleanup()

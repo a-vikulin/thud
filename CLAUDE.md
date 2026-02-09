@@ -57,6 +57,9 @@
 | System workouts | `WorkoutRepository` (DB, `systemWorkoutType`) | Engine stitching, editor sentinels |
 | Phase boundaries | `WorkoutExecutionEngine` (phase step counts) | Chart, panel, coefficient reset |
 | Per-step coefficients | `WorkoutExecutionEngine` (`stepCoefficients` map) | Chart via `WorkoutEngineManager` (ONE_STEP mode only) |
+| Garmin auto-upload flag | `ServiceStateHolder` (SharedPrefs) | `HUDService` → export flow |
+| Garmin OAuth tokens | `GarminConnectUploader` (EncryptedSharedPrefs) | Upload flow only |
+| FIT bytes for upload | `FitFileExporter.FitExportResult` | `HUDService` → `GarminConnectUploader` |
 
 ### ⚠️ SPEED - ABSOLUTE RULES ⚠️
 
@@ -142,7 +145,7 @@ Exports to Downloads/tHUD via MediaStore. `saveToDownloads(context, sourceFile, 
 Unified BT sensor storage. `getAll/getByType/save/remove/isSaved/getSavedMacs`. Types: `HR_SENSOR`, `FOOT_POD`.
 
 ### SettingsManager (`service/SettingsManager.kt`)
-All SharedPreferences keys as constants. Key groups: `pace_coefficient` (calibration), `hr_zone*_max` (HR zones), `threshold_pace_kph`, `default_incline`, treadmill min/max ranges (from GlassOS), `fit_*` (FIT Export device ID), `ftms_*` (FTMS server settings).
+All SharedPreferences keys as constants. Key groups: `pace_coefficient` (calibration), `hr_zone*_max` (HR zones), `threshold_pace_kph`, `default_incline`, treadmill min/max ranges (from GlassOS), `fit_*` (FIT Export device ID), `ftms_*` (FTMS server settings), `garmin_auto_upload` (Garmin Connect).
 
 ### ⚠️ HR/Power Targets: Percentage-Based ⚠️
 All HR/Power targets stored as **% of threshold** (LTHR/FTP) so workouts survive threshold changes.
@@ -205,6 +208,7 @@ HUDService (Orchestrator)
 ├── StrydManager            → Stryd foot pod BLE connection
 ├── RunPersistenceManager   → Crash recovery (periodic + on-pause saves)
 ├── FitFileExporter         → FIT file generation for Garmin Connect
+├── GarminConnectUploader   → Garmin Connect OAuth + FIT/photo upload
 ├── TssCalculator           → TSS calculation (Power → HR → Pace fallback)
 ├── DirConServer            → Direct connection protocol for external apps
 ├── BleFtmsServer           → BLE FTMS server for external fitness apps
@@ -267,6 +271,8 @@ app/src/main/java/io/github/avikulin/thud/
 │   ├── RunPersistenceManager.kt   # Crash recovery persistence
 │   ├── WorkoutRecorder.kt         # Thread-safe metrics recording
 │   ├── ScreenshotManager.kt       # Auto-screenshot via MediaProjection API
+│   ├── garmin/
+│   │   └── GarminConnectUploader.kt # Garmin Connect OAuth + upload
 │   ├── ble/
 │   │   └── BleFtmsServer.kt       # BLE FTMS server for external apps
 │   └── dircon/
@@ -340,6 +346,17 @@ adb logcat -s HUDService TelemetryManager WorkoutExecutionEngine
 | 89 | Tacx | ✅ | ✅ | ⚠️ Virtual Ride (locked) |
 
 **Do NOT use manufacturer=95 (Stryd)** — rejected everywhere. Keep `product=4565` (Forerunner 970) for device icon.
+
+### ⚠️ Garmin Connect Upload — API Endpoints ⚠️
+**FIT upload:** `POST connectapi.garmin.com/upload-service/upload/.fit` — OAuth2 Bearer, multipart field `userfile`.
+
+**Photo upload:** `POST connectapi.garmin.com/activity-service/activity/{id}/image` — OAuth2 Bearer, multipart field `file`.
+
+**CRITICAL:** Both use the **direct API** (`connectapi.garmin.com`) with `Authorization: Bearer`, `DI-Backend: connectapi.garmin.com`, `NK: NT`. Do NOT use `connect.garmin.com/gc-api/` (web proxy) — it requires session cookies + CSRF tokens and is fragile. The web proxy fallback exists in code but is not needed.
+
+**Auth flow:** SSO WebView → ticket → OAuth1 (long-lived ~1yr) → OAuth2 (short-lived ~1hr, auto-refreshed). Tokens in `EncryptedSharedPreferences("GarminConnectTokens")` — separate from app's `"TreadmillHUD"` SharedPreferences.
+
+**Consumer key/secret:** Fetched from `thegarth.s3.amazonaws.com/oauth_consumer.json` with hardcoded fallback.
 
 ### FTMS Settings
 BLE/DirCon Broadcast + Control toggles (all default OFF). Control requires Broadcast. Custom device names. Servers restart on save.
