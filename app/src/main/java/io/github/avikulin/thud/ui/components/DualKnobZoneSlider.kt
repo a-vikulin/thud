@@ -132,6 +132,11 @@ class DualKnobZoneSlider @JvmOverloads constructor(
     // Preallocated rect for handle drawing
     private val handleRect = RectF()
 
+    // Cached zone percents for onDraw (avoids DoubleArray allocation per frame)
+    private var zonePercents = doubleArrayOf(
+        MIN_PERCENT.toDouble(), 80.0, 88.0, 95.0, 102.0, MAX_PERCENT.toDouble()
+    )
+
     // Dragging state
     private var draggingHandle = -1  // -1 = none, 0 = min handle, 1 = max handle
 
@@ -163,6 +168,14 @@ class DualKnobZoneSlider @JvmOverloads constructor(
         zone3StartAbsolute = kotlin.math.round(zone3StartPercent * thresholdValue / 100.0).toInt()
         zone4StartAbsolute = kotlin.math.round(zone4StartPercent * thresholdValue / 100.0).toInt()
         zone5StartAbsolute = kotlin.math.round(zone5StartPercent * thresholdValue / 100.0).toInt()
+        zonePercents = doubleArrayOf(
+            MIN_PERCENT.toDouble(),
+            zone2StartAbsolute * 100.0 / thresholdValue,
+            zone3StartAbsolute * 100.0 / thresholdValue,
+            zone4StartAbsolute * 100.0 / thresholdValue,
+            zone5StartAbsolute * 100.0 / thresholdValue,
+            MAX_PERCENT.toDouble()
+        )
     }
 
     /**
@@ -233,16 +246,8 @@ class DualKnobZoneSlider @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // Draw zone bars using integer BPM/watts boundaries converted back to percentages
+        // Draw zone bars using cached integer BPM/watts boundaries converted back to percentages
         // This ensures zone borders align with actual integer BPM/watts values
-        val zonePercents = doubleArrayOf(
-            MIN_PERCENT.toDouble(),
-            zone2StartAbsolute * 100.0 / thresholdValue,
-            zone3StartAbsolute * 100.0 / thresholdValue,
-            zone4StartAbsolute * 100.0 / thresholdValue,
-            zone5StartAbsolute * 100.0 / thresholdValue,
-            MAX_PERCENT.toDouble()
-        )
         for (i in 0 until 5) {
             val left = percentToX(zonePercents[i])
             val right = percentToX(zonePercents[i + 1])

@@ -98,6 +98,11 @@ class ZoneSlider(context: Context) : View(context) {
     // Preallocated rect for handle drawing
     private val handleRect = RectF()
 
+    // Cached zone values for onDraw (avoids DoubleArray allocation per frame)
+    private var zoneValues = doubleArrayOf(
+        MIN_PERCENT.toDouble(), 80.0, 88.0, 95.0, 102.0, MAX_PERCENT.toDouble()
+    )
+
     // Dragging state
     private var draggingHandle = -1  // -1 = none, 0-3 = handle index
 
@@ -117,6 +122,7 @@ class ZoneSlider(context: Context) : View(context) {
         zone3StartPercent = z3Start.coerceIn(zone2StartPercent + MIN_GAP, MAX_PERCENT - 3.0 * MIN_GAP)
         zone4StartPercent = z4Start.coerceIn(zone3StartPercent + MIN_GAP, MAX_PERCENT - 2.0 * MIN_GAP)
         zone5StartPercent = z5Start.coerceIn(zone4StartPercent + MIN_GAP, MAX_PERCENT - MIN_GAP.toDouble())
+        updateCachedZoneValues()
         invalidate()
     }
 
@@ -178,9 +184,7 @@ class ZoneSlider(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        val zoneValues = doubleArrayOf(MIN_PERCENT.toDouble(), zone2StartPercent, zone3StartPercent, zone4StartPercent, zone5StartPercent, MAX_PERCENT.toDouble())
-
-        // Draw zone bars
+        // Draw zone bars (uses cached zoneValues array)
         for (i in 0 until 5) {
             val left = percentToX(zoneValues[i])
             val right = percentToX(zoneValues[i + 1])
@@ -300,5 +304,13 @@ class ZoneSlider(context: Context) : View(context) {
                 zone5StartPercent = newPercent.coerceIn(minVal, maxVal)
             }
         }
+        updateCachedZoneValues()
+    }
+
+    private fun updateCachedZoneValues() {
+        zoneValues = doubleArrayOf(
+            MIN_PERCENT.toDouble(), zone2StartPercent, zone3StartPercent,
+            zone4StartPercent, zone5StartPercent, MAX_PERCENT.toDouble()
+        )
     }
 }

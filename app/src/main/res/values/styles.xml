@@ -101,14 +101,4 @@
         <item name="android:background">@drawable/service_button_border</item>
     </style>
 
-    <!-- ==================== Workout Editor Styles ==================== -->
-
-    <!-- Step type selection button -->
-    <style name="StepTypeButton">
-        <item name="android:textColor">@color/text_primary</item>
-        <item name="android:background">@drawable/step_type_button_background</item>
-        <item name="android:padding">8dp</item>
-        <item name="android:layout_marginHorizontal">2dp</item>
-        <item name="android:textAllCaps">false</item>
-    </style>
 </resources>

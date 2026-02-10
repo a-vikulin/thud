@@ -53,12 +53,6 @@
     <string name="settings_max_speed_adj">Max Speed Adj</string>
     <string name="settings_max_incline_adj">Max Incline Adj</string>
 
-    <!-- Chart Toggle Buttons -->
-    <string name="chart_toggle_speed">S</string>
-    <string name="chart_toggle_incline">I</string>
-    <string name="chart_toggle_hr">H</string>
-    <string name="chart_toggle_power">P</string>
-
     <!-- Chart Axis Labels -->
     <string name="chart_axis_speed">km/h</string>
     <string name="chart_axis_incline_format">%1$d%%</string>
@@ -76,26 +70,10 @@
     <string name="settings_sex_male">Male</string>
     <string name="settings_sex_female">Female</string>
     <string name="settings_user_hr_rest_label">Resting HR</string>
-    <string name="settings_user_ftp_label">FTP</string>
     <string name="settings_threshold_pace_label">LT-Pace</string>
     <string name="unit_kg">kg</string>
 
-    <!-- HR Auto-Adjust Settings -->
-    <string name="settings_hr_trend_window">Trend Window</string>
-    <string name="settings_hr_trend_threshold">Trend Threshold</string>
-    <string name="settings_hr_settling_time">Settling Time</string>
-    <string name="settings_hr_adj_cooldown">Adj Cooldown</string>
-    <string name="settings_hr_speed_adj">Speed Adj</string>
-    <string name="settings_hr_speed_urgent_adj">Speed Urgent</string>
-    <string name="settings_hr_incline_adj">Incline Adj</string>
-    <string name="settings_hr_incline_urgent_adj">Incline Urgent</string>
-    <string name="settings_hr_urgent_threshold">Urgent Threshold</string>
-    <string name="settings_hr_max_speed_adj">Max Speed Adj</string>
-    <string name="settings_hr_max_incline_adj">Max Incline Adj</string>
     <string name="unit_seconds">s</string>
-    <string name="unit_bpm_per_min">bpm/min</string>
-    <string name="unit_kph">kph</string>
-    <string name="unit_percent">%%</string>
     <string name="unit_bpm">bpm</string>
     <string name="btn_workouts">#</string>
     <string name="btn_chart">~</string>

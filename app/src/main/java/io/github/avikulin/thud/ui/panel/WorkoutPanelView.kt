@@ -176,6 +176,16 @@ class WorkoutPanelView(context: Context) : View(context) {
         strokeCap = Paint.Cap.ROUND
     }
 
+    private val linePaint = Paint().apply {
+        color = stepPendingColor
+        strokeWidth = 1f
+    }
+
+    private val overlayPaint = Paint().apply {
+        color = Color.argb(180, 0, 0, 0)
+        style = Paint.Style.FILL
+    }
+
     // ==================== Touch Handling ====================
 
     private val buttonBounds = mutableMapOf<String, RectF>()
@@ -573,10 +583,6 @@ class WorkoutPanelView(context: Context) : View(context) {
         var yOffset = startY + stepItemMargin * 2
 
         // Separator line
-        val linePaint = Paint().apply {
-            color = stepPendingColor
-            strokeWidth = 1f
-        }
         canvas.drawLine(
             panelPadding.toFloat(),
             yOffset,
@@ -678,10 +684,6 @@ class WorkoutPanelView(context: Context) : View(context) {
 
     private fun drawCountdownOverlay(canvas: Canvas) {
         // Semi-transparent overlay
-        val overlayPaint = Paint().apply {
-            color = Color.argb(180, 0, 0, 0)
-            style = Paint.Style.FILL
-        }
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), overlayPaint)
 
         // Countdown number or GO!
