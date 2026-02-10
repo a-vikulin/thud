@@ -373,9 +373,14 @@ class FitFileExporter(private val context: Context) {
     }
 
     /**
-     * Convert system time to FIT timestamp.
+     * Convert system time to FIT timestamp (seconds since 1989-12-31 00:00 UTC).
+     * Clamps to 0 if system clock is set before FIT epoch to prevent negative timestamps.
      */
     private fun toFitTimestamp(systemTimeMs: Long): Long {
+        if (systemTimeMs < FIT_EPOCH_OFFSET_MS) {
+            Log.w(TAG, "System time before FIT epoch ($systemTimeMs), clamping to 0")
+            return 0L
+        }
         return (systemTimeMs - FIT_EPOCH_OFFSET_MS) / 1000
     }
 
