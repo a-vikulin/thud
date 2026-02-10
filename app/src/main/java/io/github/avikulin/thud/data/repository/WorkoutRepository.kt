@@ -31,12 +31,6 @@ class WorkoutRepository(
     suspend fun getWorkout(id: Long): Workout? = workoutDao.getWorkoutById(id)
 
     /**
-     * Get steps for a workout as a Flow.
-     */
-    fun getWorkoutSteps(workoutId: Long): Flow<List<WorkoutStep>> =
-        workoutDao.getStepsForWorkout(workoutId)
-
-    /**
      * Get a workout with its steps in a single call.
      */
     suspend fun getWorkoutWithSteps(id: Long): Pair<Workout, List<WorkoutStep>>? {

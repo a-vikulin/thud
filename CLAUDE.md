@@ -127,7 +127,7 @@ Run data preserved in memory during reconnection. Key: `TelemetryManager.hasEver
 
 ### PaceConverter (`util/PaceConverter.kt`)
 Speed↔pace: `speedToPaceSeconds(kph)`, `paceSecondsToSpeed(seconds)`
-Formatting: `formatPace(seconds)` → "M:SS", `formatPaceFromSpeed(kph)`, `formatPaceFromSpeedWithSuffix(kph)` → "M:SS /km", `formatSpeed(kph)` → "X.X km/h", `formatDuration(seconds)` → "H:MM:SS", `formatDistance(meters)` → "X.XX km"
+Formatting: `formatPace(seconds)` → "M:SS", `formatPaceFromSpeed(kph)`, `formatSpeed(kph)` → "X.X km/h", `formatDuration(seconds)` → "H:MM:SS", `formatDistance(meters)` → "X.XX km"
 Cross-calc: `calculateDistanceMeters(seconds, kph)`, `calculateDurationSeconds(meters, kph)`
 
 ### HeartRateZones (`util/HeartRateZones.kt`)

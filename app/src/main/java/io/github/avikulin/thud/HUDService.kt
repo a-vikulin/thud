@@ -116,7 +116,6 @@ class HUDService : Service(),
         val lthrBpm: Int,          // Lactate Threshold HR
         val ftpWatts: Int,         // Functional Threshold Power
         val thresholdPaceKph: Double, // Threshold pace (fallback TSS)
-        val isMale: Boolean,       // For calorie calculation
         // FIT device identification (for Garmin Training Status compatibility)
         val fitManufacturer: Int,
         val fitProductId: Int,
@@ -588,7 +587,6 @@ class HUDService : Service(),
                 lthrBpm = state.userLthrBpm,
                 ftpWatts = state.userFtpWatts,
                 thresholdPaceKph = state.thresholdPaceKph,
-                isMale = state.userIsMale,
                 fitManufacturer = state.fitManufacturer,
                 fitProductId = state.fitProductId,
                 fitDeviceSerial = state.fitDeviceSerial,
@@ -642,7 +640,6 @@ class HUDService : Service(),
                 userLthr = snapshot.userSettings.lthrBpm,
                 userFtpWatts = snapshot.userSettings.ftpWatts,
                 thresholdPaceKph = snapshot.userSettings.thresholdPaceKph,
-                userIsMale = snapshot.userSettings.isMale,
                 pauseEvents = snapshot.pauseEvents,
                 executionSteps = snapshot.executionSteps,
                 originalSteps = snapshot.originalSteps,
@@ -813,37 +810,6 @@ class HUDService : Service(),
             Log.e(TAG, "Error finding screenshot: ${e.message}")
             null
         }
-    }
-
-    /**
-     * Export workout data to FIT file.
-     * Creates a snapshot and delegates to the snapshot-based export.
-     * Called when a workout ends (either completed or manually stopped).
-     *
-     * @param workoutName Name for the FIT file (workout name or "Free Run")
-     */
-    private fun exportWorkoutToFit(workoutName: String) {
-        // Check if already exported for this session
-        if (workoutDataExported) {
-            Log.w(TAG, "Workout data already exported, skipping")
-            mainHandler.post {
-                Toast.makeText(this, getString(R.string.fit_export_already_exported), Toast.LENGTH_SHORT).show()
-            }
-            return
-        }
-
-        // Create snapshot before any potential cleanup
-        val snapshot = createRunSnapshot(workoutName)
-        if (snapshot == null) {
-            Log.w(TAG, "No workout data to export")
-            mainHandler.post {
-                Toast.makeText(this, getString(R.string.fit_export_no_data), Toast.LENGTH_SHORT).show()
-            }
-            return
-        }
-
-        // Delegate to snapshot-based export
-        exportWorkoutToFit(snapshot)
     }
 
     /**

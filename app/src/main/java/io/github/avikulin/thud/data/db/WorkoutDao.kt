@@ -76,12 +76,6 @@ interface WorkoutDao {
     @Insert
     suspend fun insertSteps(steps: List<WorkoutStep>)
 
-    @Update
-    suspend fun updateStep(step: WorkoutStep)
-
-    @Delete
-    suspend fun deleteStep(step: WorkoutStep)
-
     @Query("DELETE FROM workout_steps WHERE workoutId = :workoutId")
     suspend fun deleteAllStepsForWorkout(workoutId: Long)
 

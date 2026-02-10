@@ -112,15 +112,6 @@ sealed class WorkoutEvent {
  */
 data class WorkoutSummary(
     val workoutName: String,
-    val totalDurationMs: Long,
-    val activeDurationMs: Long,
-    val totalDistanceMeters: Double,
-    val totalElevationGainMeters: Double,
-    val avgHeartRateBpm: Int?,
-    val maxHeartRateBpm: Int?,
-    val avgPaceKph: Double,
-    val maxPaceKph: Double,
     val stepsCompleted: Int,
-    val totalSteps: Int,
-    val completedSuccessfully: Boolean
+    val totalSteps: Int
 )

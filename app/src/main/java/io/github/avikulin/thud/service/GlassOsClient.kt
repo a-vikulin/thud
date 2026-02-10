@@ -500,24 +500,6 @@ class GlassOsClient(
 
     // ==================== Workout Control ====================
 
-    fun startWorkout(): String? {
-        return try {
-            val empty = Empty.getDefaultInstance()
-            val response = workoutBlockingStub?.startNewWorkout(empty)
-            if (response?.result?.hasSuccess() == true && response.result.success) {
-                Log.d(TAG, "StartWorkout: success, workoutID=${response.workoutID}")
-                response.workoutID
-            } else {
-                Log.e(TAG, "StartWorkout: failed")
-                null
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "StartWorkout failed: ${e.message}")
-            listener?.onError("StartWorkout: ${e.message}")
-            null
-        }
-    }
-
     /**
      * Quick start workout - bypasses the 3-minute warmup countdown.
      * Uses ProgrammedWorkoutSessionService to add only a MAIN segment (no WARM_UP).

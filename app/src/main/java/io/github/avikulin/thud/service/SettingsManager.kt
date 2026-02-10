@@ -41,11 +41,6 @@ class SettingsManager(
         const val PREF_PACE_COEFFICIENT = "pace_coefficient"
         const val PREF_INCLINE_ADJUSTMENT = "incline_adjustment"
         const val PREF_INCLINE_POWER_COEFFICIENT = "incline_power_coefficient"
-        // Legacy absolute zone keys (kept for backward compatibility)
-        const val PREF_HR_ZONE2_START = "hr_zone1_max"  // legacy key name
-        const val PREF_HR_ZONE3_START = "hr_zone2_max"
-        const val PREF_HR_ZONE4_START = "hr_zone3_max"
-        const val PREF_HR_ZONE5_START = "hr_zone4_max"
         const val PREF_CHART_VISIBLE = "chart_visible"
         const val PREF_WORKOUT_PANEL_VISIBLE = "workout_panel_visible"
         const val PREF_THRESHOLD_PACE_KPH = "threshold_pace_kph"
@@ -67,12 +62,6 @@ class SettingsManager(
 
         // Foot pod settings
         const val PREF_FOOT_POD_METRIC = "foot_pod_metric"
-        const val PREF_LAST_FOOT_POD_MAC = "last_foot_pod_mac"
-        const val PREF_LAST_FOOT_POD_NAME = "last_foot_pod_name"
-
-        // HR device settings
-        const val PREF_LAST_HR_DEVICE_MAC = "last_hr_device_mac"
-        const val PREF_LAST_HR_DEVICE_NAME = "last_hr_device_name"
 
         // LTHR and zone percentage settings (zone start boundaries)
         const val PREF_USER_LTHR_BPM = "user_lthr_bpm"
@@ -133,11 +122,6 @@ class SettingsManager(
         const val DEFAULT_PACE_COEFFICIENT = 1.0
         const val DEFAULT_INCLINE_ADJUSTMENT = 1.0  // 1% treadmill = flat outdoor
         const val DEFAULT_INCLINE_POWER_COEFFICIENT = 0.5
-        // Legacy absolute zone defaults (kept for backward compatibility)
-        const val DEFAULT_HR_ZONE2_START = 120
-        const val DEFAULT_HR_ZONE3_START = 140
-        const val DEFAULT_HR_ZONE4_START = 160
-        const val DEFAULT_HR_ZONE5_START = 180
         const val DEFAULT_THRESHOLD_PACE_KPH = 10.0  // 6:00/km pace
         const val DEFAULT_INCLINE = 0.0
 

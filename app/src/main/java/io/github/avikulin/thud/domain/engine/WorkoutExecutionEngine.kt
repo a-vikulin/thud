@@ -355,19 +355,8 @@ class WorkoutExecutionEngine(
         emitEvent(WorkoutEvent.WorkoutCompleted(
             WorkoutSummary(
                 workoutName = workout.name,
-                totalDurationMs = totalDurationMs,
-                activeDurationMs = totalDurationMs,
-                totalDistanceMeters = totalDistanceMeters,
-                totalElevationGainMeters = 0.0,
-                avgHeartRateBpm = null,
-                maxHeartRateBpm = null,
-                avgPaceKph = if (totalDurationMs > 0) {
-                    totalDistanceMeters / (totalDurationMs / 3600000.0)
-                } else 0.0,
-                maxPaceKph = 0.0,
                 stepsCompleted = currentStepIndex + 1,
-                totalSteps = executionSteps.size,
-                completedSuccessfully = currentStepIndex >= executionSteps.size - 1
+                totalSteps = executionSteps.size
             )
         ))
 

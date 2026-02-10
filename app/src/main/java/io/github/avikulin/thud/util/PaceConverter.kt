@@ -53,16 +53,6 @@ object PaceConverter {
     }
 
     /**
-     * Format speed (kph) as pace string "M:SS /km" with suffix.
-     * @param speedKph Speed in kilometers per hour
-     * @return Formatted string like "5:30 /km"
-     */
-    fun formatPaceFromSpeedWithSuffix(speedKph: Double): String {
-        if (speedKph <= 0) return "--:--"
-        return "${formatPace(speedToPaceSeconds(speedKph))} /km"
-    }
-
-    /**
      * Format duration in seconds as "M:SS" or "H:MM:SS".
      * @param durationSeconds Duration in seconds
      * @return Formatted string

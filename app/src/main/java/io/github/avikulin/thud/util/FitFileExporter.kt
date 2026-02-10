@@ -6,7 +6,6 @@ import io.github.avikulin.thud.service.PauseEvent
 import io.github.avikulin.thud.data.entity.WorkoutStep
 import io.github.avikulin.thud.data.model.WorkoutDataPoint
 import io.github.avikulin.thud.domain.engine.ExecutionStep
-import io.github.avikulin.thud.domain.model.AutoAdjustMode
 import io.github.avikulin.thud.domain.model.DurationType
 import io.github.avikulin.thud.domain.model.StepType
 import io.github.avikulin.thud.service.SettingsManager
@@ -87,7 +86,6 @@ class FitFileExporter(private val context: Context) {
      * @param userLthr Lactate threshold HR (for hrTSS calculation, typically zone 4 max)
      * @param userFtpWatts Functional Threshold Power (for power-based TSS)
      * @param thresholdPaceKph Lactate threshold pace in kph (for pace-based TSS fallback)
-     * @param userIsMale User's sex (for training metrics calculation)
      * @param pauseEvents List of pause/resume events for timer time calculation
      * @param executionSteps List of flattened execution steps for runtime (null for free runs)
      * @param originalSteps Original hierarchical workout steps for FIT export (preserves REPEAT structure)
@@ -101,7 +99,6 @@ class FitFileExporter(private val context: Context) {
         userLthr: Int = 170,
         userFtpWatts: Int = 305,
         thresholdPaceKph: Double = 12.0,
-        userIsMale: Boolean = true,
         pauseEvents: List<PauseEvent> = emptyList(),
         executionSteps: List<ExecutionStep>? = null,
         originalSteps: List<WorkoutStep>? = null,
@@ -119,7 +116,7 @@ class FitFileExporter(private val context: Context) {
             val filename = createFilename(workoutName, startTimeMs)
             val result = writeFitFileToMediaStore(
                 filename, workoutData, workoutName, startTimeMs,
-                userHrRest, userLthr, userFtpWatts, thresholdPaceKph, userIsMale, pauseEvents,
+                userHrRest, userLthr, userFtpWatts, thresholdPaceKph, pauseEvents,
                 executionSteps, originalSteps,
                 fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion
             )
@@ -156,7 +153,6 @@ class FitFileExporter(private val context: Context) {
         userLthr: Int,
         userFtpWatts: Int,
         thresholdPaceKph: Double,
-        userIsMale: Boolean,
         pauseEvents: List<PauseEvent>,
         executionSteps: List<ExecutionStep>?,
         originalSteps: List<WorkoutStep>?,
@@ -169,7 +165,7 @@ class FitFileExporter(private val context: Context) {
         val tempFile = FileExportHelper.getTempFile(context, filename)
         try {
             // Write FIT file to temp location
-            writeFitFile(tempFile, workoutData, workoutName, startTimeMs, userHrRest, userLthr, userFtpWatts, thresholdPaceKph, userIsMale, pauseEvents, executionSteps, originalSteps, fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion)
+            writeFitFile(tempFile, workoutData, workoutName, startTimeMs, userHrRest, userLthr, userFtpWatts, thresholdPaceKph, pauseEvents, executionSteps, originalSteps, fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion)
 
             // Read bytes before saving to MediaStore (for Garmin Connect upload)
             val fitData = tempFile.readBytes()
@@ -205,7 +201,6 @@ class FitFileExporter(private val context: Context) {
         userLthr: Int,
         userFtpWatts: Int,
         thresholdPaceKph: Double,
-        userIsMale: Boolean,
         pauseEvents: List<PauseEvent>,
         executionSteps: List<ExecutionStep>?,
         originalSteps: List<WorkoutStep>?,
@@ -295,21 +290,6 @@ class FitFileExporter(private val context: Context) {
         } else {
             emptyMap()
         }
-
-        // Workout/WorkoutStep messages disabled - nobody displays them meaningfully,
-        // and simple laps display is nicer than Garmin's workout display.
-        // if (hasStructuredWorkout && originalSteps != null && originalSteps.isNotEmpty()) {
-        //     // Use hierarchical structure with REPEAT steps
-        //     writeHierarchicalWorkoutSteps(encoder, workoutName, originalSteps, userLthr, userFtpWatts)
-        // } else if (hasStructuredWorkout && executionSteps != null && lapGroups.isNotEmpty()) {
-        //     // Fallback to flat structure if no original steps available
-        //     writeWorkoutWithSteps(encoder, workoutName, lapGroups, executionSteps, userLthr, userFtpWatts)
-        // } else {
-        //     Log.w(TAG, "Skipping workout steps: hasStructuredWorkout=$hasStructuredWorkout, " +
-        //         "executionSteps=${if (executionSteps == null) "null" else "size=${executionSteps.size}"}, " +
-        //         "originalSteps=${if (originalSteps == null) "null" else "size=${originalSteps.size}"}, " +
-        //         "lapGroups.size=${lapGroups.size}")
-        // }
 
         // 5. Timer START event (required at workout start)
         writeTimerEvent(encoder, startTimeMs, isStart = true)
@@ -1268,189 +1248,6 @@ class FitFileExporter(private val context: Context) {
         encoder.write(activity)
     }
 
-    /**
-     * Write Workout message with WorkoutStep messages for structured workouts.
-     * Uses actual executed steps (lap groups) which reflect Prev/Next button usage.
-     *
-     * @param lapGroups Data points grouped by step (actual execution order)
-     * @param executionSteps Planned execution steps (for target values)
-     * @param userLthr User's LTHR for converting HR % to BPM
-     * @param userFtpWatts User's FTP for converting Power % to Watts
-     */
-    private fun writeWorkoutWithSteps(
-        encoder: FileEncoder,
-        workoutName: String,
-        lapGroups: List<List<WorkoutDataPoint>>,
-        executionSteps: List<ExecutionStep>,
-        userLthr: Int,
-        userFtpWatts: Int
-    ) {
-        // Write workout message with step count
-        val workout = WorkoutMesg()
-        workout.setWktName(workoutName)
-        workout.setSport(Sport.RUNNING)
-        workout.setSubSport(SubSport.GENERIC)  // Garmin uses generic for workout definition
-        workout.setNumValidSteps(lapGroups.size)
-        workout.setCapabilities(WorkoutCapabilities.TCX)  // Match Garmin format
-        encoder.write(workout)
-
-        // Write each workout step
-        lapGroups.forEachIndexed { index, lapData ->
-            if (lapData.isEmpty()) return@forEachIndexed
-
-            // Find matching ExecutionStep by stepIndex from first data point
-            val stepIndex = lapData.first().stepIndex
-            val execStep = executionSteps.getOrNull(stepIndex)
-
-            writeWorkoutStepMessage(
-                encoder = encoder,
-                messageIndex = index,
-                lapData = lapData,
-                execStep = execStep,
-                userLthr = userLthr,
-                userFtpWatts = userFtpWatts
-            )
-        }
-
-        Log.d(TAG, "Wrote workout with ${lapGroups.size} steps")
-    }
-
-    /**
-     * Write a single WorkoutStep message.
-     *
-     * @param messageIndex Step index (0-based)
-     * @param lapData Recorded data points for this step
-     * @param execStep Execution step with targets (may be null for unknown steps)
-     * @param userLthr User's LTHR for HR conversion
-     * @param userFtpWatts User's FTP for Power conversion
-     */
-    private fun writeWorkoutStepMessage(
-        encoder: FileEncoder,
-        messageIndex: Int,
-        lapData: List<WorkoutDataPoint>,
-        execStep: ExecutionStep?,
-        userLthr: Int,
-        userFtpWatts: Int
-    ) {
-        val step = WorkoutStepMesg()
-        step.setMessageIndex(messageIndex)
-
-        // Step name from data or execution step
-        val stepName = lapData.firstOrNull { it.stepName.isNotEmpty() }?.stepName
-            ?: execStep?.displayName
-            ?: "Step ${messageIndex + 1}"
-        step.setWktStepName(stepName)
-
-        // Intensity based on step type
-        // Note: RECOVER uses Intensity.RECOVERY (4), not REST (1) - per Garmin reference files
-        val intensity = when (execStep?.type) {
-            StepType.WARMUP -> Intensity.WARMUP
-            StepType.COOLDOWN -> Intensity.COOLDOWN
-            StepType.REST -> Intensity.REST
-            StepType.RECOVER -> Intensity.RECOVERY
-            StepType.RUN -> Intensity.ACTIVE
-            else -> Intensity.ACTIVE
-        }
-        step.setIntensity(intensity)
-
-        // Duration - use PLANNED duration from execution step (actual is in lap message)
-        // Fall back to actual if planned is not available
-        val actualDurationMs = lapData.last().elapsedMs - lapData.first().elapsedMs
-        val actualDistanceM = (lapData.last().distanceKm - lapData.first().distanceKm) * 1000
-
-        // Determine duration type from execution step, default to TIME
-        when (execStep?.durationType) {
-            DurationType.DISTANCE -> {
-                step.setDurationType(WktStepDuration.DISTANCE)
-                // Use planned distance, fall back to actual
-                val distanceM = execStep.durationMeters?.toFloat() ?: actualDistanceM.toFloat()
-                step.setDurationDistance(distanceM)
-            }
-            DurationType.TIME -> {
-                step.setDurationType(WktStepDuration.TIME)
-                // FIT duration_time is in SECONDS with scale 1000
-                // Use planned duration, fall back to actual
-                val durationSeconds = execStep.durationSeconds?.toFloat()
-                    ?: (actualDurationMs / 1000.0f)
-                step.setDurationTime(durationSeconds)
-            }
-            null -> {
-                // Open step or unknown - check if durations are null
-                if (execStep?.durationSeconds == null && execStep?.durationMeters == null) {
-                    // Open steps have BOTH duration_type and target_type set to OPEN
-                    step.setDurationType(WktStepDuration.OPEN)
-                    step.setTargetType(WktStepTarget.OPEN)
-                } else {
-                    // Default to TIME with planned or actual duration
-                    step.setDurationType(WktStepDuration.TIME)
-                    val durationSeconds = execStep?.durationSeconds?.toFloat()
-                        ?: (actualDurationMs / 1000.0f)
-                    step.setDurationTime(durationSeconds)
-                }
-            }
-        }
-
-        // Get planned pace target from execution step (more reliable than first data point)
-        val plannedSpeedKph = execStep?.paceTargetKph ?: lapData.firstOrNull { it.speedKph > 0 }?.speedKph ?: 0.0
-        val plannedSpeedMs = plannedSpeedKph / 3.6
-
-        // Target type and values based on auto-adjust mode
-        when (execStep?.autoAdjustMode) {
-            AutoAdjustMode.HR -> {
-                // HR target - use the configured HR range
-                step.setTargetType(WktStepTarget.HEART_RATE)
-                step.setTargetValue(0L) // 0 = custom zone (signals device to use customTargetValue fields)
-
-                // HR targets use raw BPM values (e.g., 150 BPM = 150)
-                // Garmin reference files confirm no offset is used
-                val hrMin = execStep.getHrTargetMinBpm(userLthr)
-                val hrMax = execStep.getHrTargetMaxBpm(userLthr)
-                if (hrMin != null) {
-                    step.setCustomTargetHeartRateLow(hrMin.toLong())
-                }
-                if (hrMax != null) {
-                    step.setCustomTargetHeartRateHigh(hrMax.toLong())
-                }
-
-                Log.d(TAG, "Step $messageIndex ($stepName): HR target $hrMin-$hrMax bpm, planned speed ${plannedSpeedKph}kph")
-            }
-
-            AutoAdjustMode.POWER -> {
-                // Power target - use the configured Power range
-                step.setTargetType(WktStepTarget.POWER)
-                step.setTargetValue(0L) // 0 = custom zone (signals device to use customTargetValue fields)
-
-                // Power targets use raw watts (e.g., 200W = 200)
-                // Similar to HR, Garmin uses raw values not offset encoding
-                val powerMin = execStep.getPowerTargetMinWatts(userFtpWatts)
-                val powerMax = execStep.getPowerTargetMaxWatts(userFtpWatts)
-                if (powerMin != null) {
-                    step.setCustomTargetPowerLow(powerMin.toLong())
-                }
-                if (powerMax != null) {
-                    step.setCustomTargetPowerHigh(powerMax.toLong())
-                }
-
-                Log.d(TAG, "Step $messageIndex ($stepName): Power target $powerMin-$powerMax W, planned speed ${plannedSpeedKph}kph")
-            }
-
-            else -> {
-                // No auto-adjust - use speed target from planned pace
-                step.setTargetType(WktStepTarget.SPEED)
-                step.setTargetValue(0L) // 0 = custom zone
-
-                // Use ±2% margin around planned speed
-                val speedLow = (plannedSpeedMs * 0.98).toFloat()
-                val speedHigh = (plannedSpeedMs * 1.02).toFloat()
-                step.setCustomTargetSpeedLow(speedLow)
-                step.setCustomTargetSpeedHigh(speedHigh)
-
-                Log.d(TAG, "Step $messageIndex ($stepName): Speed target ${plannedSpeedKph}kph (${speedLow}-${speedHigh} m/s)")
-            }
-        }
-
-        encoder.write(step)
-    }
 
     /**
      * Build mapping from flattened execution step index to original FIT step index.
@@ -1541,266 +1338,4 @@ class FitFileExporter(private val context: Context) {
         return mapping
     }
 
-    /**
-     * Write hierarchical workout steps in Garmin's FIT format.
-     * - Child steps appear BEFORE their REPEAT parent
-     * - REPEAT uses duration_type=REPEAT_UNTIL_STEPS_CMPLT and references children
-     */
-    private fun writeHierarchicalWorkoutSteps(
-        encoder: FileEncoder,
-        workoutName: String,
-        originalSteps: List<WorkoutStep>,
-        userLthr: Int,
-        userFtpWatts: Int
-    ) {
-        // Build the FIT step list (children before REPEAT parent)
-        data class FitStepInfo(
-            val step: WorkoutStep,
-            val fitIndex: Int,
-            val isRepeat: Boolean = false,
-            val repeatFirstChildFitIndex: Int? = null,
-            val repeatChildCount: Int? = null
-        )
-
-        val fitSteps = mutableListOf<FitStepInfo>()
-
-        // Pre-compute children for each repeat step (by parent ID, not list position)
-        val childrenByRepeatId = mutableMapOf<Long, MutableList<WorkoutStep>>()
-        for (step in originalSteps) {
-            step.parentRepeatStepId?.let { parentId ->
-                childrenByRepeatId.getOrPut(parentId) { mutableListOf() }.add(step)
-            }
-        }
-
-        // Debug: log original steps and children mapping
-        Log.d(TAG, "=== Building FIT steps from ${originalSteps.size} original steps ===")
-        for ((idx, s) in originalSteps.withIndex()) {
-            Log.d(TAG, "  Original[$idx]: type=${s.type}, orderIndex=${s.orderIndex}, parentRepeatStepId=${s.parentRepeatStepId}, id=${s.id}")
-        }
-        for ((repeatId, children) in childrenByRepeatId) {
-            Log.d(TAG, "  Repeat $repeatId has ${children.size} children: ${children.map { it.type }}")
-        }
-
-        // Process steps - skip children (they'll be added when we process their parent REPEAT)
-        for (step in originalSteps) {
-            if (step.parentRepeatStepId != null) {
-                // Skip - will be added when processing parent REPEAT
-                continue
-            }
-
-            if (step.type == StepType.REPEAT) {
-                // Get children for THIS repeat by ID
-                val childSteps = childrenByRepeatId[step.id] ?: emptyList()
-
-                // Record the FIT index where children start
-                val firstChildFitIndex = fitSteps.size
-                Log.d(TAG, "REPEAT id=${step.id}: firstChildFitIndex=$firstChildFitIndex, children=${childSteps.size}")
-
-                // Add children FIRST (Garmin format: children before repeat)
-                for (child in childSteps) {
-                    Log.d(TAG, "  Adding child ${child.type} at fitIndex ${fitSteps.size}")
-                    fitSteps.add(FitStepInfo(child, fitSteps.size))
-                }
-
-                // Add REPEAT step with reference to children
-                Log.d(TAG, "  Adding REPEAT at fitIndex ${fitSteps.size}, firstChildFitIndex=$firstChildFitIndex")
-                fitSteps.add(FitStepInfo(
-                    step = step,
-                    fitIndex = fitSteps.size,
-                    isRepeat = true,
-                    repeatFirstChildFitIndex = firstChildFitIndex,
-                    repeatChildCount = childSteps.size
-                ))
-            } else {
-                // Top-level non-repeat step
-                Log.d(TAG, "Top-level ${step.type} at fitIndex ${fitSteps.size}")
-                fitSteps.add(FitStepInfo(step, fitSteps.size))
-            }
-        }
-
-        Log.d(TAG, "=== Final FIT steps: ${fitSteps.size} ===")
-        for (fs in fitSteps) {
-            Log.d(TAG, "  FIT[${fs.fitIndex}]: ${fs.step.type}, isRepeat=${fs.isRepeat}, firstChild=${fs.repeatFirstChildFitIndex}, childCount=${fs.repeatChildCount}")
-        }
-
-        // Write workout message with step count
-        val workout = WorkoutMesg()
-        workout.setWktName(workoutName)
-        workout.setSport(Sport.RUNNING)
-        workout.setSubSport(SubSport.GENERIC)  // Garmin uses generic for workout definition
-        workout.setNumValidSteps(fitSteps.size)
-        workout.setCapabilities(WorkoutCapabilities.TCX)  // Match Garmin format
-        encoder.write(workout)
-
-        // Write each FIT step
-        for (fitStepInfo in fitSteps) {
-            if (fitStepInfo.isRepeat) {
-                writeRepeatStepMessage(
-                    encoder = encoder,
-                    messageIndex = fitStepInfo.fitIndex,
-                    step = fitStepInfo.step,
-                    firstChildFitIndex = fitStepInfo.repeatFirstChildFitIndex!!,
-                    childCount = fitStepInfo.repeatChildCount!!
-                )
-            } else {
-                writeHierarchicalStepMessage(
-                    encoder = encoder,
-                    messageIndex = fitStepInfo.fitIndex,
-                    step = fitStepInfo.step,
-                    userLthr = userLthr,
-                    userFtpWatts = userFtpWatts
-                )
-            }
-        }
-
-        Log.d(TAG, "Wrote hierarchical workout with ${fitSteps.size} FIT steps")
-    }
-
-    /**
-     * Write a REPEAT step message in Garmin's format.
-     * Uses duration_type=REPEAT_UNTIL_STEPS_CMPLT with references to child steps.
-     *
-     * Garmin format:
-     * - duration_type: repeat_until_steps_cmplt
-     * - duration_step: first step index to repeat from
-     * - repeat_steps: number of steps in the repeat block
-     * - duration_value: repeat count (how many times to execute)
-     * - target_type: None (not OPEN!)
-     * - intensity: None
-     */
-    private fun writeRepeatStepMessage(
-        encoder: FileEncoder,
-        messageIndex: Int,
-        step: WorkoutStep,
-        firstChildFitIndex: Int,
-        childCount: Int
-    ) {
-        val fitStep = WorkoutStepMesg()
-        fitStep.setMessageIndex(messageIndex)
-
-        // REPEAT steps don't have a name (Garmin uses None)
-        // Don't set wkt_step_name at all - leave it null
-
-        // Duration type: repeat_until_steps_cmplt
-        fitStep.setDurationType(WktStepDuration.REPEAT_UNTIL_STEPS_CMPLT)
-
-        // duration_step = first step index to repeat from
-        fitStep.setDurationStep(firstChildFitIndex.toLong())
-
-        // repeat_steps = number of steps in the repeat block (CRITICAL!)
-        fitStep.setRepeatSteps(childCount.toLong())
-
-        // duration_value = repeat count (how many times to execute the steps)
-        val repeatCount = step.repeatCount ?: 1
-        fitStep.setDurationValue(repeatCount.toLong())
-
-        // target_type and intensity are None for REPEAT steps (don't set them)
-
-        encoder.write(fitStep)
-
-        Log.d(TAG, "Step $messageIndex: REPEAT duration_step=$firstChildFitIndex, repeat_steps=$childCount, count=$repeatCount")
-    }
-
-    /**
-     * Write a regular (non-REPEAT) workout step message from original WorkoutStep.
-     */
-    private fun writeHierarchicalStepMessage(
-        encoder: FileEncoder,
-        messageIndex: Int,
-        step: WorkoutStep,
-        userLthr: Int,
-        userFtpWatts: Int
-    ) {
-        val fitStep = WorkoutStepMesg()
-        fitStep.setMessageIndex(messageIndex)
-
-        // Step name based on type
-        val stepName = when (step.type) {
-            StepType.WARMUP -> "Warmup"
-            StepType.RUN -> "Run"
-            StepType.RECOVER -> "Recover"
-            StepType.REST -> "Rest"
-            StepType.COOLDOWN -> "Cooldown"
-            StepType.REPEAT -> "Repeat"
-        }
-        fitStep.setWktStepName(stepName)
-
-        // Intensity based on step type
-        val intensity = when (step.type) {
-            StepType.WARMUP -> Intensity.WARMUP
-            StepType.COOLDOWN -> Intensity.COOLDOWN
-            StepType.REST -> Intensity.REST
-            StepType.RECOVER -> Intensity.RECOVERY
-            StepType.RUN -> Intensity.ACTIVE
-            else -> Intensity.ACTIVE
-        }
-        fitStep.setIntensity(intensity)
-
-        // Duration type and value
-        val isOpenStep = step.durationSeconds == null && step.durationMeters == null
-        when {
-            isOpenStep -> {
-                fitStep.setDurationType(WktStepDuration.OPEN)
-                fitStep.setTargetType(WktStepTarget.OPEN)
-            }
-            step.durationType == DurationType.DISTANCE -> {
-                fitStep.setDurationType(WktStepDuration.DISTANCE)
-                fitStep.setDurationDistance(step.durationMeters?.toFloat() ?: 0f)
-            }
-            else -> {
-                // Default to TIME
-                fitStep.setDurationType(WktStepDuration.TIME)
-                fitStep.setDurationTime(step.durationSeconds?.toFloat() ?: 0f)
-            }
-        }
-
-        // Target type and values (skip if already set to OPEN for open duration steps)
-        // Warmup/Cooldown use OPEN target (per Garmin format) unless they have explicit HR/Power targets
-        val useOpenTarget = isOpenStep ||
-            (step.type == StepType.WARMUP && step.autoAdjustMode == AutoAdjustMode.NONE) ||
-            (step.type == StepType.COOLDOWN && step.autoAdjustMode == AutoAdjustMode.NONE)
-
-        if (!useOpenTarget) {
-            val plannedSpeedKph = step.paceTargetKph
-            val plannedSpeedMs = plannedSpeedKph / 3.6
-
-            when (step.autoAdjustMode) {
-                AutoAdjustMode.HR -> {
-                    fitStep.setTargetType(WktStepTarget.HEART_RATE)
-                    fitStep.setTargetValue(0L)
-                    // Convert % of LTHR to BPM
-                    val hrMin = step.hrTargetMinPercent?.let { it * userLthr / 100 }
-                    val hrMax = step.hrTargetMaxPercent?.let { it * userLthr / 100 }
-                    if (hrMin != null) fitStep.setCustomTargetHeartRateLow(hrMin.toLong())
-                    if (hrMax != null) fitStep.setCustomTargetHeartRateHigh(hrMax.toLong())
-                    Log.d(TAG, "Step $messageIndex ($stepName): HR target $hrMin-$hrMax bpm")
-                }
-                AutoAdjustMode.POWER -> {
-                    fitStep.setTargetType(WktStepTarget.POWER)
-                    fitStep.setTargetValue(0L)
-                    // Convert % of FTP to Watts
-                    val powerMin = step.powerTargetMinPercent?.let { it * userFtpWatts / 100 }
-                    val powerMax = step.powerTargetMaxPercent?.let { it * userFtpWatts / 100 }
-                    if (powerMin != null) fitStep.setCustomTargetPowerLow(powerMin.toLong())
-                    if (powerMax != null) fitStep.setCustomTargetPowerHigh(powerMax.toLong())
-                    Log.d(TAG, "Step $messageIndex ($stepName): Power target $powerMin-$powerMax W")
-                }
-                else -> {
-                    fitStep.setTargetType(WktStepTarget.SPEED)
-                    fitStep.setTargetValue(0L)
-                    val speedLow = (plannedSpeedMs * 0.98).toFloat()
-                    val speedHigh = (plannedSpeedMs * 1.02).toFloat()
-                    fitStep.setCustomTargetSpeedLow(speedLow)
-                    fitStep.setCustomTargetSpeedHigh(speedHigh)
-                    Log.d(TAG, "Step $messageIndex ($stepName): Speed target ${plannedSpeedKph}kph")
-                }
-            }
-        } else if (!isOpenStep) {
-            // Warmup/Cooldown with duration but OPEN target
-            fitStep.setTargetType(WktStepTarget.OPEN)
-            Log.d(TAG, "Step $messageIndex ($stepName): OPEN target (warmup/cooldown)")
-        }
-
-        encoder.write(fitStep)
-    }
 }
