@@ -5,7 +5,6 @@ import android.util.Log
 import com.ifit.glassos.activitylog.ActivityLogMetadata
 import com.ifit.glassos.activitylog.ActivityLogOrigin
 import com.ifit.glassos.activitylog.ActivityLogType
-import com.ifit.glassos.bluetooth.*
 import com.ifit.glassos.console.*
 import com.ifit.glassos.console.idlelockout.*
 import com.ifit.glassos.console.sleep.*
@@ -202,13 +201,6 @@ class GlassOsClient(
     // Async stub for ProgrammedWorkoutSessionService (manual start subscription)
     private var programmedWorkoutAsyncStub: ProgrammedWorkoutSessionServiceGrpc.ProgrammedWorkoutSessionServiceStub? = null
 
-    // Bluetooth service stubs for HR sensor management
-    private var bluetoothStub: BluetoothServiceGrpc.BluetoothServiceStub? = null
-    private var bluetoothBlockingStub: BluetoothServiceGrpc.BluetoothServiceBlockingStub? = null
-
-    // Track connected HR device
-    private var connectedHrDevice: BluetoothDevice? = null
-
     // Console state tracking
     private var currentConsoleState: ConsoleState = ConsoleState.CONSOLE_STATE_UNKNOWN
     private var currentSleepState: SleepState = SleepState.SLEEP_STATE_UNKNOWN
@@ -286,10 +278,6 @@ class GlassOsClient(
             consoleStub = ConsoleServiceGrpc.newStub(channel)
             sleepStateStub = SleepStateServiceGrpc.newStub(channel)
             idleLockoutStub = IdleModeLockoutServiceGrpc.newStub(channel)
-
-            // Create Bluetooth service stubs for HR sensor management
-            bluetoothStub = BluetoothServiceGrpc.newStub(channel)
-            bluetoothBlockingStub = BluetoothServiceGrpc.newBlockingStub(channel)
 
             // Create async stub for ProgrammedWorkoutSessionService (manual start subscription)
             programmedWorkoutAsyncStub = ProgrammedWorkoutSessionServiceGrpc.newStub(channel)
@@ -479,212 +467,6 @@ class GlassOsClient(
         subscribeToWorkoutState()
         subscribeToManualStart()
     }
-
-    // ==================== Bluetooth HR Sensor Management ====================
-
-    /**
-     * Get list of paired Bluetooth devices from GlassOS.
-     * Returns empty list if no devices are paired or on error.
-     */
-    fun getPairedDevices(): List<BluetoothDevice> {
-        return try {
-            val empty = Empty.getDefaultInstance()
-            val result = bluetoothBlockingStub?.getPairedDevices(empty)
-            val devices = result?.devicesList ?: emptyList()
-            Log.d(TAG, "Got ${devices.size} paired devices")
-            devices.forEach { device ->
-                Log.d(TAG, "  - ${device.deviceName} (${device.macAddress}) type=${device.deviceType} state=${device.connectionState}")
-            }
-            devices
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to get paired devices: ${e.message}")
-            emptyList()
-        }
-    }
-
-    /**
-     * Get paired HR devices specifically.
-     */
-    fun getPairedHrDevices(): List<BluetoothDevice> {
-        return getPairedDevices().filter { it.deviceType == BluetoothDeviceType.BLE_HEART_RATE }
-    }
-
-    /**
-     * Connect to a specific Bluetooth device.
-     */
-    fun connectToDevice(device: BluetoothDevice): Boolean {
-        return try {
-            val result = bluetoothBlockingStub?.connectDevice(device)
-            val success = result?.hasSuccess() == true && result.success
-            if (success) {
-                connectedHrDevice = device
-                Log.d(TAG, "Connected to ${device.deviceName}")
-            } else {
-                Log.w(TAG, "Failed to connect to ${device.deviceName}: ${result?.error?.message ?: "unknown error"}")
-            }
-            success
-        } catch (e: Exception) {
-            Log.e(TAG, "Error connecting to device: ${e.message}")
-            false
-        }
-    }
-
-    /**
-     * Connect to HR device by MAC address.
-     */
-    fun connectToHrByMac(macAddress: String): Boolean {
-        return try {
-            val request = MACAddressConnectionRequest.newBuilder()
-                .setMacAddress(macAddress)
-                .setDeviceType(BluetoothDeviceType.BLE_HEART_RATE)
-                .build()
-            val result = bluetoothBlockingStub?.connectWithMACAddress(request)
-            val success = result?.hasDevice() == true
-            if (success) {
-                connectedHrDevice = result?.device
-                Log.d(TAG, "Connected to HR device: ${result?.device?.deviceName}")
-            } else {
-                Log.w(TAG, "Failed to connect to HR device at $macAddress")
-            }
-            success
-        } catch (e: Exception) {
-            Log.e(TAG, "Error connecting to HR by MAC: ${e.message}")
-            false
-        }
-    }
-
-    /**
-     * Connect to HR device using device identifier (e.g., MAC address or device name).
-     */
-    fun connectToHrm(deviceIdentifier: String): Boolean {
-        return try {
-            val request = DeviceIdentifierRequest.newBuilder()
-                .setDeviceIdentifier(deviceIdentifier)
-                .build()
-            val result = bluetoothBlockingStub?.connectToHRM(request)
-            val success = result?.hasSuccess() == true && result.success
-            Log.d(TAG, "ConnectToHRM($deviceIdentifier): $success")
-            success
-        } catch (e: Exception) {
-            Log.e(TAG, "Error connecting to HRM: ${e.message}")
-            false
-        }
-    }
-
-    /**
-     * Start scanning for Bluetooth HR devices.
-     * @param timeoutSeconds How long to scan (default 30 seconds)
-     */
-    fun startHrScan(timeoutSeconds: Int = 30): Boolean {
-        return try {
-            val request = StartScanRequest.newBuilder()
-                .setScanTimeoutSeconds(timeoutSeconds)
-                .addDeviceTypes(BluetoothDeviceType.BLE_HEART_RATE)
-                .build()
-            val result = bluetoothBlockingStub?.startScan(request)
-            val success = result?.hasSuccess() == true && result.success
-            Log.d(TAG, "StartHrScan: $success")
-            success
-        } catch (e: Exception) {
-            Log.e(TAG, "Error starting HR scan: ${e.message}")
-            false
-        }
-    }
-
-    /**
-     * Stop Bluetooth scanning.
-     */
-    fun stopScan(): Boolean {
-        return try {
-            val empty = Empty.getDefaultInstance()
-            val result = bluetoothBlockingStub?.stopScan(empty)
-            val success = result?.hasSuccess() == true && result.success
-            Log.d(TAG, "StopScan: $success")
-            success
-        } catch (e: Exception) {
-            Log.e(TAG, "Error stopping scan: ${e.message}")
-            false
-        }
-    }
-
-    /**
-     * Subscribe to discovered devices during scanning.
-     * @param onDeviceFound Callback for each discovered device
-     */
-    fun subscribeToFoundDevices(onDeviceFound: (BluetoothDevice) -> Unit) {
-        val empty = Empty.getDefaultInstance()
-        bluetoothStub?.foundDevicesChanged(empty, object : StreamObserver<BluetoothDevice> {
-            override fun onNext(device: BluetoothDevice) {
-                Log.d(TAG, "Found device: ${device.deviceName} (${device.macAddress}) type=${device.deviceType}")
-                onDeviceFound(device)
-            }
-
-            override fun onError(t: Throwable) {
-                Log.e(TAG, "Found devices subscription error: ${t.message}")
-            }
-
-            override fun onCompleted() {
-                Log.d(TAG, "Found devices subscription completed")
-            }
-        })
-    }
-
-    /**
-     * Subscribe to Bluetooth service state changes (connected devices list).
-     * @param onStateChanged Callback with list of currently connected devices
-     */
-    fun subscribeToBluetoothState(onStateChanged: (List<BluetoothDevice>) -> Unit) {
-        val empty = Empty.getDefaultInstance()
-        bluetoothStub?.bluetoothServiceStateChanged(empty, object : StreamObserver<BluetoothServiceState> {
-            override fun onNext(state: BluetoothServiceState) {
-                val connected = state.connectedDevicesList
-                Log.d(TAG, "Bluetooth state changed: ${connected.size} devices connected")
-                connected.forEach { device ->
-                    Log.d(TAG, "  - ${device.deviceName} (${device.macAddress})")
-                }
-                onStateChanged(connected)
-            }
-
-            override fun onError(t: Throwable) {
-                Log.e(TAG, "Bluetooth state subscription error: ${t.message}")
-            }
-
-            override fun onCompleted() {
-                Log.d(TAG, "Bluetooth state subscription completed")
-            }
-        })
-    }
-
-    /**
-     * Auto-connect to a previously paired HR device.
-     * Tries to connect to the first available paired HR device.
-     * @return true if a connection was initiated, false if no paired HR devices found
-     */
-    fun autoConnectToHr(): Boolean {
-        val pairedHrDevices = getPairedHrDevices()
-        if (pairedHrDevices.isEmpty()) {
-            Log.d(TAG, "No paired HR devices found for auto-connect")
-            return false
-        }
-
-        // Try to connect to the first paired HR device
-        val device = pairedHrDevices.first()
-        Log.d(TAG, "Auto-connecting to HR device: ${device.deviceName} (${device.macAddress})")
-
-        // Check if already connected
-        if (device.connectionState == BluetoothConnectionState.BLE_DEVICE_CONNECTED) {
-            Log.d(TAG, "HR device already connected")
-            connectedHrDevice = device
-            return true
-        }
-
-        return connectToDevice(device)
-    }
-
-    /**
-     * Get the currently connected HR device, if any.
-     */
-    fun getConnectedHrDevice(): BluetoothDevice? = connectedHrDevice
 
     // ==================== Control Commands ====================
 

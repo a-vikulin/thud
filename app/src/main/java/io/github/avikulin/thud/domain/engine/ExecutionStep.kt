@@ -20,9 +20,6 @@ data class ExecutionStep(
     /** Original step ID from database. */
     val stepId: Long,
 
-    /** Index in the flattened execution list (0-based). */
-    val flatIndex: Int,
-
     /** Type of step (WARMUP, RUN, RECOVER, etc.). */
     val type: StepType,
 
@@ -136,12 +133,6 @@ data class ExecutionStep(
      */
     val hasAutoAdjustTarget: Boolean
         get() = hasHrTarget || hasPowerTarget
-
-    /**
-     * Whether this step is part of a repeat block.
-     */
-    val isRepeated: Boolean
-        get() = repeatIteration != null && repeatTotal != null
 
     /**
      * Whether this step has an early end HR range condition.

@@ -16,11 +16,6 @@
     <!-- Main HUD background (blue-tinted dark gray for DRM visibility) -->
     <color name="hud_background">#CC2A2A48</color>
 
-    <!-- Status indicator colors -->
-    <color name="status_connecting">#FFAA00</color>
-    <color name="status_connected">#00FF00</color>
-    <color name="status_error">#FF0000</color>
-
     <!-- Text colors (blue-tinted grays) -->
     <color name="text_primary">#FFFFFF</color>
     <color name="text_label">#AAAAC8</color>
@@ -105,7 +100,6 @@
     <color name="progress_bar_background">#333355</color>
     <color name="progress_bar_fill">#00FF00</color>
     <color name="control_button_background">#44FFFFFF</color>
-    <color name="control_button_text">#FFFFFF</color>
 
     <!-- Phase background tints (low alpha for chart warmup/cooldown regions) -->
     <color name="phase_warmup_tint">#14FFA500</color>
@@ -137,8 +131,6 @@
     <!-- ==================== Dialog Common Colors ==================== -->
 
     <color name="text_secondary">#AAAAC8</color>
-    <color name="text_dim">#666688</color>
-    <color name="divider_color">#444466</color>
     <color name="button_primary">#4488FF</color>
     <color name="button_secondary">#444466</color>
     <color name="button_success">#44AA44</color>

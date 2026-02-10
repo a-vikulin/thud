@@ -196,11 +196,8 @@ class WorkoutExecutionEngine(
         mainStepCount = mainExecSteps.size
         cooldownStepCount = cooldownExecSteps.size
 
-        // Concatenate and re-index flatIndex sequentially
-        val allSteps = warmupExecSteps + mainExecSteps + cooldownExecSteps
-        executionSteps = allSteps.mapIndexed { index, step ->
-            step.copy(flatIndex = index)
-        }.toMutableList()
+        // Concatenate all phases
+        executionSteps = (warmupExecSteps + mainExecSteps + cooldownExecSteps).toMutableList()
 
         currentWorkout = workout
         originalSteps = mainSteps  // Only main workout's original steps for FIT export
@@ -845,7 +842,6 @@ class WorkoutExecutionEngine(
         // Create auto-cooldown step (OPEN = runs until user stops)
         val cooldownStep = ExecutionStep(
             stepId = -1,  // Not from database
-            flatIndex = executionSteps.size,
             type = StepType.COOLDOWN,
             durationType = DurationType.TIME,
             durationSeconds = null,

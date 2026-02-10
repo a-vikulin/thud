@@ -311,17 +311,6 @@ class TouchSpinner @JvmOverloads constructor(
         }
     }
 
-    // ============================================================
-    // UTILITY METHODS
-    // ============================================================
-
-    fun setTimeValue(minutes: Int, seconds: Int) {
-        value = (minutes * 60 + seconds).toDouble()
-    }
-
-    fun getTimeMinutes(): Int = _value.toInt() / 60
-    fun getTimeSeconds(): Int = _value.toInt() % 60
-
     override fun onDetachedFromWindow() {
         isDragging = false
         handler.removeCallbacks(updateRunnable)

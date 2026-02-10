@@ -37,7 +37,6 @@ object WorkoutStepFlattener {
      */
     fun flatten(steps: List<WorkoutStep>): List<ExecutionStep> {
         val result = mutableListOf<ExecutionStep>()
-        var flatIndex = 0
         var stepIndex = 0
         var topLevelIndex = 0  // Tracks position among top-level steps for identity keys
 
@@ -62,7 +61,6 @@ object WorkoutStepFlattener {
                         result.add(
                             createExecutionStep(
                                 step = childStep,
-                                flatIndex = flatIndex++,
                                 repeatIteration = iteration,
                                 repeatTotal = repeatCount,
                                 stepIdentityKey = "r${topLevelIndex}_c${childPos}"
@@ -79,7 +77,6 @@ object WorkoutStepFlattener {
                 result.add(
                     createExecutionStep(
                         step = step,
-                        flatIndex = flatIndex++,
                         repeatIteration = null,
                         repeatTotal = null,
                         stepIdentityKey = "s${topLevelIndex}"
@@ -99,14 +96,12 @@ object WorkoutStepFlattener {
 
     private fun createExecutionStep(
         step: WorkoutStep,
-        flatIndex: Int,
         repeatIteration: Int?,
         repeatTotal: Int?,
         stepIdentityKey: String = ""
     ): ExecutionStep {
         return ExecutionStep(
             stepId = step.id,
-            flatIndex = flatIndex,
             type = step.type,
             durationType = step.durationType,
             durationSeconds = step.durationSeconds,
@@ -149,23 +144,4 @@ object WorkoutStepFlattener {
         }
     }
 
-    /**
-     * Calculate total estimated duration in seconds for flattened steps.
-     * Only counts TIME-based steps.
-     */
-    fun calculateTotalDurationSeconds(steps: List<ExecutionStep>): Int? {
-        val timeBased = steps.filter { it.durationSeconds != null }
-        if (timeBased.isEmpty()) return null
-        return timeBased.sumOf { it.durationSeconds ?: 0 }
-    }
-
-    /**
-     * Calculate total estimated distance in meters for flattened steps.
-     * Only counts DISTANCE-based steps.
-     */
-    fun calculateTotalDistanceMeters(steps: List<ExecutionStep>): Int? {
-        val distanceBased = steps.filter { it.durationMeters != null }
-        if (distanceBased.isEmpty()) return null
-        return distanceBased.sumOf { it.durationMeters ?: 0 }
-    }
 }

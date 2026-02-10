@@ -63,30 +63,6 @@ object PaceConverter {
     }
 
     /**
-     * Parse "M:SS" string to pace seconds.
-     * @param paceString String in format "M:SS" (e.g., "5:30")
-     * @return Pace in seconds, or null if parsing fails
-     */
-    fun parsePace(paceString: String): Int? {
-        val parts = paceString.trim().split(":")
-        if (parts.size != 2) return null
-        val minutes = parts[0].toIntOrNull() ?: return null
-        val seconds = parts[1].toIntOrNull() ?: return null
-        if (minutes < 0 || seconds < 0 || seconds >= 60) return null
-        return minutes * 60 + seconds
-    }
-
-    /**
-     * Parse "M:SS" string and convert to speed (kph).
-     * @param paceString String in format "M:SS" (e.g., "5:30")
-     * @return Speed in kph, or null if parsing fails
-     */
-    fun parseSpeedFromPace(paceString: String): Double? {
-        val paceSeconds = parsePace(paceString) ?: return null
-        return paceSecondsToSpeed(paceSeconds)
-    }
-
-    /**
      * Format duration in seconds as "M:SS" or "H:MM:SS".
      * @param durationSeconds Duration in seconds
      * @return Formatted string

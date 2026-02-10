@@ -866,11 +866,6 @@ class WorkoutChart @JvmOverloads constructor(
     }
 
     /**
-     * Get current full scale mode state.
-     */
-    fun getFullScaleMode(): Boolean = isFullScaleMode
-
-    /**
      * Set planned segments for workout visualization per spec Section 4.4.
      * Segments should be sorted by start time and have valid end times.
      * Includes HR target ranges for drawing HR target rectangles.

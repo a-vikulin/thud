@@ -112,9 +112,7 @@
     <dimen name="step_item_margin_horizontal">8dp</dimen>
     <dimen name="step_item_margin_vertical">4dp</dimen>
     <dimen name="step_item_corner_radius">8dp</dimen>
-    <dimen name="step_child_indent">32dp</dimen>
     <dimen name="step_action_button_size">40dp</dimen>
-    <dimen name="step_number_min_width">36dp</dimen>
 
     <!-- Step Item Text -->
     <dimen name="text_step_drag_handle">18sp</dimen>
@@ -130,53 +128,7 @@
     <dimen name="text_editor_summary">14sp</dimen>
 
     <!-- Dialog -->
-    <dimen name="dialog_step_editor_width">400dp</dimen>
     <dimen name="dialog_button_padding">16dp</dimen>
-
-    <!-- ==================== Workout Library ==================== -->
-
-    <!-- Card -->
-    <dimen name="library_card_margin_horizontal">16dp</dimen>
-    <dimen name="library_card_margin_vertical">8dp</dimen>
-    <dimen name="library_card_padding">16dp</dimen>
-    <dimen name="library_card_corner_radius">12dp</dimen>
-    <dimen name="library_card_elevation">4dp</dimen>
-    <dimen name="library_card_description_margin_top">4dp</dimen>
-    <dimen name="library_card_stats_margin_top">12dp</dimen>
-
-    <!-- Action buttons -->
-    <dimen name="library_action_button_size">40dp</dimen>
-    <dimen name="library_stat_drawable_padding">4dp</dimen>
-    <dimen name="library_stat_separator_width">16dp</dimen>
-
-    <!-- List -->
-    <dimen name="library_list_padding_top">8dp</dimen>
-    <dimen name="library_list_padding_bottom">80dp</dimen>
-    <dimen name="library_fab_margin">16dp</dimen>
-
-    <!-- Empty state -->
-    <dimen name="library_empty_subtitle_margin">8dp</dimen>
-
-    <!-- Quick start -->
-    <dimen name="library_quick_start_padding">32dp</dimen>
-    <dimen name="quick_start_icon_size">96dp</dimen>
-    <dimen name="quick_start_title_margin_top">24dp</dimen>
-    <dimen name="quick_start_subtitle_margin_top">8dp</dimen>
-    <dimen name="quick_start_button_margin_top">32dp</dimen>
-    <dimen name="quick_start_button_padding_horizontal">32dp</dimen>
-    <dimen name="quick_start_button_padding_vertical">12dp</dimen>
-    <dimen name="quick_start_hint_margin_top">16dp</dimen>
-
-    <!-- Library text -->
-    <dimen name="text_library_workout_name">18sp</dimen>
-    <dimen name="text_library_description">14sp</dimen>
-    <dimen name="text_library_stats">12sp</dimen>
-    <dimen name="text_library_empty_title">18sp</dimen>
-    <dimen name="text_library_empty_subtitle">14sp</dimen>
-    <dimen name="text_quick_start_title">24sp</dimen>
-    <dimen name="text_quick_start_subtitle">16sp</dimen>
-    <dimen name="text_quick_start_button">18sp</dimen>
-    <dimen name="text_quick_start_hint">12sp</dimen>
 
     <!-- ==================== TouchSpinner ==================== -->
 
@@ -201,11 +153,6 @@
     <dimen name="hr_slider_handle_radius">4dp</dimen>
     <dimen name="hr_slider_text_size">12sp</dimen>
 
-    <!-- ==================== Workout Preview Chart ==================== -->
-
-    <item name="preview_chart_height_fraction" format="float" type="dimen">0.25</item>
-    <dimen name="preview_chart_padding">8dp</dimen>
-    <dimen name="preview_chart_axis_width">60dp</dimen>
 
     <!-- ==================== Inline Step Editor ==================== -->
 

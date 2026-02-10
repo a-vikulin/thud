@@ -106,13 +106,6 @@ object SavedBluetoothDevices {
     }
 
     /**
-     * Clear all saved devices.
-     */
-    fun clearAll(prefs: SharedPreferences) {
-        prefs.edit().remove(PREF_KEY).apply()
-    }
-
-    /**
      * Check if a MAC address is already saved.
      */
     fun isSaved(prefs: SharedPreferences, mac: String): Boolean {
