@@ -56,8 +56,8 @@ import io.github.avikulin.thud.util.TrainingMetricsCalculator
 import com.ifit.glassos.workout.WorkoutState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -140,6 +140,7 @@ class HUDService : Service(),
 
     // Coroutine scope for background work
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val shutdownScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mainHandler = Handler(Looper.getMainLooper())
 
     // Shared state holder
@@ -2614,10 +2615,10 @@ class HUDService : Service(),
         strydManager.listener = null
         workoutRecorder.onMetricsUpdated = null
 
-        // Disconnect gRPC in background (use GlobalScope since serviceScope is cancelled)
-        GlobalScope.launch(Dispatchers.IO) {
-            telemetryManager.disconnect()
-        }
+        // Disconnect gRPC in background (shutdownScope survives serviceScope cancellation)
+        shutdownScope.launch {
+            withTimeoutOrNull(5000) { telemetryManager.disconnect() }
+        }.invokeOnCompletion { shutdownScope.cancel() }
 
         Log.d(TAG, "Service destroyed. Workout data points: ${workoutRecorder.getDataPointCount()}")
         super.onDestroy()

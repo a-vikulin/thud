@@ -1068,7 +1068,10 @@ class WorkoutExecutionEngine(
         val currentState = _state.value
         if (currentState !is WorkoutExecutionState.Running) return
 
-        val step = executionSteps[currentStepIndex]
+        // Capture index locally to prevent race with concurrent step transitions
+        val stepIdx = currentStepIndex
+        if (stepIdx !in executionSteps.indices) return
+        val step = executionSteps[stepIdx]
         val isAdjustmentActive = speedAdjustmentCoefficient != 1.0 || inclineAdjustmentCoefficient != 1.0
 
         // Calculate countdown (3, 2, 1) for the last 3 seconds before step ends
@@ -1076,7 +1079,7 @@ class WorkoutExecutionEngine(
 
         _state.value = WorkoutExecutionState.Running(
             workout = workout,
-            currentStepIndex = currentStepIndex,
+            currentStepIndex = stepIdx,
             currentStep = step,
             // Use CACHED timing values - never read from existing state
             stepElapsedMs = cachedStepElapsedMs,
