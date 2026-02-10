@@ -133,10 +133,10 @@ Cross-calc: `calculateDistanceMeters(seconds, kph)`, `calculateDurationSeconds(m
 ### HeartRateZones (`util/HeartRateZones.kt`)
 `getZone(bpm, lthrBpm, z1Pct, z2Pct, z3Pct, z4Pct)` → zone 1-5
 `getZoneColorResId(zone)`, `getStepTypeColorResId(type)` → color resources
-`percentToBpm(percent, lthrBpm)`, `bpmToPercent(bpm, lthrBpm)` → conversions
+`percentToBpm(percent, lthrBpm)` → conversion
 
 ### PowerZones (`util/PowerZones.kt`)
-Same pattern as HeartRateZones but with `ftpWatts`: `getZone()`, `getZoneColorResId()`, `percentToWatts()`, `wattsToPercent()`
+Same pattern as HeartRateZones but with `ftpWatts`: `getZone()`, `getZoneColorResId()`, `percentToWatts()`
 
 ### FileExportHelper (`util/FileExportHelper.kt`)
 Exports to Downloads/tHUD via MediaStore. `saveToDownloads(context, sourceFile, filename, mimeType, subfolder)`, `getTempFile(context, filename)`. Subfolders: `ROOT` (tHUD/), `SCREENSHOTS` (tHUD/screenshots/).

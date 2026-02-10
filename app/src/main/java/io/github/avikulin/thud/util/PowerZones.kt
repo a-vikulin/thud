@@ -60,34 +60,4 @@ object PowerZones {
      * @return Power in watts (rounded to nearest integer)
      */
     fun percentToWatts(percent: Double, ftpWatts: Int): Int = kotlin.math.round(percent * ftpWatts / 100.0).toInt()
-
-    /**
-     * Convert Watts to % of FTP.
-     *
-     * @param watts Power in watts
-     * @param ftpWatts User's FTP in watts
-     * @return Percentage of FTP
-     */
-    fun wattsToPercent(watts: Int, ftpWatts: Int): Int =
-        if (ftpWatts > 0) watts * 100 / ftpWatts else 0
-
-    /**
-     * Convert Watts to % of FTP (Double version).
-     *
-     * @param watts Power in watts
-     * @param ftpWatts User's FTP in watts
-     * @return Percentage of FTP as Double for precision
-     */
-    fun wattsToPercentDouble(watts: Double, ftpWatts: Int): Double =
-        if (ftpWatts > 0) watts * 100.0 / ftpWatts else 0.0
-
-    /**
-     * Get zone boundary in Watts.
-     *
-     * @param ftpWatts User's FTP in watts
-     * @param zoneStartPercent Zone start boundary as % of FTP
-     * @return Zone boundary in watts
-     */
-    fun getZoneBoundaryWatts(ftpWatts: Int, zoneStartPercent: Double): Int =
-        percentToWatts(zoneStartPercent, ftpWatts)
 }

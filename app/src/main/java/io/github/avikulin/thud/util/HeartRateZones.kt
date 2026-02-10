@@ -47,38 +47,6 @@ object HeartRateZones {
     }
 
     /**
-     * Determine which HR zone a given BPM falls into.
-     * Zone boundaries are percentages of LTHR where each zone starts.
-     *
-     * @param bpm Heart rate in beats per minute
-     * @param lthrBpm User's Lactate Threshold HR in BPM
-     * @param z2StartPercent % of LTHR where zone 2 begins (e.g., 80)
-     * @param z3StartPercent % of LTHR where zone 3 begins (e.g., 88)
-     * @param z4StartPercent % of LTHR where zone 4 begins (e.g., 95)
-     * @param z5StartPercent % of LTHR where zone 5 begins (e.g., 102)
-     * @return Zone number 0-5 (0 = no data, 1-5 = zones)
-     */
-    fun getZoneFromPercent(
-        bpm: Double,
-        lthrBpm: Int,
-        z2StartPercent: Int,
-        z3StartPercent: Int,
-        z4StartPercent: Int,
-        z5StartPercent: Int
-    ): Int {
-        if (bpm <= 0 || lthrBpm <= 0) return 0
-
-        val percentOfLthr = (bpm * 100 / lthrBpm).toInt()
-        return when {
-            percentOfLthr < z2StartPercent -> 1
-            percentOfLthr < z3StartPercent -> 2
-            percentOfLthr < z4StartPercent -> 3
-            percentOfLthr < z5StartPercent -> 4
-            else -> 5
-        }
-    }
-
-    /**
      * Get the color resource ID for a given HR zone.
      * @param zone Zone number 1-5
      * @return Color resource ID
@@ -120,34 +88,4 @@ object HeartRateZones {
      * @return Heart rate in BPM (rounded to nearest integer)
      */
     fun percentToBpm(percent: Double, lthrBpm: Int): Int = kotlin.math.round(percent * lthrBpm / 100.0).toInt()
-
-    /**
-     * Convert BPM to % of LTHR.
-     *
-     * @param bpm Heart rate in BPM
-     * @param lthrBpm User's LTHR in BPM
-     * @return Percentage of LTHR
-     */
-    fun bpmToPercent(bpm: Int, lthrBpm: Int): Int =
-        if (lthrBpm > 0) bpm * 100 / lthrBpm else 0
-
-    /**
-     * Convert BPM to % of LTHR (Double version).
-     *
-     * @param bpm Heart rate in BPM
-     * @param lthrBpm User's LTHR in BPM
-     * @return Percentage of LTHR as Double for precision
-     */
-    fun bpmToPercentDouble(bpm: Double, lthrBpm: Int): Double =
-        if (lthrBpm > 0) bpm * 100.0 / lthrBpm else 0.0
-
-    /**
-     * Get zone boundary in BPM.
-     *
-     * @param lthrBpm User's LTHR in BPM
-     * @param zoneStartPercent Zone start boundary as % of LTHR
-     * @return Zone boundary in BPM
-     */
-    fun getZoneBoundaryBpm(lthrBpm: Int, zoneStartPercent: Double): Int =
-        percentToBpm(zoneStartPercent, lthrBpm)
 }

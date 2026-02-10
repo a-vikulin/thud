@@ -18,7 +18,7 @@ object PaceConverter {
      */
     fun speedToPaceSeconds(speedKph: Double): Int {
         if (speedKph <= 0) return 0
-        return (3600.0 / speedKph).toInt()  // 60 min * 60 sec / kph
+        return kotlin.math.round(3600.0 / speedKph).toInt()  // 60 min * 60 sec / kph
     }
 
     /**
@@ -72,7 +72,7 @@ object PaceConverter {
         if (parts.size != 2) return null
         val minutes = parts[0].toIntOrNull() ?: return null
         val seconds = parts[1].toIntOrNull() ?: return null
-        if (seconds < 0 || seconds >= 60) return null
+        if (minutes < 0 || seconds < 0 || seconds >= 60) return null
         return minutes * 60 + seconds
     }
 
