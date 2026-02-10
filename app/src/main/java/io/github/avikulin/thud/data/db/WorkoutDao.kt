@@ -8,6 +8,7 @@ import androidx.room.Transaction
 import androidx.room.Update
 import io.github.avikulin.thud.data.entity.Workout
 import io.github.avikulin.thud.data.entity.WorkoutStep
+import io.github.avikulin.thud.domain.model.StepType
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -96,9 +97,6 @@ interface WorkoutDao {
     /**
      * Save a workout with its steps in a single transaction.
      * Deletes existing steps and replaces with new ones.
-     *
-     * IMPORTANT: REPEAT steps must be inserted first to get their new IDs,
-     * then substeps are updated with the correct parentRepeatStepId.
      */
     @Transaction
     suspend fun saveWorkoutWithSteps(workout: Workout, steps: List<WorkoutStep>) {
@@ -110,26 +108,30 @@ interface WorkoutDao {
             workout.id
         }
 
-        if (steps.isEmpty()) return
+        if (steps.isNotEmpty()) {
+            remapAndInsertSteps(steps, workoutId)
+        }
+    }
 
-        // Separate REPEAT steps from substeps
-        val repeatSteps = steps.filter { it.type == io.github.avikulin.thud.domain.model.StepType.REPEAT }
-        val otherSteps = steps.filter { it.type != io.github.avikulin.thud.domain.model.StepType.REPEAT }
+    /**
+     * Insert steps with REPEAT ID remapping.
+     * REPEAT steps are inserted first (one by one) to capture their new DB IDs,
+     * then children are batch-inserted with remapped parentRepeatStepId.
+     */
+    suspend fun remapAndInsertSteps(steps: List<WorkoutStep>, workoutId: Long) {
+        val repeatSteps = steps.filter { it.type == StepType.REPEAT }
+        val otherSteps = steps.filter { it.type != StepType.REPEAT }
 
-        // Build mapping from old temp ID to new database ID for REPEAT steps
         val oldIdToNewId = mutableMapOf<Long, Long>()
-
-        // Insert REPEAT steps first (one by one to get new IDs)
         for (repeatStep in repeatSteps) {
-            val oldId = repeatStep.id
-            val newId = insertStep(repeatStep.copy(id = 0, workoutId = workoutId))
-            oldIdToNewId[oldId] = newId
+            oldIdToNewId[repeatStep.id] = insertStep(repeatStep.copy(id = 0, workoutId = workoutId))
         }
 
-        // Insert other steps with updated parentRepeatStepId
         val stepsToInsert = otherSteps.map { step ->
-            val newParentId = step.parentRepeatStepId?.let { oldIdToNewId[it] }
-            step.copy(id = 0, workoutId = workoutId, parentRepeatStepId = newParentId)
+            step.copy(
+                id = 0, workoutId = workoutId,
+                parentRepeatStepId = step.parentRepeatStepId?.let { oldIdToNewId[it] }
+            )
         }
         if (stepsToInsert.isNotEmpty()) {
             insertSteps(stepsToInsert)

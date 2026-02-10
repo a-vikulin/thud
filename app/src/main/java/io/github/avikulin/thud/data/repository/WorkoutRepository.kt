@@ -133,10 +133,6 @@ class WorkoutRepository(
     /**
      * Duplicate a workout with a new name.
      * Returns the ID of the new workout.
-     *
-     * Uses the same ID-remapping pattern as [WorkoutDao.saveWorkoutWithSteps]:
-     * REPEAT steps are inserted first to capture new DB IDs, then children
-     * are inserted with remapped parentRepeatStepId.
      */
     suspend fun duplicateWorkout(workoutId: Long, newName: String): Long? {
         val (original, steps) = getWorkoutWithSteps(workoutId) ?: return null
@@ -152,23 +148,8 @@ class WorkoutRepository(
 
         val newWorkoutId = workoutDao.insertWorkout(newWorkout)
 
-        // Remap REPEAT step IDs (same pattern as WorkoutDao.saveWorkoutWithSteps)
-        val repeatSteps = steps.filter { it.type == StepType.REPEAT }
-        val otherSteps = steps.filter { it.type != StepType.REPEAT }
-        val oldIdToNewId = mutableMapOf<Long, Long>()
-
-        for (repeatStep in repeatSteps) {
-            val oldId = repeatStep.id
-            val newId = workoutDao.insertStep(repeatStep.copy(id = 0, workoutId = newWorkoutId))
-            oldIdToNewId[oldId] = newId
-        }
-
-        val stepsToInsert = otherSteps.map { step ->
-            val newParentId = step.parentRepeatStepId?.let { oldIdToNewId[it] }
-            step.copy(id = 0, workoutId = newWorkoutId, parentRepeatStepId = newParentId)
-        }
-        if (stepsToInsert.isNotEmpty()) {
-            workoutDao.insertSteps(stepsToInsert)
+        if (steps.isNotEmpty()) {
+            workoutDao.remapAndInsertSteps(steps, newWorkoutId)
         }
 
         return newWorkoutId
