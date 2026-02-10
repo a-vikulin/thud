@@ -79,39 +79,36 @@ class WorkoutRepository(
     /**
      * Ensure system workouts (Default Warmup, Default Cooldown) exist.
      * Idempotent — safe to call on every app startup.
+     * Each check-and-insert is atomic via @Transaction to prevent duplicates.
      */
     suspend fun ensureSystemWorkoutsExist() {
-        if (workoutDao.getSystemWorkout(SYSTEM_TYPE_WARMUP) == null) {
-            val warmupId = workoutDao.insertWorkout(Workout(
-                name = "Default Warmup",
-                systemWorkoutType = SYSTEM_TYPE_WARMUP
-            ))
-            workoutDao.insertStep(WorkoutStep(
-                workoutId = warmupId,
+        workoutDao.ensureSystemWorkoutExists(
+            type = SYSTEM_TYPE_WARMUP,
+            workout = Workout(name = "Default Warmup", systemWorkoutType = SYSTEM_TYPE_WARMUP),
+            step = WorkoutStep(
+                workoutId = 0, // Replaced by DAO with actual workout ID
                 orderIndex = 0,
                 type = StepType.WARMUP,
                 durationType = DurationType.TIME,
                 durationSeconds = 300,
                 paceTargetKph = 5.0,
                 inclineTargetPercent = 0.0
-            ))
-        }
+            )
+        )
 
-        if (workoutDao.getSystemWorkout(SYSTEM_TYPE_COOLDOWN) == null) {
-            val cooldownId = workoutDao.insertWorkout(Workout(
-                name = "Default Cooldown",
-                systemWorkoutType = SYSTEM_TYPE_COOLDOWN
-            ))
-            workoutDao.insertStep(WorkoutStep(
-                workoutId = cooldownId,
+        workoutDao.ensureSystemWorkoutExists(
+            type = SYSTEM_TYPE_COOLDOWN,
+            workout = Workout(name = "Default Cooldown", systemWorkoutType = SYSTEM_TYPE_COOLDOWN),
+            step = WorkoutStep(
+                workoutId = 0, // Replaced by DAO with actual workout ID
                 orderIndex = 0,
                 type = StepType.COOLDOWN,
                 durationType = DurationType.TIME,
                 durationSeconds = 300,
                 paceTargetKph = 4.0,
                 inclineTargetPercent = 0.0
-            ))
-        }
+            )
+        )
     }
 
     /**
@@ -142,6 +139,10 @@ class WorkoutRepository(
     /**
      * Duplicate a workout with a new name.
      * Returns the ID of the new workout.
+     *
+     * Uses the same ID-remapping pattern as [WorkoutDao.saveWorkoutWithSteps]:
+     * REPEAT steps are inserted first to capture new DB IDs, then children
+     * are inserted with remapped parentRepeatStepId.
      */
     suspend fun duplicateWorkout(workoutId: Long, newName: String): Long? {
         val (original, steps) = getWorkoutWithSteps(workoutId) ?: return null
@@ -157,11 +158,24 @@ class WorkoutRepository(
 
         val newWorkoutId = workoutDao.insertWorkout(newWorkout)
 
-        // Copy steps with new workout ID and reset IDs
-        val newSteps = steps.map { step ->
-            step.copy(id = 0, workoutId = newWorkoutId)
+        // Remap REPEAT step IDs (same pattern as WorkoutDao.saveWorkoutWithSteps)
+        val repeatSteps = steps.filter { it.type == StepType.REPEAT }
+        val otherSteps = steps.filter { it.type != StepType.REPEAT }
+        val oldIdToNewId = mutableMapOf<Long, Long>()
+
+        for (repeatStep in repeatSteps) {
+            val oldId = repeatStep.id
+            val newId = workoutDao.insertStep(repeatStep.copy(id = 0, workoutId = newWorkoutId))
+            oldIdToNewId[oldId] = newId
         }
-        workoutDao.insertSteps(newSteps)
+
+        val stepsToInsert = otherSteps.map { step ->
+            val newParentId = step.parentRepeatStepId?.let { oldIdToNewId[it] }
+            step.copy(id = 0, workoutId = newWorkoutId, parentRepeatStepId = newParentId)
+        }
+        if (stepsToInsert.isNotEmpty()) {
+            workoutDao.insertSteps(stepsToInsert)
+        }
 
         return newWorkoutId
     }

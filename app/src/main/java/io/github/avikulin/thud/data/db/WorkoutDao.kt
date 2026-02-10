@@ -88,6 +88,18 @@ interface WorkoutDao {
     // ==================== Transactions ====================
 
     /**
+     * Atomically check if a system workout exists and create it if not.
+     * Prevents duplicate system workouts from concurrent calls.
+     */
+    @Transaction
+    suspend fun ensureSystemWorkoutExists(type: String, workout: Workout, step: WorkoutStep) {
+        if (getSystemWorkout(type) == null) {
+            val id = insertWorkout(workout)
+            insertStep(step.copy(workoutId = id))
+        }
+    }
+
+    /**
      * Save a workout with its steps in a single transaction.
      * Deletes existing steps and replaces with new ones.
      *
