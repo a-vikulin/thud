@@ -60,30 +60,6 @@ class PopupManager(
     val isInclinePopupVisible: Boolean
         get() = inclinePopupView != null
 
-    // ==================== Speed/Incline Value Generation ====================
-
-    private fun generateSpeedValues(minKph: Double, maxKph: Double): List<Double> {
-        val values = mutableListOf<Double>()
-        val startSpeed = ceil(minKph * 2.0) / 2.0
-        val endSpeed = floor(maxKph * 2.0) / 2.0
-        var speed = startSpeed
-        while (speed <= endSpeed) {
-            values.add(speed)
-            speed += 0.5
-        }
-        return values
-    }
-
-    private fun generateInclineValues(minPercent: Double, maxPercent: Double): List<Int> {
-        val values = mutableListOf<Int>()
-        var incline = minPercent.toInt()
-        while (incline <= maxPercent) {
-            values.add(incline)
-            incline += if (incline < 6) 1 else 2
-        }
-        return values
-    }
-
     // ==================== Pace Popup ====================
 
     fun togglePacePopup() {
@@ -108,10 +84,10 @@ class PopupManager(
         val adjustedMaxKph = treadmillMaxKph * state.paceCoefficient
 
         // Generate ADJUSTED speeds at 0.5 kph steps
-        var adjustedSpeeds = generateSpeedValues(adjustedMinKph, adjustedMaxKph)
+        var adjustedSpeeds = ServiceStateHolder.generateSpeedValues(adjustedMinKph, adjustedMaxKph)
         if (adjustedSpeeds.isEmpty()) {
             Log.w(TAG, "Pace popup: generated empty speeds from $adjustedMinKph-$adjustedMaxKph, using defaults")
-            adjustedSpeeds = generateSpeedValues(1.6, 20.0)
+            adjustedSpeeds = ServiceStateHolder.generateSpeedValues(1.6, 20.0)
         }
 
         // Check if a structured workout is paused - add resume button as first item if so
@@ -311,12 +287,12 @@ class PopupManager(
             val treadmillMaxIncline = client?.maxInclinePercent?.takeIf { it.isFinite() && it > treadmillMinIncline } ?: 40.0
             val effectiveMinIncline = treadmillMinIncline - state.inclineAdjustment
             val effectiveMaxIncline = treadmillMaxIncline - state.inclineAdjustment
-            generateInclineValues(effectiveMinIncline, effectiveMaxIncline)
+            ServiceStateHolder.generateInclineValues(effectiveMinIncline, effectiveMaxIncline)
         }
         if (inclines.isEmpty()) {
             Log.w(TAG, "Incline popup: generated empty inclines, using defaults")
             // Default values also as effective incline (with 1% adjustment: -7 to 39)
-            inclines = generateInclineValues(-6.0 - state.inclineAdjustment, 40.0 - state.inclineAdjustment)
+            inclines = ServiceStateHolder.generateInclineValues(-6.0 - state.inclineAdjustment, 40.0 - state.inclineAdjustment)
         }
         val numValues = inclines.size
         val numRows = (numValues + INCLINE_GRID_COLUMNS - 1) / INCLINE_GRID_COLUMNS

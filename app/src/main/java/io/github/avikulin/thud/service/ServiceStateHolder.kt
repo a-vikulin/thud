@@ -2,6 +2,8 @@ package io.github.avikulin.thud.service
 
 import com.ifit.glassos.workout.WorkoutState
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.ceil
+import kotlin.math.floor
 
 /**
  * Centralized state container for HUDService.
@@ -158,4 +160,30 @@ class ServiceStateHolder {
     // ==================== Screen Dimensions ====================
     var screenWidth = 0
     var screenHeight = 0
+
+    companion object {
+        /** Generate speed values at 0.5 kph intervals within the given range. */
+        fun generateSpeedValues(minKph: Double, maxKph: Double): List<Double> {
+            val values = mutableListOf<Double>()
+            val startSpeed = ceil(minKph * 2.0) / 2.0
+            val endSpeed = floor(maxKph * 2.0) / 2.0
+            var speed = startSpeed
+            while (speed <= endSpeed) {
+                values.add(speed)
+                speed += 0.5
+            }
+            return values
+        }
+
+        /** Generate incline values: 1% steps below 6%, 2% steps at 6% and above. */
+        fun generateInclineValues(minPercent: Double, maxPercent: Double): List<Int> {
+            val values = mutableListOf<Int>()
+            var incline = minPercent.toInt()
+            while (incline <= maxPercent) {
+                values.add(incline)
+                incline += if (incline < 6) 1 else 2
+            }
+            return values
+        }
+    }
 }

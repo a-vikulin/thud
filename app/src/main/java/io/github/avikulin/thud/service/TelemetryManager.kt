@@ -11,8 +11,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.ceil
-import kotlin.math.floor
 
 /**
  * Manages GlassOS connection lifecycle and telemetry callbacks.
@@ -92,7 +90,7 @@ class TelemetryManager(
                     listener?.onConnectionEstablished(isReconnection)
 
                     // Generate dynamic menu values from treadmill ranges
-                    state.speedValues = generateSpeedValues(
+                    state.speedValues = ServiceStateHolder.generateSpeedValues(
                         glassOsClient?.minSpeedKph ?: 1.6,
                         glassOsClient?.maxSpeedKph ?: 20.0
                     )
@@ -104,7 +102,7 @@ class TelemetryManager(
                     val effectiveMinIncline = treadmillMinIncline - state.inclineAdjustment
                     val effectiveMaxIncline = treadmillMaxIncline - state.inclineAdjustment
 
-                    state.inclineValues = generateInclineValues(effectiveMinIncline, effectiveMaxIncline)
+                    state.inclineValues = ServiceStateHolder.generateInclineValues(effectiveMinIncline, effectiveMaxIncline)
                     state.minSpeedKph = glassOsClient?.minSpeedKph ?: 1.6
                     state.maxSpeedKph = glassOsClient?.maxSpeedKph ?: 20.0
                     state.minInclinePercent = effectiveMinIncline
@@ -169,30 +167,6 @@ class TelemetryManager(
     fun disconnect() {
         glassOsClient?.disconnectFromConsole()
         glassOsClient?.disconnect()
-    }
-
-    // ==================== Speed/Incline Value Generation ====================
-
-    private fun generateSpeedValues(minKph: Double, maxKph: Double): List<Double> {
-        val values = mutableListOf<Double>()
-        val startSpeed = ceil(minKph * 2.0) / 2.0
-        val endSpeed = floor(maxKph * 2.0) / 2.0
-        var speed = startSpeed
-        while (speed <= endSpeed) {
-            values.add(speed)
-            speed += 0.5
-        }
-        return values
-    }
-
-    private fun generateInclineValues(minPercent: Double, maxPercent: Double): List<Int> {
-        val values = mutableListOf<Int>()
-        var incline = minPercent.toInt()
-        while (incline <= maxPercent) {
-            values.add(incline)
-            incline += if (incline < 6) 1 else 2
-        }
-        return values
     }
 
     /**
