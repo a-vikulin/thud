@@ -158,86 +158,76 @@ class WorkoutRepository(
     // ==================== Helper Functions ====================
 
     /**
-     * Count executable steps (excludes REPEAT containers).
-     * Uses position-based traversal to find children.
+     * Traverse steps handling REPEAT blocks: calls [block] for each executable step
+     * with its effective repeat multiplier (1 for top-level, N for REPEAT children).
      */
-    private fun countExecutableSteps(steps: List<WorkoutStep>): Int {
-        var count = 0
+    private inline fun forEachEffectiveStep(
+        steps: List<WorkoutStep>,
+        block: (step: WorkoutStep, repeatCount: Int) -> Unit
+    ) {
         var stepIndex = 0
-
         while (stepIndex < steps.size) {
             val step = steps[stepIndex]
-
             if (step.type == StepType.REPEAT) {
-                // Get child steps using position-based traversal
-                var childCount = 0
+                val repeatCount = step.repeatCount ?: 1
                 var childIndex = stepIndex + 1
                 while (childIndex < steps.size && steps[childIndex].parentRepeatStepId != null) {
-                    childCount++
+                    block(steps[childIndex], repeatCount)
                     childIndex++
                 }
-                count += childCount * (step.repeatCount ?: 1)
                 stepIndex = childIndex
             } else if (step.parentRepeatStepId == null) {
-                count++
+                block(step, 1)
                 stepIndex++
             } else {
                 stepIndex++
             }
         }
+    }
+
+    /**
+     * Count executable steps (excludes REPEAT containers).
+     */
+    private fun countExecutableSteps(steps: List<WorkoutStep>): Int {
+        var count = 0
+        forEachEffectiveStep(steps) { _, repeatCount -> count += repeatCount }
         return count
     }
 
     /**
      * Calculate estimated duration in seconds.
      * Cross-calculates time from distance-based steps using pace.
-     * Uses position-based traversal to find children.
      */
     private fun calculateEstimatedDuration(steps: List<WorkoutStep>): Int? {
         var totalSeconds = 0.0
         var hasSteps = false
-        var stepIndex = 0
-
-        while (stepIndex < steps.size) {
-            val step = steps[stepIndex]
-
-            if (step.type == StepType.REPEAT) {
-                // Get child steps using position-based traversal
-                val childSteps = mutableListOf<WorkoutStep>()
-                var childIndex = stepIndex + 1
-                while (childIndex < steps.size && steps[childIndex].parentRepeatStepId != null) {
-                    childSteps.add(steps[childIndex])
-                    childIndex++
-                }
-
-                val repeatCount = step.repeatCount ?: 1
-                for (child in childSteps) {
-                    val seconds = calculateStepDuration(child)
-                    if (seconds > 0) {
-                        totalSeconds += seconds * repeatCount
-                        hasSteps = true
-                    }
-                }
-                stepIndex = childIndex
-            } else if (step.parentRepeatStepId == null) {
-                val seconds = calculateStepDuration(step)
-                if (seconds > 0) {
-                    totalSeconds += seconds
-                    hasSteps = true
-                }
-                stepIndex++
-            } else {
-                stepIndex++
+        forEachEffectiveStep(steps) { step, repeatCount ->
+            val seconds = calculateStepDuration(step)
+            if (seconds > 0) {
+                totalSeconds += seconds * repeatCount
+                hasSteps = true
             }
         }
-
         return if (hasSteps && totalSeconds > 0) totalSeconds.toInt() else null
     }
 
     /**
-     * Calculate duration of a single step in seconds.
-     * For distance-based steps, calculates time from distance and pace.
+     * Calculate estimated distance in meters.
+     * Cross-calculates distance from time-based steps using pace.
      */
+    private fun calculateEstimatedDistance(steps: List<WorkoutStep>): Int? {
+        var totalMeters = 0.0
+        var hasSteps = false
+        forEachEffectiveStep(steps) { step, repeatCount ->
+            val meters = calculateStepDistance(step)
+            if (meters > 0) {
+                totalMeters += meters * repeatCount
+                hasSteps = true
+            }
+        }
+        return if (hasSteps && totalMeters > 0) totalMeters.toInt() else null
+    }
+
     private fun calculateStepDuration(step: WorkoutStep): Double {
         return when (step.durationType) {
             DurationType.TIME -> (step.durationSeconds ?: 0).toDouble()
@@ -248,56 +238,6 @@ class WorkoutRepository(
         }
     }
 
-    /**
-     * Calculate estimated distance in meters.
-     * Cross-calculates distance from time-based steps using pace.
-     * Uses position-based traversal to find children.
-     */
-    private fun calculateEstimatedDistance(steps: List<WorkoutStep>): Int? {
-        var totalMeters = 0.0
-        var hasSteps = false
-        var stepIndex = 0
-
-        while (stepIndex < steps.size) {
-            val step = steps[stepIndex]
-
-            if (step.type == StepType.REPEAT) {
-                // Get child steps using position-based traversal
-                val childSteps = mutableListOf<WorkoutStep>()
-                var childIndex = stepIndex + 1
-                while (childIndex < steps.size && steps[childIndex].parentRepeatStepId != null) {
-                    childSteps.add(steps[childIndex])
-                    childIndex++
-                }
-
-                val repeatCount = step.repeatCount ?: 1
-                for (child in childSteps) {
-                    val meters = calculateStepDistance(child)
-                    if (meters > 0) {
-                        totalMeters += meters * repeatCount
-                        hasSteps = true
-                    }
-                }
-                stepIndex = childIndex
-            } else if (step.parentRepeatStepId == null) {
-                val meters = calculateStepDistance(step)
-                if (meters > 0) {
-                    totalMeters += meters
-                    hasSteps = true
-                }
-                stepIndex++
-            } else {
-                stepIndex++
-            }
-        }
-
-        return if (hasSteps && totalMeters > 0) totalMeters.toInt() else null
-    }
-
-    /**
-     * Calculate distance of a single step in meters.
-     * For time-based steps, calculates distance from time and pace.
-     */
     private fun calculateStepDistance(step: WorkoutStep): Double {
         return when (step.durationType) {
             DurationType.DISTANCE -> (step.durationMeters ?: 0).toDouble()
