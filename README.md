@@ -94,9 +94,8 @@ blown away by Claude's capabilities!
 - **IMPORTANT for Garmin Training Load:**
    1. **Device serial in FIT settings MUST be different from your main Garmin watch** (otherwise the watch won't sync the file - it thinks it already has it)
    2. **After uploading the FIT file to Garmin Connect, sync your watch TWICE** - first sync downloads the file to watch for processing, second sync uploads calculated metrics back
-- **Platform compatibility by manufacturer setting:**
-   - `manufacturer=1` (Garmin): Works with Garmin Connect and Strava (shows as Run), but rejected by Stryd PowerCenter
-   - `manufacturer=89` (Tacx): Works with Garmin Connect and Stryd PowerCenter, but Strava shows as "Virtual Ride" (cannot change to Run)
+- **Full platform compatibility:** FIT files work with Garmin Connect, Strava (shows as Run), and Stryd PowerCenter
+- Power data is written as Stryd developer fields so Stryd PowerCenter recognizes it automatically
 
 ### Garmin Connect Auto-Upload
 - Automatic upload to Garmin Connect after FIT export (opt-in)

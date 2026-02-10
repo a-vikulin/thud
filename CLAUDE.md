@@ -338,12 +338,17 @@ adb logcat -s HUDService TelemetryManager WorkoutExecutionEngine
 
 **Device serial MUST differ from user's watch** — matching serial causes watch to skip the file (dedup). Use any different serial.
 
-### FIT Manufacturer IDs
+### FIT Manufacturer & Stryd Developer Fields
 
-| ID | Name | Garmin Connect | Stryd PowerCenter | Strava |
-|----|------|----------------|-------------------|--------|
-| 1 | Garmin | ✅ | ❌ Rejected | ✅ Run |
-| 89 | Tacx | ✅ | ✅ | ⚠️ Virtual Ride (locked) |
+**Manufacturer=1 (Garmin)** works with all platforms: Garmin Connect, Strava (Run), and Stryd PowerCenter.
+
+Stryd PowerCenter acceptance requires developer fields mimicking the Stryd Connect IQ app format. `FitFileExporter` writes these automatically when power data exists:
+- `DeveloperDataIdMesg` with Stryd UUID `18fb2cf0-1a4b-430d-ad66-988c847421f4`, app version 158
+- Record-level Power (field 0, uint16, nativeFieldNum=7)
+- Lap-level Lap Power (field 10, uint16, nativeFieldNum=7)
+- Session-level CP (field 99, uint16, value=user FTP)
+
+**CRITICAL:** `DeveloperDataIdMesg.setApplicationId(int, Byte)` corrupts bytes > 127 (signed Byte → 0xFF). Use `setFieldValue(ApplicationIdFieldNum, index, byteValue.toInt() and 0xFF)` instead.
 
 **Do NOT use manufacturer=95 (Stryd)** — rejected everywhere. Keep `product=4565` (Forerunner 970) for device icon.
 

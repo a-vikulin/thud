@@ -33,6 +33,18 @@ class FitFileExporter(private val context: Context) {
         val filename: String
     )
 
+    /**
+     * Holds Stryd developer field definitions for attaching power data as developer fields.
+     * These mimic the Stryd Connect IQ app's field format so Stryd PowerCenter recognizes them.
+     */
+    private data class StrydDevFields(
+        val devDataIdMesg: DeveloperDataIdMesg,
+        val recordPowerFieldDesc: FieldDescriptionMesg,
+        val lapPowerFieldDesc: FieldDescriptionMesg,
+        val sessionCpFieldDesc: FieldDescriptionMesg,
+        val userFtpWatts: Int
+    )
+
     companion object {
         private const val TAG = "FitFileExporter"
         private const val MIME_TYPE = "application/octet-stream"
@@ -42,11 +54,27 @@ class FitFileExporter(private val context: Context) {
 
         // Default device info (Forerunner 970)
         // IMPORTANT: Serial MUST differ from user's watch for acute/chronic load sync to work.
-        // Manufacturer: 1=Garmin (works with Strava), 89=Tacx (works with Stryd PowerCenter)
+        // Manufacturer: 1=Garmin (works with Strava + Stryd via developer fields), 89=Tacx (works with Stryd natively)
         private const val DEFAULT_MANUFACTURER = 1          // Garmin
         private const val DEFAULT_PRODUCT_ID = 4565         // Forerunner 970
         private const val DEFAULT_DEVICE_SERIAL = 1234567890L
         private const val DEFAULT_SOFTWARE_VERSION = 1552   // 15.52
+
+        // Stryd Connect IQ app UUID: 18fb2cf0-1a4b-430d-ad66-988c847421f4
+        // Used for developer fields so Stryd PowerCenter recognizes power data.
+        private val STRYD_APP_UUID_BYTES = byteArrayOf(
+            0x18, 0xFB.toByte(), 0x2C, 0xF0.toByte(),
+            0x1A, 0x4B, 0x43, 0x0D,
+            0xAD.toByte(), 0x66, 0x98.toByte(), 0x8C.toByte(),
+            0x84.toByte(), 0x74, 0x21, 0xF4.toByte()
+        )
+        private const val STRYD_APP_VERSION = 158L
+        private const val STRYD_DEV_DATA_INDEX: Short = 0
+
+        // Stryd field definition numbers (must match Stryd Connect IQ app exactly)
+        private const val STRYD_FIELD_POWER: Short = 0          // Record-level power
+        private const val STRYD_FIELD_LAP_POWER: Short = 10     // Lap-level avg power
+        private const val STRYD_FIELD_CP: Short = 99            // Session-level Critical Power
     }
 
     /**
@@ -244,6 +272,12 @@ class FitFileExporter(private val context: Context) {
         // 3. Device Info message
         writeDeviceInfoMessage(encoder, startTimeMs, fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion)
 
+        // 3b. Stryd developer fields (only if power data exists)
+        val hasPowerData = workoutData.any { it.powerWatts > 0 }
+        val strydDevFields = if (hasPowerData) {
+            writeStrydDeveloperFieldDefinitions(encoder, userFtpWatts)
+        } else null
+
         // 4. Sport message (required for proper workout recognition)
         writeSportMessage(encoder)
 
@@ -281,7 +315,7 @@ class FitFileExporter(private val context: Context) {
         writeTimerEvent(encoder, startTimeMs, isStart = true)
 
         // 6. Record messages interleaved with pause/resume events (in timestamp order)
-        writeRecordsWithEvents(encoder, workoutData, pauseEvents)
+        writeRecordsWithEvents(encoder, workoutData, pauseEvents, strydDevFields)
 
         // 7. Timer STOP event at workout end (skip if already paused to avoid duplicate STOP_ALL)
         val endedWhilePaused = pauseEvents.isNotEmpty() &&
@@ -291,7 +325,7 @@ class FitFileExporter(private val context: Context) {
         }
 
         // 8. Lap messages - one per workout step, or single lap for free runs
-        val numLaps = writeLapMessages(encoder, workoutData, startTimeMs, pauseEvents, executionSteps, flatToOriginalStepIndex)
+        val numLaps = writeLapMessages(encoder, workoutData, startTimeMs, pauseEvents, executionSteps, flatToOriginalStepIndex, strydDevFields)
 
         // Calculate session timer time (excludes pauses)
         val totalPausedMs = calculatePausedDuration(pauseEvents, startTimeMs, endTimeMs)
@@ -318,7 +352,8 @@ class FitFileExporter(private val context: Context) {
             totalCalories = totalCalories,
             numLaps = numLaps,
             avgInclinePower = avgInclinePower,
-            avgRawPower = avgRawPower
+            avgRawPower = avgRawPower,
+            strydDevFields = strydDevFields
         )
 
         // 10. Time in Zone message (HR zone time distribution)
@@ -362,7 +397,8 @@ class FitFileExporter(private val context: Context) {
     private fun writeRecordsWithEvents(
         encoder: FileEncoder,
         workoutData: List<WorkoutDataPoint>,
-        pauseEvents: List<PauseEvent>
+        pauseEvents: List<PauseEvent>,
+        strydDevFields: StrydDevFields? = null
     ) {
         // Create a combined list of timestamped items
         data class TimestampedItem(
@@ -390,7 +426,7 @@ class FitFileExporter(private val context: Context) {
         // Write in order
         for (item in items) {
             if (item.isRecord) {
-                writeRecordMessage(encoder, item.dataPoint!!)
+                writeRecordMessage(encoder, item.dataPoint!!, strydDevFields)
             } else {
                 val pe = item.pauseEvent!!
                 val eventMesg = EventMesg()
@@ -462,7 +498,8 @@ class FitFileExporter(private val context: Context) {
         workoutStartTimeMs: Long,
         pauseEvents: List<PauseEvent>,
         executionSteps: List<ExecutionStep>?,
-        flatToOriginalStepIndex: Map<Int, Int> = emptyMap()
+        flatToOriginalStepIndex: Map<Int, Int> = emptyMap(),
+        strydDevFields: StrydDevFields? = null
     ): Int {
         // Group data points by step index
         // stepIndex == -1 means free run (no structured workout)
@@ -470,7 +507,7 @@ class FitFileExporter(private val context: Context) {
 
         if (!hasStructuredWorkout) {
             // Free run - write single lap for entire workout
-            writeSingleLap(encoder, workoutData, workoutStartTimeMs, LapTrigger.SESSION_END, pauseEvents, lapIndex = 0, execStep = null)
+            writeSingleLap(encoder, workoutData, workoutStartTimeMs, LapTrigger.SESSION_END, pauseEvents, lapIndex = 0, execStep = null, strydDevFields = strydDevFields)
             return 1
         }
 
@@ -505,7 +542,7 @@ class FitFileExporter(private val context: Context) {
             // Lap duration = next_lap_start - this_lap_start (not last_point - first_point + 1)
             val nextLapFirstPoint = if (!isLastLap) lapGroups[index + 1].firstOrNull() else null
 
-            writeSingleLap(encoder, lapData, workoutStartTimeMs, lapTrigger, pauseEvents, lapIndex = index, wktStepIndex = wktStepIndex, execStep = execStep, nextLapFirstPoint = nextLapFirstPoint)
+            writeSingleLap(encoder, lapData, workoutStartTimeMs, lapTrigger, pauseEvents, lapIndex = index, wktStepIndex = wktStepIndex, execStep = execStep, nextLapFirstPoint = nextLapFirstPoint, strydDevFields = strydDevFields)
         }
 
         return lapGroups.size
@@ -526,7 +563,8 @@ class FitFileExporter(private val context: Context) {
         lapIndex: Int,
         wktStepIndex: Int? = null,
         execStep: ExecutionStep? = null,
-        nextLapFirstPoint: WorkoutDataPoint? = null
+        nextLapFirstPoint: WorkoutDataPoint? = null,
+        strydDevFields: StrydDevFields? = null
     ) {
         if (lapData.isEmpty()) return
 
@@ -656,7 +694,8 @@ class FitFileExporter(private val context: Context) {
             avgRawPower = avgRawPower,
             wktStepIndex = wktStepIndex,
             intensity = intensity,
-            messageIndex = lapIndex
+            messageIndex = lapIndex,
+            strydDevFields = strydDevFields
         )
     }
 
@@ -713,7 +752,75 @@ class FitFileExporter(private val context: Context) {
         encoder.write(sport)
     }
 
-    private fun writeRecordMessage(encoder: FileEncoder, dataPoint: WorkoutDataPoint) {
+    /**
+     * Write Stryd developer data ID and field description messages.
+     * These must appear after FileId/FileCreator/DeviceInfo but before any Record messages.
+     *
+     * Mimics the Stryd Connect IQ app's developer field format:
+     * - Record-level Power (field 0, uint16, native override for power field 7)
+     * - Lap-level Lap Power (field 10, uint16, native override for power field 7)
+     * - Session-level CP/Critical Power (field 99, uint16)
+     */
+    private fun writeStrydDeveloperFieldDefinitions(
+        encoder: FileEncoder,
+        userFtpWatts: Int
+    ): StrydDevFields {
+        // Developer Data ID — identifies the Stryd Connect IQ app
+        val devDataId = DeveloperDataIdMesg()
+        // setApplicationId(int, Byte) corrupts bytes > 127 (signed Byte → 0xFF invalid).
+        // Use setFieldValue with unsigned Int values to write raw bytes correctly.
+        for (i in STRYD_APP_UUID_BYTES.indices) {
+            devDataId.setFieldValue(
+                DeveloperDataIdMesg.ApplicationIdFieldNum, i,
+                STRYD_APP_UUID_BYTES[i].toInt() and 0xFF
+            )
+        }
+        devDataId.setDeveloperDataIndex(STRYD_DEV_DATA_INDEX)
+        devDataId.setApplicationVersion(STRYD_APP_VERSION)
+        encoder.write(devDataId)
+
+        // Field: Power (record-level, overrides native power field 7)
+        val recordPowerDesc = FieldDescriptionMesg()
+        recordPowerDesc.setDeveloperDataIndex(STRYD_DEV_DATA_INDEX)
+        recordPowerDesc.setFieldDefinitionNumber(STRYD_FIELD_POWER)
+        recordPowerDesc.setFitBaseTypeId(FitBaseType.UINT16)
+        recordPowerDesc.setFieldName(0, "Power")
+        recordPowerDesc.setUnits(0, "Watts")
+        recordPowerDesc.setNativeMesgNum(MesgNum.RECORD)
+        recordPowerDesc.setNativeFieldNum(RecordMesg.PowerFieldNum.toShort())
+        encoder.write(recordPowerDesc)
+
+        // Field: Lap Power (lap-level, overrides native power field 7)
+        val lapPowerDesc = FieldDescriptionMesg()
+        lapPowerDesc.setDeveloperDataIndex(STRYD_DEV_DATA_INDEX)
+        lapPowerDesc.setFieldDefinitionNumber(STRYD_FIELD_LAP_POWER)
+        lapPowerDesc.setFitBaseTypeId(FitBaseType.UINT16)
+        lapPowerDesc.setFieldName(0, "Lap Power")
+        lapPowerDesc.setUnits(0, "Watts")
+        lapPowerDesc.setNativeMesgNum(MesgNum.LAP)
+        lapPowerDesc.setNativeFieldNum(RecordMesg.PowerFieldNum.toShort())
+        encoder.write(lapPowerDesc)
+
+        // Field: CP / Critical Power (session-level, no native override)
+        val sessionCpDesc = FieldDescriptionMesg()
+        sessionCpDesc.setDeveloperDataIndex(STRYD_DEV_DATA_INDEX)
+        sessionCpDesc.setFieldDefinitionNumber(STRYD_FIELD_CP)
+        sessionCpDesc.setFitBaseTypeId(FitBaseType.UINT16)
+        sessionCpDesc.setFieldName(0, "CP")
+        sessionCpDesc.setUnits(0, "Watts")
+        sessionCpDesc.setNativeMesgNum(MesgNum.SESSION)
+        encoder.write(sessionCpDesc)
+
+        Log.d(TAG, "Wrote Stryd developer field definitions (Power, Lap Power, CP=${userFtpWatts}W)")
+
+        return StrydDevFields(devDataId, recordPowerDesc, lapPowerDesc, sessionCpDesc, userFtpWatts)
+    }
+
+    private fun writeRecordMessage(
+        encoder: FileEncoder,
+        dataPoint: WorkoutDataPoint,
+        strydDevFields: StrydDevFields? = null
+    ) {
         val record = RecordMesg()
         record.setTimestamp(DateTime(toFitTimestamp(dataPoint.timestampMs)))
 
@@ -749,8 +856,12 @@ class FitFileExporter(private val context: Context) {
             record.setCadence(dataPoint.cadenceSpm.toShort())
         }
 
-        // Note: incline_power and raw_power are tracked in WorkoutDataPoint for analysis
-        // but not written to FIT file (developer fields require complex SDK setup)
+        // Stryd developer field: Power (so Stryd PowerCenter recognizes the data)
+        if (strydDevFields != null) {
+            val devField = DeveloperField(strydDevFields.recordPowerFieldDesc, strydDevFields.devDataIdMesg)
+            devField.setValue(dataPoint.powerWatts.toInt())
+            record.addDeveloperField(devField)
+        }
 
         encoder.write(record)
     }
@@ -777,7 +888,8 @@ class FitFileExporter(private val context: Context) {
         avgRawPower: Double = 0.0,
         wktStepIndex: Int? = null,
         intensity: Intensity = Intensity.ACTIVE,
-        messageIndex: Int = 0
+        messageIndex: Int = 0,
+        strydDevFields: StrydDevFields? = null
     ) {
         val lap = LapMesg()
         lap.setMessageIndex(messageIndex)
@@ -831,8 +943,12 @@ class FitFileExporter(private val context: Context) {
             lap.setWktStepIndex(wktStepIndex)
         }
 
-        // Note: avg_incline_power and avg_raw_power available in WorkoutDataPoint for analysis
-        // but not written to FIT file (developer fields require complex SDK setup)
+        // Stryd developer field: Lap Power
+        if (strydDevFields != null && avgPower > 0) {
+            val devField = DeveloperField(strydDevFields.lapPowerFieldDesc, strydDevFields.devDataIdMesg)
+            devField.setValue(avgPower.toInt())
+            lap.addDeveloperField(devField)
+        }
 
         encoder.write(lap)
     }
@@ -857,7 +973,8 @@ class FitFileExporter(private val context: Context) {
         totalCalories: Double = 0.0,
         numLaps: Int = 1,
         avgInclinePower: Double = 0.0,
-        avgRawPower: Double = 0.0
+        avgRawPower: Double = 0.0,
+        strydDevFields: StrydDevFields? = null
     ) {
         val session = SessionMesg()
         session.setTimestamp(DateTime(toFitTimestamp(endTimeMs)))
@@ -901,8 +1018,6 @@ class FitFileExporter(private val context: Context) {
         // Note: TSS, Load, and TE are NOT written - let Garmin calculate them
         // Garmin's Firstbeat algorithms produce different (usually higher) values
 
-        // Note: avg_incline_power and avg_raw_power available in WorkoutDataPoint for analysis
-        // but not written to FIT file (developer fields require complex SDK setup)
         if (avgRawPower > 0 || avgInclinePower != 0.0) {
             Log.d(TAG, "Session power breakdown: avg_raw=${avgRawPower.toInt()}W, avg_incline=${avgInclinePower.toInt()}W")
         }
@@ -914,6 +1029,13 @@ class FitFileExporter(private val context: Context) {
         session.setEvent(Event.SESSION)
         session.setEventType(EventType.STOP)
         session.setTrigger(SessionTrigger.ACTIVITY_END)
+
+        // Stryd developer field: CP (Critical Power ≈ FTP)
+        if (strydDevFields != null && avgPower > 0) {
+            val devField = DeveloperField(strydDevFields.sessionCpFieldDesc, strydDevFields.devDataIdMesg)
+            devField.setValue(strydDevFields.userFtpWatts)
+            session.addDeveloperField(devField)
+        }
 
         encoder.write(session)
     }
