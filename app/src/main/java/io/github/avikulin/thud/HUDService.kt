@@ -50,7 +50,7 @@ import io.github.avikulin.thud.ui.editor.WorkoutEditorActivityNew
 import io.github.avikulin.thud.service.garmin.GarminConnectUploader
 import io.github.avikulin.thud.util.FitFileExporter
 import io.github.avikulin.thud.util.HeartRateZones
-import io.github.avikulin.thud.util.TcxFileExporter
+
 import io.github.avikulin.thud.util.PaceConverter
 import io.github.avikulin.thud.util.TrainingMetricsCalculator
 import com.ifit.glassos.workout.WorkoutState
@@ -164,7 +164,7 @@ class HUDService : Service(),
     // Workout data recording and export
     private val workoutRecorder = WorkoutRecorder()
     private lateinit var fitFileExporter: FitFileExporter
-    private lateinit var tcxFileExporter: TcxFileExporter
+
     private lateinit var garminUploader: GarminConnectUploader
     private var workoutStartTimeMs: Long = 0
     private var workoutDataExported = false  // Tracks if FIT export already happened for current session
@@ -258,9 +258,8 @@ class HUDService : Service(),
         // Pass user profile to workout recorder for calorie calculation
         updateRecorderUserProfile()
 
-        // Initialize FIT and TCX file exporters
+        // Initialize FIT file exporter
         fitFileExporter = FitFileExporter(applicationContext)
-        tcxFileExporter = TcxFileExporter(applicationContext)
         garminUploader = GarminConnectUploader(applicationContext)
 
         // Set up workout recorder callback for UI updates
@@ -652,16 +651,6 @@ class HUDService : Service(),
                 fitDeviceSerial = snapshot.userSettings.fitDeviceSerial,
                 fitSoftwareVersion = snapshot.userSettings.fitSoftwareVersion
             )
-
-            // TCX export disabled - Garmin doesn't calculate Load for TCX,
-            // and Stryd doesn't auto-download them. Can export TCX from Garmin manually if needed.
-            // val tcxResult = tcxFileExporter.exportWorkout(
-            //     workoutData = snapshot.workoutData,
-            //     workoutName = snapshot.workoutName,
-            //     startTimeMs = snapshot.startTimeMs,
-            //     pauseEvents = snapshot.pauseEvents,
-            //     executionSteps = snapshot.executionSteps
-            // )
 
             if (fitResult != null) {
                 // Clear persisted data on successful export

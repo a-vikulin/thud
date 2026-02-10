@@ -301,7 +301,7 @@ app/src/main/java/io/github/avikulin/thud/
     ├── PaceConverter.kt           # Pace/speed conversions
     ├── FileExportHelper.kt        # Centralized Downloads/tHUD file saving
     ├── FitFileExporter.kt         # FIT file generation for Garmin
-    ├── TcxFileExporter.kt         # TCX file generation (experimental)
+
     ├── TrainingMetricsCalculator.kt # Training load calculations
     ├── TssCalculator.kt           # TSS calculation (Power → HR → Pace fallback)
     └── StepBoundaryParser.kt      # Workout step parsing
