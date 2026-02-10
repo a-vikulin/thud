@@ -1122,30 +1122,43 @@ class FitFileExporter(private val context: Context) {
         val powerZoneTimeMs = LongArray(7) { 0L }
         val hasPowerData = workoutData.any { it.powerWatts > 0 }
 
+        // Read power zone boundaries once (used for both time calculation and FIT boundary fields)
+        val pz2StartPercent: Int
+        val pz3StartPercent: Int
+        val pz4StartPercent: Int
+        val pz5StartPercent: Int
+        val pz6StartPercent: Int
+        val pz0MaxWatts: Int
+        val pz1MaxWatts: Int
+        val pz2MaxWatts: Int
+        val pz3MaxWatts: Int
+        val pz4MaxWatts: Int
+        val pz5MaxWatts: Int
+
         if (hasPowerData) {
             // Read power zone boundaries from user settings (zone START percentages of FTP)
-            val pz2StartPercent = SettingsManager.Companion.getFloatOrInt(
+            pz2StartPercent = SettingsManager.Companion.getFloatOrInt(
                 prefs, SettingsManager.PREF_POWER_ZONE2_START_PERCENT, SettingsManager.DEFAULT_POWER_ZONE2_START_PERCENT
             ).toInt()
-            val pz3StartPercent = SettingsManager.Companion.getFloatOrInt(
+            pz3StartPercent = SettingsManager.Companion.getFloatOrInt(
                 prefs, SettingsManager.PREF_POWER_ZONE3_START_PERCENT, SettingsManager.DEFAULT_POWER_ZONE3_START_PERCENT
             ).toInt()
-            val pz4StartPercent = SettingsManager.Companion.getFloatOrInt(
+            pz4StartPercent = SettingsManager.Companion.getFloatOrInt(
                 prefs, SettingsManager.PREF_POWER_ZONE4_START_PERCENT, SettingsManager.DEFAULT_POWER_ZONE4_START_PERCENT
             ).toInt()
-            val pz5StartPercent = SettingsManager.Companion.getFloatOrInt(
+            pz5StartPercent = SettingsManager.Companion.getFloatOrInt(
                 prefs, SettingsManager.PREF_POWER_ZONE5_START_PERCENT, SettingsManager.DEFAULT_POWER_ZONE5_START_PERCENT
             ).toInt()
-            val pz6StartPercent = pz5StartPercent + 15  // Typically ~120% FTP
+            pz6StartPercent = pz5StartPercent + 15  // Typically ~120% FTP
 
             // Convert zone START percentages to zone HIGH boundaries in watts
             // Zone N high = Zone N+1 start watts - 1
-            val pz0MaxWatts = (userFtpWatts * (pz2StartPercent - 20).coerceAtLeast(30) / 100.0).toInt()
-            val pz1MaxWatts = (userFtpWatts * pz2StartPercent / 100.0).toInt() - 1
-            val pz2MaxWatts = (userFtpWatts * pz3StartPercent / 100.0).toInt() - 1
-            val pz3MaxWatts = (userFtpWatts * pz4StartPercent / 100.0).toInt() - 1
-            val pz4MaxWatts = (userFtpWatts * pz5StartPercent / 100.0).toInt() - 1
-            val pz5MaxWatts = (userFtpWatts * pz6StartPercent / 100.0).toInt() - 1
+            pz0MaxWatts = PowerZones.percentToWatts((pz2StartPercent - 20).coerceAtLeast(30).toDouble(), userFtpWatts)
+            pz1MaxWatts = PowerZones.percentToWatts(pz2StartPercent.toDouble(), userFtpWatts) - 1
+            pz2MaxWatts = PowerZones.percentToWatts(pz3StartPercent.toDouble(), userFtpWatts) - 1
+            pz3MaxWatts = PowerZones.percentToWatts(pz4StartPercent.toDouble(), userFtpWatts) - 1
+            pz4MaxWatts = PowerZones.percentToWatts(pz5StartPercent.toDouble(), userFtpWatts) - 1
+            pz5MaxWatts = PowerZones.percentToWatts(pz6StartPercent.toDouble(), userFtpWatts) - 1
 
             lastTimestampMs = null
             for (dp in workoutData) {
@@ -1167,6 +1180,9 @@ class FitFileExporter(private val context: Context) {
                 }
                 lastTimestampMs = dp.timestampMs
             }
+        } else {
+            pz0MaxWatts = 0; pz1MaxWatts = 0; pz2MaxWatts = 0
+            pz3MaxWatts = 0; pz4MaxWatts = 0; pz5MaxWatts = 0
         }
 
         val timeInZone = TimeInZoneMesg()
@@ -1197,34 +1213,11 @@ class FitFileExporter(private val context: Context) {
         timeInZone.setRestingHeartRate(userHrRest.toShort())
         timeInZone.setMaxHeartRate(userMaxHr.toShort())
 
-        // Set power zones if we have power data
+        // Set power zones if we have power data (reuse boundaries computed above)
         if (hasPowerData) {
             for (i in 0 until 7) {
                 timeInZone.setTimeInPowerZone(i, powerZoneTimeMs[i] / 1000.0f)
             }
-
-            // Read power zone boundaries from user settings (same as used for time calculation)
-            val pz2StartPercent = SettingsManager.Companion.getFloatOrInt(
-                prefs, SettingsManager.PREF_POWER_ZONE2_START_PERCENT, SettingsManager.DEFAULT_POWER_ZONE2_START_PERCENT
-            ).toInt()
-            val pz3StartPercent = SettingsManager.Companion.getFloatOrInt(
-                prefs, SettingsManager.PREF_POWER_ZONE3_START_PERCENT, SettingsManager.DEFAULT_POWER_ZONE3_START_PERCENT
-            ).toInt()
-            val pz4StartPercent = SettingsManager.Companion.getFloatOrInt(
-                prefs, SettingsManager.PREF_POWER_ZONE4_START_PERCENT, SettingsManager.DEFAULT_POWER_ZONE4_START_PERCENT
-            ).toInt()
-            val pz5StartPercent = SettingsManager.Companion.getFloatOrInt(
-                prefs, SettingsManager.PREF_POWER_ZONE5_START_PERCENT, SettingsManager.DEFAULT_POWER_ZONE5_START_PERCENT
-            ).toInt()
-            val pz6StartPercent = pz5StartPercent + 15
-
-            // Power zone high boundaries in watts (zone N high = zone N+1 start - 1)
-            val pz0MaxWatts = (userFtpWatts * (pz2StartPercent - 20).coerceAtLeast(30) / 100.0).toInt()
-            val pz1MaxWatts = (userFtpWatts * pz2StartPercent / 100.0).toInt() - 1
-            val pz2MaxWatts = (userFtpWatts * pz3StartPercent / 100.0).toInt() - 1
-            val pz3MaxWatts = (userFtpWatts * pz4StartPercent / 100.0).toInt() - 1
-            val pz4MaxWatts = (userFtpWatts * pz5StartPercent / 100.0).toInt() - 1
-            val pz5MaxWatts = (userFtpWatts * pz6StartPercent / 100.0).toInt() - 1
 
             timeInZone.setPowerZoneHighBoundary(0, pz0MaxWatts)
             timeInZone.setPowerZoneHighBoundary(1, pz1MaxWatts)
