@@ -117,16 +117,12 @@
     <color name="editor_input_background">#333355</color>
     <color name="editor_button_primary">#4488FF</color>
     <color name="editor_button_secondary">#666688</color>
-    <color name="editor_fab">#4488FF</color>
     <color name="editor_divider">#444466</color>
 
     <!-- ==================== Workout Library Colors ==================== -->
 
     <color name="library_background">#121230</color>
-    <color name="library_card_background">#1E1E3C</color>
-    <color name="library_tab_indicator">#4488FF</color>
     <color name="library_start_button">#00AA00</color>
-    <color name="library_fab">#4488FF</color>
 
     <!-- ==================== Dialog Common Colors ==================== -->
 
@@ -148,15 +144,12 @@
     <color name="step_row_background">#2A2A48</color>
     <color name="step_row_selected">#3A3A58</color>
     <color name="step_action_button">#555575</color>
-    <color name="step_action_button_pressed">#7777A0</color>
 
     <!-- ==================== Workout List Colors ==================== -->
 
     <color name="workout_list_background">#1A1A38</color>
     <color name="workout_list_item_selected">#2A3A4A</color>
     <color name="workout_list_divider">#333355</color>
-    <color name="run_button_background">#00AA00</color>
-    <color name="run_button_text">#FFFFFF</color>
 
     <!-- Chart Power Zone Stripes (blue-tinted for DRM visibility) -->
     <color name="chart_power_stripe_overlay">#202A2A48</color>

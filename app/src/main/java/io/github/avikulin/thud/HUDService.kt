@@ -2195,11 +2195,6 @@ class HUDService : Service(),
                 Log.d(TAG, "Workout stopped: ${event.summary.workoutName}")
                 // Keep screenshot enabled - user may want to capture results
             }
-            is WorkoutEvent.Warning -> {
-                mainHandler.post {
-                    Toast.makeText(this@HUDService, event.message, Toast.LENGTH_SHORT).show()
-                }
-            }
             is WorkoutEvent.Error -> {
                 mainHandler.post {
                     Toast.makeText(this@HUDService, event.message, Toast.LENGTH_LONG).show()

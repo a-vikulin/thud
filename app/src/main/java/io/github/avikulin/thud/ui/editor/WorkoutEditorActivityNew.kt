@@ -43,12 +43,6 @@ class WorkoutEditorActivityNew : AppCompatActivity() {
 
     companion object {
         const val EXTRA_WORKOUT_ID = "workout_id"
-
-        fun createIntent(context: Context, workoutId: Long? = null): Intent {
-            return Intent(context, WorkoutEditorActivityNew::class.java).apply {
-                workoutId?.let { putExtra(EXTRA_WORKOUT_ID, it) }
-            }
-        }
     }
 
     private val viewModel: WorkoutEditorViewModel by viewModels()

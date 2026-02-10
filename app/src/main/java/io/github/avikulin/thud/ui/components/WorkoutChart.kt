@@ -150,7 +150,7 @@ class WorkoutChart @JvmOverloads constructor(
         val startY: Float,
         val endX: Float,
         val endY: Float,
-        val colorResId: Int
+        val color: Int  // Resolved color (not resource ID)
     )
     private val hrSegments = mutableListOf<HRSegment>()
 
@@ -160,7 +160,8 @@ class WorkoutChart @JvmOverloads constructor(
         val startY: Float,
         val endX: Float,
         val endY: Float,
-        val colorResId: Int
+        val color: Int,       // Resolved color (not resource ID)
+        val dimmedColor: Int  // Pre-blended with background for rendering
     )
     private val powerSegments = mutableListOf<PowerSegment>()
 
@@ -1286,8 +1287,8 @@ class WorkoutChart @JvmOverloads constructor(
 
         if (startZone == endZone) {
             // Same zone - single segment
-            val colorResId = getHeartRateZoneColor(startZone)
-            hrSegments.add(HRSegment(startX, hrToY(startBpm), endX, hrToY(endBpm), colorResId))
+            val color = ContextCompat.getColor(context, getHeartRateZoneColor(startZone))
+            hrSegments.add(HRSegment(startX, hrToY(startBpm), endX, hrToY(endBpm), color))
             return
         }
 
@@ -1322,8 +1323,8 @@ class WorkoutChart @JvmOverloads constructor(
 
             // Segment from current to crossing
             val segmentZone = getHeartRateZone(currentBpm)
-            val colorResId = getHeartRateZoneColor(segmentZone)
-            hrSegments.add(HRSegment(currentX, hrToY(currentBpm), crossX, hrToY(crossBpm), colorResId))
+            val color = ContextCompat.getColor(context, getHeartRateZoneColor(segmentZone))
+            hrSegments.add(HRSegment(currentX, hrToY(currentBpm), crossX, hrToY(crossBpm), color))
 
             currentBpm = crossBpm
             currentX = crossX
@@ -1331,8 +1332,8 @@ class WorkoutChart @JvmOverloads constructor(
 
         // Final segment from last crossing to end
         val finalZone = getHeartRateZone(endBpm)
-        val finalColorResId = getHeartRateZoneColor(finalZone)
-        hrSegments.add(HRSegment(currentX, hrToY(currentBpm), endX, hrToY(endBpm), finalColorResId))
+        val finalColor = ContextCompat.getColor(context, getHeartRateZoneColor(finalZone))
+        hrSegments.add(HRSegment(currentX, hrToY(currentBpm), endX, hrToY(endBpm), finalColor))
     }
 
     /**
@@ -1344,8 +1345,9 @@ class WorkoutChart @JvmOverloads constructor(
 
         if (startZone == endZone) {
             // Same zone - single segment
-            val colorResId = getPowerZoneColor(startZone)
-            powerSegments.add(PowerSegment(startX, powerToNormalizedY(startWatts), endX, powerToNormalizedY(endWatts), colorResId))
+            val color = ContextCompat.getColor(context, getPowerZoneColor(startZone))
+            val dimmed = blendColorWithBackground(color, 0.5f)
+            powerSegments.add(PowerSegment(startX, powerToNormalizedY(startWatts), endX, powerToNormalizedY(endWatts), color, dimmed))
             return
         }
 
@@ -1376,16 +1378,18 @@ class WorkoutChart @JvmOverloads constructor(
             val crossX = startX + t.toFloat() * (endX - startX)
 
             val segmentZone = getPowerZone(currentWatts)
-            val colorResId = getPowerZoneColor(segmentZone)
-            powerSegments.add(PowerSegment(currentX, powerToNormalizedY(currentWatts), crossX, powerToNormalizedY(crossWatts), colorResId))
+            val color = ContextCompat.getColor(context, getPowerZoneColor(segmentZone))
+            val dimmed = blendColorWithBackground(color, 0.5f)
+            powerSegments.add(PowerSegment(currentX, powerToNormalizedY(currentWatts), crossX, powerToNormalizedY(crossWatts), color, dimmed))
 
             currentWatts = crossWatts
             currentX = crossX
         }
 
         val finalZone = getPowerZone(endWatts)
-        val finalColorResId = getPowerZoneColor(finalZone)
-        powerSegments.add(PowerSegment(currentX, powerToNormalizedY(currentWatts), endX, powerToNormalizedY(endWatts), finalColorResId))
+        val finalColor = ContextCompat.getColor(context, getPowerZoneColor(finalZone))
+        val finalDimmed = blendColorWithBackground(finalColor, 0.5f)
+        powerSegments.add(PowerSegment(currentX, powerToNormalizedY(currentWatts), endX, powerToNormalizedY(endWatts), finalColor, finalDimmed))
     }
 
     // ==================== Coordinate Mapping ====================
@@ -1565,10 +1569,7 @@ class WorkoutChart @JvmOverloads constructor(
             // Draw Power, then Speed, then HR (HR on top)
             if (showPowerLine) {
                 for (segment in powerSegments) {
-                    // Dim the color by mixing with background (50% towards background)
-                    val baseColor = ContextCompat.getColor(context, segment.colorResId)
-                    val dimmedColor = blendColorWithBackground(baseColor, 0.5f)
-                    powerPaint.color = dimmedColor
+                    powerPaint.color = segment.dimmedColor
                     canvas.drawLine(segment.startX, segment.startY, segment.endX, segment.endY, powerPaint)
                 }
             }
@@ -1577,7 +1578,7 @@ class WorkoutChart @JvmOverloads constructor(
             }
             if (showHrLine) {
                 for (segment in hrSegments) {
-                    hrPaint.color = ContextCompat.getColor(context, segment.colorResId)
+                    hrPaint.color = segment.color
                     canvas.drawLine(segment.startX, segment.startY, segment.endX, segment.endY, hrPaint)
                 }
             }

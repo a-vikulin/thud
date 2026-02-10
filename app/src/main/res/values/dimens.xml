@@ -23,7 +23,6 @@
     <dimen name="text_status">8sp</dimen>
     <dimen name="text_label">10sp</dimen>
     <dimen name="text_value">36sp</dimen>
-    <dimen name="text_value_small">20sp</dimen>
     <dimen name="text_unit">10sp</dimen>
     <dimen name="text_close_button">44sp</dimen>
     <dimen name="service_button_border_width">2dp</dimen>

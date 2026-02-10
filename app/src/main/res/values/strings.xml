@@ -228,7 +228,6 @@
     <!-- Step Item Actions -->
     <string name="btn_edit_step">Edit step</string>
     <string name="btn_delete_step">Delete step</string>
-    <string name="btn_add_to_repeat">Add step to repeat</string>
 
     <!-- Master-Detail Editor -->
     <string name="workout_search_hint">Search workouts...</string>
@@ -238,7 +237,6 @@
     <string name="editor_undo">Undo</string>
     <string name="editor_redo">Redo</string>
     <string name="editor_add_repeat">Add Repeat</string>
-    <string name="editor_add_substep">+ Add substep</string>
     <string name="step_move_up">Move up</string>
     <string name="step_move_down">Move down</string>
     <string name="step_add_below">Add step below</string>

@@ -994,22 +994,28 @@ class WorkoutEditorViewModel(application: Application) : AndroidViewModel(applic
         var totalSeconds = 0.0
         var totalMeters = 0.0
         var stepCount = 0
+        var totalTss = 0.0
+        var hasValidTssSteps = false
 
         forEachEffectiveStep(steps) { step, repeatMultiplier ->
             stepCount += repeatMultiplier
             val (seconds, meters) = calculateStepDurationAndDistance(step)
             totalSeconds += seconds * repeatMultiplier
             totalMeters += meters * repeatMultiplier
-        }
 
-        // Calculate TSS (Power > HR > Pace priority)
-        val hrTss = calculateWorkoutTss(steps)
+            // Accumulate TSS in the same pass (Power > HR > Pace priority)
+            val tss = calculateStepTss(step, repeatMultiplier)
+            if (tss != null) {
+                totalTss += tss
+                hasValidTssSteps = true
+            }
+        }
 
         _summary.value = WorkoutSummary(
             stepCount = stepCount,
             estimatedDurationSeconds = if (totalSeconds > 0) totalSeconds.toInt() else null,
             estimatedDistanceMeters = if (totalMeters > 0) totalMeters.toInt() else null,
-            estimatedTss = hrTss
+            estimatedTss = if (hasValidTssSteps) totalTss.toInt() else null
         )
     }
 
@@ -1037,26 +1043,6 @@ class WorkoutEditorViewModel(application: Application) : AndroidViewModel(applic
                 Pair(seconds, meters)
             }
         }
-    }
-
-    /**
-     * Calculate estimated TSS for workout using TssCalculator.
-     * Uses unified TSS calculation with priority: Power > HR > Pace.
-     * For planned workouts, typically uses HR targets if defined, otherwise pace.
-     */
-    private fun calculateWorkoutTss(steps: List<WorkoutStep>): Int? {
-        var totalTss = 0.0
-        var hasValidSteps = false
-
-        forEachEffectiveStep(steps) { step, repeatMultiplier ->
-            val tss = calculateStepTss(step, repeatMultiplier)
-            if (tss != null) {
-                totalTss += tss
-                hasValidSteps = true
-            }
-        }
-
-        return if (hasValidSteps) totalTss.toInt() else null
     }
 
     /**

@@ -49,6 +49,7 @@ class PopupManager(
     companion object {
         private const val TAG = "PopupManager"
         private const val INCLINE_GRID_COLUMNS = 6
+        private val CONDENSED_TYPEFACE = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
     }
 
     private var pacePopupView: View? = null
@@ -143,7 +144,7 @@ class PopupManager(
             val resumeButton = TextView(service).apply {
                 text = service.getString(R.string.btn_play)
                 textSize = buttonTextSize * 3
-                typeface = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
+                typeface = CONDENSED_TYPEFACE
                 setTextColor(buttonTextColor)
                 setBackgroundColor(resumeButtonColor)
                 gravity = Gravity.CENTER
@@ -194,7 +195,7 @@ class PopupManager(
             val button = TextView(service).apply {
                 text = spannable
                 textSize = buttonTextSize
-                typeface = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
+                typeface = CONDENSED_TYPEFACE
                 setTextColor(buttonTextColor)
                 setBackgroundColor(
                     if (abs(roundedCurrentAdjustedKph - adjustedKph) < 0.01) buttonActiveColor else buttonInactiveColor
@@ -338,7 +339,7 @@ class PopupManager(
             val button = TextView(service).apply {
                 text = buttonText
                 textSize = buttonTextSize
-                typeface = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
+                typeface = CONDENSED_TYPEFACE
                 setTextColor(buttonTextColor)
                 setBackgroundColor(
                     if (roundedCurrentIncline == incline) buttonActiveColor else buttonInactiveColor

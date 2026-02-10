@@ -16,7 +16,6 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
-import io.github.avikulin.thud.util.HeartRateZones
 import io.github.avikulin.thud.R
 import io.github.avikulin.thud.data.entity.WorkoutStep
 import io.github.avikulin.thud.domain.model.AdjustmentType
@@ -951,14 +950,5 @@ class InlineStepAdapter(
             }
         }
 
-        private fun getStepTypeColor(type: StepType): Int {
-            val baseColor = ContextCompat.getColor(context, HeartRateZones.getStepTypeColorResId(type))
-            return android.graphics.Color.argb(
-                40,
-                android.graphics.Color.red(baseColor),
-                android.graphics.Color.green(baseColor),
-                android.graphics.Color.blue(baseColor)
-            )
-        }
     }
 }

@@ -30,12 +30,11 @@ class WorkoutListAdapter(
         val oldSelected = selectedWorkoutId
         selectedWorkoutId = id
 
-        // Notify both old and new selected items to update their backgrounds
-        currentList.forEachIndexed { index, workout ->
-            if (workout.id == oldSelected || workout.id == id) {
-                notifyItemChanged(index)
-            }
-        }
+        // Notify only the old and new selected items to update their backgrounds
+        val oldIndex = currentList.indexOfFirst { it.id == oldSelected }
+        val newIndex = currentList.indexOfFirst { it.id == id }
+        if (oldIndex >= 0) notifyItemChanged(oldIndex)
+        if (newIndex >= 0) notifyItemChanged(newIndex)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): WorkoutViewHolder {

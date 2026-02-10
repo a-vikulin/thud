@@ -88,11 +88,6 @@ sealed class WorkoutEvent {
     data class WorkoutCompleted(val summary: WorkoutSummary) : WorkoutEvent()
 
     /**
-     * A warning message to display to the user.
-     */
-    data class Warning(val message: String) : WorkoutEvent()
-
-    /**
      * An error occurred during workout execution.
      */
     data class Error(val message: String) : WorkoutEvent()

@@ -188,19 +188,6 @@ class DualKnobZoneSlider @JvmOverloads constructor(
     }
 
     /**
-     * Get the current range as percentages.
-     */
-    fun getRangePercent(): Pair<Double, Double> = Pair(_minPercent, _maxPercent)
-
-    /**
-     * Get the current range as absolute values (using threshold).
-     */
-    fun getRangeAbsolute(): Pair<Int, Int> = Pair(
-        percentToAbsolute(_minPercent),
-        percentToAbsolute(_maxPercent)
-    )
-
-    /**
      * Convert percentage to absolute value using current threshold.
      * Returns rounded integer for display (BPM or watts).
      */

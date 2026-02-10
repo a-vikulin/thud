@@ -34,17 +34,6 @@ interface WorkoutDao {
     """)
     fun getAllWorkouts(): Flow<List<Workout>>
 
-    @Query("""
-        SELECT * FROM workouts ORDER BY
-            CASE systemWorkoutType
-                WHEN 'WARMUP' THEN 0
-                WHEN 'COOLDOWN' THEN 1
-                ELSE 2
-            END,
-            MAX(updatedAt, COALESCE(lastExecutedAt, 0)) DESC
-    """)
-    suspend fun getAllWorkoutsOnce(): List<Workout>
-
     @Query("SELECT * FROM workouts WHERE id = :id")
     suspend fun getWorkoutById(id: Long): Workout?
 
@@ -64,9 +53,6 @@ interface WorkoutDao {
     suspend fun deleteWorkout(workout: Workout)
 
     // ==================== Workout Steps ====================
-
-    @Query("SELECT * FROM workout_steps WHERE workoutId = :workoutId ORDER BY orderIndex")
-    fun getStepsForWorkout(workoutId: Long): Flow<List<WorkoutStep>>
 
     @Query("SELECT * FROM workout_steps WHERE workoutId = :workoutId ORDER BY orderIndex")
     suspend fun getStepsForWorkoutOnce(workoutId: Long): List<WorkoutStep>

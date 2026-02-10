@@ -2,6 +2,7 @@ package io.github.avikulin.thud.service
 
 import android.app.Service
 import android.content.Context
+import android.content.SharedPreferences
 import android.graphics.Typeface
 import android.os.Handler
 import android.os.Looper
@@ -36,6 +37,8 @@ class ChartManager(
         private const val PREF_SHOW_POWER = "chart_show_power"
         private const val PREF_SHOW_FULL_SCALE = "chart_show_full_scale"
     }
+
+    private val prefs: SharedPreferences = service.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private var containerView: LinearLayout? = null
     private var chartView: WorkoutChart? = null
@@ -291,7 +294,6 @@ class ChartManager(
      * Load visibility preferences from SharedPreferences.
      */
     private fun loadVisibilityPreferences() {
-        val prefs = service.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         showSpeed = prefs.getBoolean(PREF_SHOW_SPEED, true)
         showIncline = prefs.getBoolean(PREF_SHOW_INCLINE, true)
         showHr = prefs.getBoolean(PREF_SHOW_HR, true)
@@ -303,7 +305,6 @@ class ChartManager(
      * Save visibility preferences to SharedPreferences.
      */
     private fun saveVisibilityPreferences() {
-        val prefs = service.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit()
             .putBoolean(PREF_SHOW_SPEED, showSpeed)
             .putBoolean(PREF_SHOW_INCLINE, showIncline)

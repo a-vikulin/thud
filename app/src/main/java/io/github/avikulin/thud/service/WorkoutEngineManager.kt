@@ -673,9 +673,6 @@ class WorkoutEngineManager(
             is WorkoutEvent.WorkoutPlanFinished -> {
                 Log.d(TAG, "Workout plan finished: ${event.stepsCompleted} steps, entering auto-cooldown")
             }
-            is WorkoutEvent.Warning -> {
-                Log.w(TAG, "Workout warning: ${event.message}")
-            }
             is WorkoutEvent.Error -> {
                 Log.e(TAG, "Workout error: ${event.message}")
             }
