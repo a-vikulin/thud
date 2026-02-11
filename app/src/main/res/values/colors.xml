@@ -166,4 +166,10 @@
     <color name="chart_toggle_inactive_background">#403A3A58</color>
     <color name="chart_toggle_inactive_stroke">#403A3A58</color>
     <color name="chart_toggle_active_stroke">#804A4A68</color>
+
+    <!-- ==================== Remote Control Button ==================== -->
+
+    <color name="remote_active">#44FFFFFF</color>
+    <color name="remote_inactive">#338888A8</color>
+    <color name="remote_blink">#6644FF44</color>
 </resources>

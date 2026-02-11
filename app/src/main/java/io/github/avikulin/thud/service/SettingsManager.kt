@@ -118,6 +118,9 @@ class SettingsManager(
         const val PREF_FTMS_BLE_DEVICE_NAME = "ftms_ble_device_name"
         const val PREF_FTMS_DIRCON_DEVICE_NAME = "ftms_dircon_device_name"
 
+        // Remote control settings
+        const val PREF_REMOTE_BINDINGS = "remote_bindings"
+
         // Defaults
         const val DEFAULT_PACE_COEFFICIENT = 1.0
         const val DEFAULT_INCLINE_ADJUSTMENT = 1.0  // 1% treadmill = flat outdoor

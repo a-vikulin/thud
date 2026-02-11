@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Split-panel remote control config (25% left list, 75% right bindings editor) -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:background="@color/editor_background">
+
+    <!-- ==================== LEFT PANE (25%) - Remote List ==================== -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:background="@color/workout_list_background">
+
+        <!-- Header row: Back | Add Remote -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/workout_list_search_height"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@color/editor_step_background"
+            android:paddingHorizontal="@dimen/workout_list_item_padding">
+
+            <ImageButton
+                android:id="@+id/btnBack"
+                android:layout_width="@dimen/step_action_button_size"
+                android:layout_height="@dimen/step_action_button_size"
+                android:src="@drawable/ic_back"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/remote_back"
+                app:tint="@color/text_primary" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/remote_back"
+                android:textColor="@color/text_primary"
+                android:textSize="@dimen/text_step_type"
+                android:layout_marginStart="@dimen/editor_input_margin" />
+
+            <Button
+                android:id="@+id/btnAddRemote"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/step_action_button_size"
+                android:text="@string/remote_add"
+                android:textColor="@color/editor_button_primary"
+                android:background="?attr/selectableItemBackground"
+                android:textAllCaps="false"
+                android:minWidth="0dp"
+                android:paddingHorizontal="@dimen/editor_padding" />
+        </LinearLayout>
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/editor_divider" />
+
+        <!-- Remote list -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvRemoteList"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:clipToPadding="false" />
+
+        <!-- Empty state -->
+        <TextView
+            android:id="@+id/tvEmptyState"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="@string/remote_no_remotes"
+            android:textColor="@color/text_label_dim"
+            android:textSize="@dimen/text_editor_label"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <!-- Vertical divider -->
+    <View
+        android:layout_width="1dp"
+        android:layout_height="match_parent"
+        android:background="@color/editor_divider" />
+
+    <!-- ==================== RIGHT PANE (75%) - Bindings Editor ==================== -->
+    <LinearLayout
+        android:id="@+id/rightPane"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="4"
+        android:orientation="vertical">
+
+        <!-- Header: Alias + Delete -->
+        <LinearLayout
+            android:id="@+id/bindingsHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="@dimen/editor_padding"
+            android:gravity="center_vertical"
+            android:background="@color/editor_step_background">
+
+            <EditText
+                android:id="@+id/etAlias"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="@string/remote_alias_hint"
+                android:textSize="@dimen/text_editor_title"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_label"
+                android:background="@color/editor_input_background"
+                android:padding="@dimen/editor_input_padding"
+                android:inputType="text|textNoSuggestions"
+                android:maxLines="1" />
+
+            <Button
+                android:id="@+id/btnDeleteRemote"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/editor_padding"
+                android:text="@string/remote_delete"
+                android:textColor="@color/btn_close"
+                android:background="?attr/selectableItemBackground"
+                android:textAllCaps="false" />
+        </LinearLayout>
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/editor_divider" />
+
+        <!-- Action bindings list -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvActionBindings"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:paddingBottom="8dp" />
+
+        <!-- Placeholder when no remote selected -->
+        <TextView
+            android:id="@+id/tvNoSelection"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="@string/remote_no_remotes"
+            android:textColor="@color/text_label_dim"
+            android:textSize="@dimen/text_editor_label"
+            android:visibility="gone" />
+    </LinearLayout>
+</LinearLayout>

@@ -210,4 +210,15 @@
     <dimen name="chart_toggle_button_margin">2dp</dimen>
     <dimen name="chart_toggle_button_corner_radius">1dp</dimen>
     <dimen name="chart_toggle_button_stroke_width">1dp</dimen>
+
+    <!-- ==================== Remote Control Config ==================== -->
+
+    <dimen name="remote_list_item_height">56dp</dimen>
+    <dimen name="remote_list_item_padding">12dp</dimen>
+    <dimen name="remote_action_row_height">56dp</dimen>
+    <dimen name="remote_action_row_padding">12dp</dimen>
+    <dimen name="remote_key_button_min_width">120dp</dimen>
+    <dimen name="remote_key_button_height">40dp</dimen>
+    <dimen name="remote_spinner_width">120dp</dimen>
+    <dimen name="remote_blink_duration_ms">200dp</dimen>
 </resources>

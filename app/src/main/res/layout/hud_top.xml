@@ -280,6 +280,18 @@
                 android:focusable="true"
                 android:contentDescription="@string/bt_dialog_title" />
 
+            <ImageView
+                android:id="@+id/btnRemote"
+                android:layout_width="@dimen/service_button_width"
+                android:layout_height="@dimen/service_button_height"
+                android:src="@drawable/ic_remote"
+                android:scaleType="centerInside"
+                android:padding="20dp"
+                android:background="@drawable/service_button_border"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="@string/btn_remote" />
+
             <TextView
                 android:id="@+id/btnSettings"
                 android:text="@string/btn_settings"

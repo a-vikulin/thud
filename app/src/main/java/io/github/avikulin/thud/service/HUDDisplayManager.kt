@@ -45,6 +45,7 @@ class HUDDisplayManager(
         fun onChartClicked()
         fun onCameraClicked()
         fun onBluetoothClicked()
+        fun onRemoteClicked()
         fun onSettingsClicked()
         fun onCloseClicked()
     }
@@ -75,6 +76,7 @@ class HUDDisplayManager(
     private var btnChart: ImageView? = null
     private var btnCamera: ImageView? = null
     private var btnBluetooth: View? = null
+    private var btnRemote: ImageView? = null
     private var btnSettings: View? = null
     private var btnClose: View? = null
 
@@ -98,6 +100,9 @@ class HUDDisplayManager(
     private var colorHrZone3 = 0
     private var colorToggleOnTint = 0
     private var colorToggleOffTint = 0
+    private var colorRemoteActive = 0
+    private var colorRemoteInactive = 0
+    private var colorRemoteBlink = 0
     private val zoneColors = IntArray(6)  // Zone 0-5 colors (shared by HR and Power zones)
 
     val isVisible: Boolean
@@ -173,6 +178,7 @@ class HUDDisplayManager(
             btnChart = topView?.findViewById(R.id.btnChart)
             btnCamera = topView?.findViewById(R.id.btnCamera)
             btnBluetooth = topView?.findViewById(R.id.btnBluetooth)
+            btnRemote = topView?.findViewById(R.id.btnRemote)
             btnSettings = topView?.findViewById(R.id.btnSettings)
             btnClose = topView?.findViewById(R.id.btnClose)
 
@@ -183,6 +189,9 @@ class HUDDisplayManager(
             colorHrZone3 = ContextCompat.getColor(service, R.color.hr_zone_3)
             colorToggleOnTint = ContextCompat.getColor(service, R.color.toggle_button_on_tint)
             colorToggleOffTint = ContextCompat.getColor(service, R.color.toggle_button_off_tint)
+            colorRemoteActive = ContextCompat.getColor(service, R.color.remote_active)
+            colorRemoteInactive = ContextCompat.getColor(service, R.color.remote_inactive)
+            colorRemoteBlink = ContextCompat.getColor(service, R.color.remote_blink)
             for (zone in 0..5) {
                 zoneColors[zone] = ContextCompat.getColor(service, HeartRateZones.getZoneColorResId(zone))
             }
@@ -196,6 +205,7 @@ class HUDDisplayManager(
             btnChart?.setOnClickListener { listener?.onChartClicked() }
             btnCamera?.setOnClickListener { listener?.onCameraClicked() }
             btnBluetooth?.setOnClickListener { listener?.onBluetoothClicked() }
+            btnRemote?.setOnClickListener { listener?.onRemoteClicked() }
             btnSettings?.setOnClickListener { listener?.onSettingsClicked() }
             btnClose?.setOnClickListener { listener?.onCloseClicked() }
 
@@ -245,6 +255,7 @@ class HUDDisplayManager(
             btnChart = null
             btnCamera = null
             btnBluetooth = null
+            btnRemote = null
             btnSettings = null
             btnClose = null
 
@@ -526,6 +537,41 @@ class HUDDisplayManager(
     fun updateChartButtonState(isEnabled: Boolean) {
         mainHandler.post {
             updateToggleButtonStyle(btnChart, isEnabled)
+        }
+    }
+
+    /**
+     * Update remote button to reflect take-over vs pass-through mode.
+     */
+    fun updateRemoteButtonState(isActive: Boolean) {
+        mainHandler.post {
+            val btn = btnRemote ?: return@post
+            if (isActive) {
+                btn.setBackgroundColor(colorRemoteActive)
+                btn.setColorFilter(colorToggleOnTint, android.graphics.PorterDuff.Mode.SRC_IN)
+            } else {
+                btn.setBackgroundResource(R.drawable.service_button_border)
+                btn.setColorFilter(colorToggleOffTint, android.graphics.PorterDuff.Mode.SRC_IN)
+            }
+        }
+    }
+
+    /**
+     * Flash the remote button briefly to indicate a key press was received.
+     */
+    fun blinkRemoteButton() {
+        mainHandler.post {
+            val btn = btnRemote ?: return@post
+            btn.setBackgroundColor(colorRemoteBlink)
+            mainHandler.postDelayed({
+                // Restore to current mode state
+                val isActive = RemoteControlBridge.isActive
+                if (isActive) {
+                    btn.setBackgroundColor(colorRemoteActive)
+                } else {
+                    btn.setBackgroundResource(R.drawable.service_button_border)
+                }
+            }, 200L)
         }
     }
 

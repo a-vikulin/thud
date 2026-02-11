@@ -43,6 +43,7 @@ import io.github.avikulin.thud.service.WorkoutPanelManager
 import io.github.avikulin.thud.service.WorkoutRecorder
 import io.github.avikulin.thud.service.StrydManager
 import io.github.avikulin.thud.service.RunPersistenceManager
+import io.github.avikulin.thud.service.RemoteControlManager
 import io.github.avikulin.thud.service.ScreenshotManager
 import io.github.avikulin.thud.service.PersistedRunType
 import io.github.avikulin.thud.service.PersistedRunState
@@ -194,6 +195,9 @@ class HUDService : Service(),
 
     // Screenshot capture
     private lateinit var screenshotManager: ScreenshotManager
+
+    // Remote control
+    private lateinit var remoteControlManager: RemoteControlManager
     private var resumeRunDialogView: LinearLayout? = null
     private val persistenceHandler = Handler(Looper.getMainLooper())
     private val persistenceInterval = 15_000L  // 15 seconds
@@ -253,6 +257,13 @@ class HUDService : Service(),
         screenshotManager.onStateChanged = { isEnabled ->
             hudDisplayManager.updateCameraButtonState(isEnabled)
         }
+
+        // Initialize remote control manager
+        remoteControlManager = RemoteControlManager(
+            this, state, telemetryManager, workoutEngineManager, serviceScope
+        )
+        remoteControlManager.listener = remoteControlListener
+        remoteControlManager.initialize()
 
         // Pass user profile to workout recorder for calorie calculation
         updateRecorderUserProfile()
@@ -919,6 +930,30 @@ class HUDService : Service(),
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         startActivity(intent)
+    }
+
+    private fun openRemoteConfig() {
+        savePanelState()
+        hideAllPanels()
+
+        val intent = Intent(this, io.github.avikulin.thud.ui.remote.RemoteControlActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        startActivity(intent)
+    }
+
+    private val remoteControlListener = object : RemoteControlManager.Listener {
+        override fun onRemoteAction(action: io.github.avikulin.thud.domain.model.RemoteAction) {
+            // Action already dispatched by manager — could add logging or toast here
+        }
+
+        override fun onModeChanged(isActive: Boolean) {
+            hudDisplayManager.updateRemoteButtonState(isActive)
+        }
+
+        override fun onKeyPressed() {
+            hudDisplayManager.blinkRemoteButton()
+        }
     }
 
     private fun restorePanels() {
@@ -2070,6 +2105,10 @@ class HUDService : Service(),
         bluetoothSensorDialogManager.toggleDialog()
     }
 
+    override fun onRemoteClicked() {
+        openRemoteConfig()
+    }
+
     override fun onSettingsClicked() {
         popupManager.closeAllPopups()
         hrSensorManager.removeDialog()
@@ -2543,6 +2582,7 @@ class HUDService : Service(),
         dismissResumeRunDialog()
         dismissCertificateErrorDialog()
         dismissGarminLoginOverlay(ticket = null)
+        remoteControlManager.cleanup()
         screenshotManager.cleanup()
         workoutPanelManager.cleanup()
         chartManager.cleanup()

@@ -377,4 +377,57 @@
     <string name="certs_error_dialog_message">mTLS certificates required to connect to GlassOS are missing.\n\nMissing files: %1$s\n\nCopy certificates to:\n%2$s\n\nSee project /certs folder for extraction instructions.</string>
     <string name="btn_dismiss">Dismiss</string>
     <string name="btn_retry">Retry</string>
+
+    <!-- ==================== Remote Control ==================== -->
+
+    <!-- Remote action labels -->
+    <string name="remote_action_speed_up">Speed Up</string>
+    <string name="remote_action_speed_down">Speed Down</string>
+    <string name="remote_action_incline_up">Incline Up</string>
+    <string name="remote_action_incline_down">Incline Down</string>
+    <string name="remote_action_belt_start_pause">Belt Start/Pause</string>
+    <string name="remote_action_belt_stop">Belt Stop</string>
+    <string name="remote_action_next_step">Next Workout Step</string>
+    <string name="remote_action_prev_step">Prev Workout Step</string>
+    <string name="remote_action_toggle_mode">Toggle Mode</string>
+
+    <!-- Remote config activity -->
+    <string name="remote_config_title">Remote Controls</string>
+    <string name="remote_add">+ Add</string>
+    <string name="remote_back">Back</string>
+    <string name="remote_alias_hint">Remote alias</string>
+    <string name="remote_delete">Delete</string>
+    <string name="remote_no_remotes">No remotes configured</string>
+    <string name="remote_bindings_count">%1$d bindings</string>
+    <string name="remote_key_not_assigned">not assigned</string>
+    <string name="remote_unit_kph">kph</string>
+    <string name="remote_unit_percent">%%</string>
+
+    <!-- Learn dialog -->
+    <string name="remote_learn_title">Assign key for: %1$s</string>
+    <string name="remote_learn_prompt">Press a button on your remote</string>
+    <string name="remote_learn_current">Current: %1$s</string>
+    <string name="remote_learn_detected">Detected: %1$s</string>
+    <string name="remote_learn_waiting">Detected: (waiting…)</string>
+    <string name="remote_learn_hold_hint">Hold button to auto-repeat</string>
+    <string name="remote_learn_duplicate">This key is already assigned to %1$s. Reassign?</string>
+    <string name="btn_clear">Clear</string>
+    <string name="btn_ok">OK</string>
+
+    <!-- Add remote dialog -->
+    <string name="remote_add_title">Add Remote</string>
+    <string name="remote_add_no_devices">No external input devices found.\nMake sure your remote is paired and connected via Bluetooth.</string>
+    <string name="remote_add_auto_detect">Auto-detect</string>
+    <string name="remote_auto_detect_title">Detect Remote</string>
+    <string name="remote_auto_detect_prompt">Press any button on your remote…</string>
+
+    <!-- HUD button / accessibility -->
+    <string name="btn_remote">Remote</string>
+    <string name="remote_mode_takeover">Remote: Take-over</string>
+    <string name="remote_mode_passthrough">Remote: Pass-through</string>
+    <string name="remote_accessibility_not_enabled">Enable tHUD Remote Control in Accessibility Settings to use remotes</string>
+
+    <!-- Accessibility service -->
+    <string name="remote_accessibility_label">tHUD Remote Control</string>
+    <string name="remote_accessibility_description">Intercepts key events from configured BLE remotes to control treadmill speed, incline, and workout navigation. Only affects explicitly configured remote devices — all other input devices pass through untouched.</string>
 </resources>
