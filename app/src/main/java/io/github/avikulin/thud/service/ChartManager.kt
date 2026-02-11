@@ -68,11 +68,12 @@ class ChartManager(
     private var showPower = true
     private var showFullScale = false
 
-    // Cached static toggle button colors
+    // Cached toggle button colors (static + per-series)
     private val colorToggleActiveStroke = ContextCompat.getColor(service, R.color.chart_toggle_active_stroke)
     private val colorToggleInactiveText = ContextCompat.getColor(service, R.color.chart_toggle_inactive_text)
     private val colorToggleInactiveBg = ContextCompat.getColor(service, R.color.chart_toggle_inactive_background)
     private val colorToggleInactiveStroke = ContextCompat.getColor(service, R.color.chart_toggle_inactive_stroke)
+    private val resolvedColorCache = HashMap<Int, Int>(12)
 
     val isVisible: Boolean
         get() = state.isChartVisible.get()
@@ -262,8 +263,8 @@ class ChartManager(
      */
     private fun updateToggleButtonState(button: TextView, isActive: Boolean, colorResId: Int, dimColorResId: Int) {
         val resources = service.resources
-        val color = ContextCompat.getColor(service, colorResId)
-        val dimColor = ContextCompat.getColor(service, dimColorResId)
+        val color = resolvedColorCache.getOrPut(colorResId) { ContextCompat.getColor(service, colorResId) }
+        val dimColor = resolvedColorCache.getOrPut(dimColorResId) { ContextCompat.getColor(service, dimColorResId) }
         val cornerRadius = resources.getDimension(R.dimen.chart_toggle_button_corner_radius)
         val strokeWidth = resources.getDimensionPixelSize(R.dimen.chart_toggle_button_stroke_width)
 

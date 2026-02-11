@@ -39,9 +39,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 /**
  * Manages automatic screenshot capture during workouts using MediaProjection API.
@@ -73,7 +73,8 @@ class ScreenshotManager(
         private const val COLOR_SATURATION_THRESHOLD = 25  // Saturation > 25 = colored → preserve
     }
 
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US)
+    private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")
+        .withZone(ZoneId.systemDefault())
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val mediaProjectionManager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -411,12 +412,13 @@ class ScreenshotManager(
      */
     private fun generateFilename(): String {
         val sanitizedName = currentWorkoutName.replace(Regex("[^a-zA-Z0-9_-]"), "_")
+        val now = Instant.now()
         val runStartStr = if (runStartTimeMs > 0) {
-            dateFormat.format(Date(runStartTimeMs))
+            dateFormatter.format(Instant.ofEpochMilli(runStartTimeMs))
         } else {
-            dateFormat.format(Date())
+            dateFormatter.format(now)
         }
-        val screenshotStr = dateFormat.format(Date())
+        val screenshotStr = dateFormatter.format(now)
         return "${sanitizedName}_${runStartStr}_$screenshotStr.png"
     }
 

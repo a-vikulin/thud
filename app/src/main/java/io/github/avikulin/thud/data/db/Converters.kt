@@ -20,72 +20,53 @@ class Converters {
     fun fromStepType(value: StepType): String = value.name
 
     @TypeConverter
-    fun toStepType(value: String): StepType = try {
-        StepType.valueOf(value)
-    } catch (_: IllegalArgumentException) {
-        Log.e(TAG, "Unknown StepType '$value', defaulting to RUN")
-        StepType.RUN
-    }
+    fun toStepType(value: String): StepType =
+        stepTypeMap[value] ?: StepType.RUN.also { Log.e(TAG, "Unknown StepType '$value', defaulting to RUN") }
 
     @TypeConverter
     fun fromDurationType(value: DurationType): String = value.name
 
     @TypeConverter
-    fun toDurationType(value: String): DurationType = try {
-        DurationType.valueOf(value)
-    } catch (_: IllegalArgumentException) {
-        Log.e(TAG, "Unknown DurationType '$value', defaulting to TIME")
-        DurationType.TIME
-    }
+    fun toDurationType(value: String): DurationType =
+        durationTypeMap[value] ?: DurationType.TIME.also { Log.e(TAG, "Unknown DurationType '$value', defaulting to TIME") }
 
     @TypeConverter
     fun fromAdjustmentType(value: AdjustmentType?): String? = value?.name
 
     @TypeConverter
     fun toAdjustmentType(value: String?): AdjustmentType? =
-        value?.let {
-            try {
-                AdjustmentType.valueOf(it)
-            } catch (_: IllegalArgumentException) {
-                Log.e(TAG, "Unknown AdjustmentType '$it', defaulting to null")
-                null
-            }
-        }
+        value?.let { adjustmentTypeMap[it] ?: null.also { _ -> Log.e(TAG, "Unknown AdjustmentType '$it', defaulting to null") } }
 
     @TypeConverter
     fun fromAutoAdjustMode(value: AutoAdjustMode): String = value.name
 
     @TypeConverter
-    fun toAutoAdjustMode(value: String): AutoAdjustMode = try {
-        AutoAdjustMode.valueOf(value)
-    } catch (_: IllegalArgumentException) {
-        Log.e(TAG, "Unknown AutoAdjustMode '$value', defaulting to NONE")
-        AutoAdjustMode.NONE
-    }
+    fun toAutoAdjustMode(value: String): AutoAdjustMode =
+        autoAdjustModeMap[value] ?: AutoAdjustMode.NONE.also { Log.e(TAG, "Unknown AutoAdjustMode '$value', defaulting to NONE") }
 
     @TypeConverter
     fun fromEarlyEndCondition(value: EarlyEndCondition): String = value.name
 
     @TypeConverter
-    fun toEarlyEndCondition(value: String): EarlyEndCondition = try {
-        EarlyEndCondition.valueOf(value)
-    } catch (_: IllegalArgumentException) {
-        Log.e(TAG, "Unknown EarlyEndCondition '$value', defaulting to NONE")
-        EarlyEndCondition.NONE
-    }
+    fun toEarlyEndCondition(value: String): EarlyEndCondition =
+        earlyEndConditionMap[value] ?: EarlyEndCondition.NONE.also { Log.e(TAG, "Unknown EarlyEndCondition '$value', defaulting to NONE") }
 
     @TypeConverter
     fun fromAdjustmentScope(value: AdjustmentScope): String = value.name
 
     @TypeConverter
-    fun toAdjustmentScope(value: String): AdjustmentScope = try {
-        AdjustmentScope.valueOf(value)
-    } catch (_: IllegalArgumentException) {
-        Log.e(TAG, "Unknown AdjustmentScope '$value', defaulting to ALL_STEPS")
-        AdjustmentScope.ALL_STEPS
-    }
+    fun toAdjustmentScope(value: String): AdjustmentScope =
+        adjustmentScopeMap[value] ?: AdjustmentScope.ALL_STEPS.also { Log.e(TAG, "Unknown AdjustmentScope '$value', defaulting to ALL_STEPS") }
 
     companion object {
         private const val TAG = "Converters"
+
+        // Pre-built lookup maps — O(1) map lookup instead of valueOf() with try/catch
+        private val stepTypeMap = StepType.entries.associateBy { it.name }
+        private val durationTypeMap = DurationType.entries.associateBy { it.name }
+        private val adjustmentTypeMap = AdjustmentType.entries.associateBy { it.name }
+        private val autoAdjustModeMap = AutoAdjustMode.entries.associateBy { it.name }
+        private val earlyEndConditionMap = EarlyEndCondition.entries.associateBy { it.name }
+        private val adjustmentScopeMap = AdjustmentScope.entries.associateBy { it.name }
     }
 }

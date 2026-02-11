@@ -52,6 +52,13 @@ class PopupManager(
         private val CONDENSED_TYPEFACE = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
     }
 
+    // Cached colors — shared by pace and incline popups
+    private val popupBgColor = ContextCompat.getColor(service, R.color.popup_background)
+    private val buttonTextColor = ContextCompat.getColor(service, R.color.popup_button_text)
+    private val buttonActiveColor = ContextCompat.getColor(service, R.color.popup_button_active)
+    private val buttonInactiveColor = ContextCompat.getColor(service, R.color.popup_button_inactive)
+    private val resumeButtonColor = ContextCompat.getColor(service, R.color.hr_zone_3)
+
     private var pacePopupView: View? = null
     private var inclinePopupView: View? = null
 
@@ -111,13 +118,6 @@ class PopupManager(
         val popupPadding = resources.getDimensionPixelSize(R.dimen.popup_padding)
         val buttonMargin = resources.getDimensionPixelSize(R.dimen.popup_button_margin)
         val buttonTextSize = resources.getDimension(R.dimen.text_popup_button) / TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 1f, resources.displayMetrics)
-
-        // Colors from resources
-        val popupBgColor = ContextCompat.getColor(service, R.color.popup_background)
-        val buttonTextColor = ContextCompat.getColor(service, R.color.popup_button_text)
-        val buttonActiveColor = ContextCompat.getColor(service, R.color.popup_button_active)
-        val buttonInactiveColor = ContextCompat.getColor(service, R.color.popup_button_inactive)
-        val resumeButtonColor = ContextCompat.getColor(service, R.color.hr_zone_3)  // Green color
 
         // Current adjusted speed rounded to nearest 0.5 for highlighting
         val currentAdjustedKph = state.currentSpeedKph * state.paceCoefficient
@@ -305,12 +305,6 @@ class PopupManager(
         val popupPadding = resources.getDimensionPixelSize(R.dimen.popup_padding)
         val buttonMargin = resources.getDimensionPixelSize(R.dimen.popup_button_margin)
         val buttonTextSize = resources.getDimension(R.dimen.text_popup_button) / TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 1f, resources.displayMetrics)
-
-        // Colors from resources
-        val popupBgColor = ContextCompat.getColor(service, R.color.popup_background)
-        val buttonTextColor = ContextCompat.getColor(service, R.color.popup_button_text)
-        val buttonActiveColor = ContextCompat.getColor(service, R.color.popup_button_active)
-        val buttonInactiveColor = ContextCompat.getColor(service, R.color.popup_button_inactive)
 
         // Create popup container
         val container = GridLayout(service).apply {

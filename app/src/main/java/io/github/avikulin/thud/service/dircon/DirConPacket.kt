@@ -1,8 +1,5 @@
 package io.github.avikulin.thud.service.dircon
 
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-
 /**
  * DirCon packet structure for GATT-over-TCP protocol.
  *
@@ -123,14 +120,15 @@ data class DirConPacket(
      * Encode packet to bytes for transmission.
      */
     fun encode(): ByteArray {
-        val buffer = ByteBuffer.allocate(HEADER_SIZE + payload.size)
-        buffer.put(messageVersion.toByte())
-        buffer.put(identifier.toByte())
-        buffer.put(sequenceNumber.toByte())
-        buffer.put(responseCode.toByte())
-        buffer.putShort((payload.size and 0xFFFF).toShort()) // Big-endian by default
-        buffer.put(payload)
-        return buffer.array()
+        val data = ByteArray(HEADER_SIZE + payload.size)
+        data[0] = messageVersion.toByte()
+        data[1] = identifier.toByte()
+        data[2] = sequenceNumber.toByte()
+        data[3] = responseCode.toByte()
+        data[4] = (payload.size shr 8 and 0xFF).toByte()
+        data[5] = (payload.size and 0xFF).toByte()
+        payload.copyInto(data, HEADER_SIZE)
+        return data
     }
 
     /**

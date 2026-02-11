@@ -53,11 +53,12 @@ class WorkoutRepository(
      * TSS is passed through from the workout parameter (calculated by ViewModel).
      */
     suspend fun saveWorkout(workout: Workout, steps: List<WorkoutStep>) {
+        val (stepCount, estDuration, estDistance) = computeWorkoutSummary(steps)
         val updatedWorkout = workout.copy(
             updatedAt = System.currentTimeMillis(),
-            stepCount = countExecutableSteps(steps),
-            estimatedDurationSeconds = calculateEstimatedDuration(steps),
-            estimatedDistanceMeters = calculateEstimatedDistance(steps),
+            stepCount = stepCount,
+            estimatedDurationSeconds = estDuration,
+            estimatedDistanceMeters = estDistance,
             estimatedTss = workout.estimatedTss
         )
         workoutDao.saveWorkoutWithSteps(updatedWorkout, steps)
@@ -186,46 +187,24 @@ class WorkoutRepository(
     }
 
     /**
-     * Count executable steps (excludes REPEAT containers).
+     * Compute step count, estimated duration, and estimated distance in a single pass.
      */
-    private fun countExecutableSteps(steps: List<WorkoutStep>): Int {
+    private fun computeWorkoutSummary(steps: List<WorkoutStep>): Triple<Int, Int?, Int?> {
         var count = 0
-        forEachEffectiveStep(steps) { _, repeatCount -> count += repeatCount }
-        return count
-    }
-
-    /**
-     * Calculate estimated duration in seconds.
-     * Cross-calculates time from distance-based steps using pace.
-     */
-    private fun calculateEstimatedDuration(steps: List<WorkoutStep>): Int? {
-        var totalSeconds = 0.0
-        var hasSteps = false
+        var totalSeconds = 0.0; var hasDuration = false
+        var totalMeters = 0.0; var hasDistance = false
         forEachEffectiveStep(steps) { step, repeatCount ->
-            val seconds = calculateStepDuration(step)
-            if (seconds > 0) {
-                totalSeconds += seconds * repeatCount
-                hasSteps = true
-            }
+            count += repeatCount
+            val sec = calculateStepDuration(step)
+            if (sec > 0) { totalSeconds += sec * repeatCount; hasDuration = true }
+            val m = calculateStepDistance(step)
+            if (m > 0) { totalMeters += m * repeatCount; hasDistance = true }
         }
-        return if (hasSteps && totalSeconds > 0) totalSeconds.toInt() else null
-    }
-
-    /**
-     * Calculate estimated distance in meters.
-     * Cross-calculates distance from time-based steps using pace.
-     */
-    private fun calculateEstimatedDistance(steps: List<WorkoutStep>): Int? {
-        var totalMeters = 0.0
-        var hasSteps = false
-        forEachEffectiveStep(steps) { step, repeatCount ->
-            val meters = calculateStepDistance(step)
-            if (meters > 0) {
-                totalMeters += meters * repeatCount
-                hasSteps = true
-            }
-        }
-        return if (hasSteps && totalMeters > 0) totalMeters.toInt() else null
+        return Triple(
+            count,
+            if (hasDuration && totalSeconds > 0) totalSeconds.toInt() else null,
+            if (hasDistance && totalMeters > 0) totalMeters.toInt() else null
+        )
     }
 
     private fun calculateStepDuration(step: WorkoutStep): Double {
