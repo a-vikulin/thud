@@ -70,6 +70,7 @@ class HrSensorManager(
 
     // Discovered devices
     private val discoveredDevices = mutableListOf<BluetoothDevice>()
+    private val discoveredMacs = mutableSetOf<String>()
 
     // Dialog views
     private var dialogView: LinearLayout? = null
@@ -315,6 +316,7 @@ class HrSensorManager(
         if (scanning || bluetoothLeScanner == null) return
 
         discoveredDevices.clear()
+        discoveredMacs.clear()
         deviceListContainer?.removeAllViews()
 
         statusText?.text = service.getString(R.string.hr_dialog_scanning)
@@ -372,8 +374,8 @@ class HrSensorManager(
             val device = result.device
             val deviceName = device.name ?: "Unknown HR Sensor"
 
-            // Avoid duplicates
-            if (discoveredDevices.any { it.address == device.address }) return
+            // Avoid duplicates (O(1) HashSet check instead of O(n) linear scan)
+            if (!discoveredMacs.add(device.address)) return
 
             discoveredDevices.add(device)
             Log.d(TAG, "Discovered HR sensor: $deviceName (${device.address})")

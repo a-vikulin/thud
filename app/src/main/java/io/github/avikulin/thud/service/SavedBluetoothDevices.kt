@@ -44,10 +44,15 @@ data class SavedBluetoothDevice(
 object SavedBluetoothDevices {
     const val PREF_KEY = "saved_bt_devices"
 
+    // In-memory cache — avoids re-parsing JSON on every getAll() call.
+    // Invalidated on save/remove/removeByType.
+    private var cachedDevices: List<SavedBluetoothDevice>? = null
+
     /**
      * Get all saved devices.
      */
     fun getAll(prefs: SharedPreferences): List<SavedBluetoothDevice> {
+        cachedDevices?.let { return it }
         val jsonString = prefs.getString(PREF_KEY, null) ?: return emptyList()
         return try {
             val jsonArray = JSONArray(jsonString)
@@ -57,7 +62,7 @@ object SavedBluetoothDevices {
                 } catch (e: Exception) {
                     null
                 }
-            }
+            }.also { cachedDevices = it }
         } catch (e: Exception) {
             emptyList()
         }
@@ -75,6 +80,7 @@ object SavedBluetoothDevices {
      * New devices are added at the front of the list (most recently used first).
      */
     fun save(prefs: SharedPreferences, device: SavedBluetoothDevice) {
+        cachedDevices = null
         val devices = getAll(prefs).toMutableList()
 
         // Remove existing entry with same MAC (if any)
@@ -91,6 +97,7 @@ object SavedBluetoothDevices {
      * Remove a device by MAC address.
      */
     fun remove(prefs: SharedPreferences, mac: String) {
+        cachedDevices = null
         val devices = getAll(prefs).toMutableList()
         devices.removeAll { it.mac == mac }
         saveList(prefs, devices)
@@ -100,6 +107,7 @@ object SavedBluetoothDevices {
      * Remove all saved devices of a specific type.
      */
     fun removeByType(prefs: SharedPreferences, type: SensorDeviceType) {
+        cachedDevices = null
         val devices = getAll(prefs).toMutableList()
         devices.removeAll { it.type == type }
         saveList(prefs, devices)
@@ -116,5 +124,6 @@ object SavedBluetoothDevices {
         val jsonArray = JSONArray()
         devices.forEach { jsonArray.put(it.toJson()) }
         prefs.edit().putString(PREF_KEY, jsonArray.toString()).apply()
+        cachedDevices = devices
     }
 }

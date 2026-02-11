@@ -76,6 +76,7 @@ class StrydManager(
 
     // Discovered devices
     private val discoveredDevices = mutableListOf<BluetoothDevice>()
+    private val discoveredMacs = mutableSetOf<String>()
 
     // Dialog views
     private var dialogView: LinearLayout? = null
@@ -364,6 +365,7 @@ class StrydManager(
         if (scanning || bluetoothLeScanner == null) return
 
         discoveredDevices.clear()
+        discoveredMacs.clear()
         deviceListContainer?.removeAllViews()
 
         statusText?.text = service.getString(R.string.foot_pod_scanning)
@@ -421,8 +423,8 @@ class StrydManager(
             // Only accept Stryd devices
             if (!deviceName.startsWith(STRYD_NAME_PREFIX)) return
 
-            // Avoid duplicates
-            if (discoveredDevices.any { it.address == device.address }) return
+            // Avoid duplicates (O(1) HashSet check instead of O(n) linear scan)
+            if (!discoveredMacs.add(device.address)) return
 
             discoveredDevices.add(device)
             Log.d(TAG, "Discovered Stryd: $deviceName (${device.address})")
