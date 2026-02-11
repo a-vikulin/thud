@@ -37,8 +37,16 @@ class WorkoutPanelManager(
     var listener: Listener? = null
 
     private var workoutPanelView: WorkoutPanelView? = null
-    private var refreshRunnable: Runnable? = null
+    private var refreshTimerActive = false
     private val refreshHandler = Handler(Looper.getMainLooper())
+    private val refreshRunnable = object : Runnable {
+        override fun run() {
+            getWorkoutState?.invoke()?.let { state ->
+                workoutPanelView?.updateState(state)
+            }
+            refreshHandler.postDelayed(this, REFRESH_INTERVAL_MS)
+        }
+    }
 
     // Callback to get current workout state for refresh
     var getWorkoutState: (() -> WorkoutExecutionState?)? = null
@@ -141,17 +149,9 @@ class WorkoutPanelManager(
      * Start periodic panel refresh.
      */
     fun startRefresh() {
-        if (refreshRunnable != null) return
-
-        refreshRunnable = object : Runnable {
-            override fun run() {
-                getWorkoutState?.invoke()?.let { state ->
-                    workoutPanelView?.updateState(state)
-                }
-                refreshHandler.postDelayed(this, REFRESH_INTERVAL_MS)
-            }
-        }
-        refreshHandler.post(refreshRunnable!!)
+        if (refreshTimerActive) return
+        refreshTimerActive = true
+        refreshHandler.post(refreshRunnable)
         Log.d(TAG, "Started workout panel refresh timer")
     }
 
@@ -159,11 +159,10 @@ class WorkoutPanelManager(
      * Stop periodic panel refresh.
      */
     fun stopRefresh() {
-        refreshRunnable?.let {
-            refreshHandler.removeCallbacks(it)
-            refreshRunnable = null
-            Log.d(TAG, "Stopped workout panel refresh timer")
-        }
+        if (!refreshTimerActive) return
+        refreshHandler.removeCallbacks(refreshRunnable)
+        refreshTimerActive = false
+        Log.d(TAG, "Stopped workout panel refresh timer")
     }
 
     /**

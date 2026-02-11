@@ -48,7 +48,18 @@ class ChartManager(
     private var togglePowerBtn: TextView? = null
     private var toggleFullScaleBtn: TextView? = null
     private val chartUpdateHandler = Handler(Looper.getMainLooper())
-    private var chartUpdateRunnable: Runnable? = null
+    private var chartTimerActive = false
+    private val chartUpdateRunnable = object : Runnable {
+        override fun run() {
+            updateChart()
+            if (state.isChartVisible.get()) {
+                chartUpdateHandler.postDelayed(this, CHART_UPDATE_INTERVAL_MS)
+            } else {
+                chartTimerActive = false
+                Log.d(TAG, "Chart update timer stopped - chart no longer visible")
+            }
+        }
+    }
 
     // Visibility states (persisted to SharedPreferences)
     private var showSpeed = true
@@ -327,8 +338,8 @@ class ChartManager(
         state.isChartVisible.set(false)
 
         // Stop chart updates
-        chartUpdateRunnable?.let { chartUpdateHandler.removeCallbacks(it) }
-        chartUpdateRunnable = null
+        chartUpdateHandler.removeCallbacks(chartUpdateRunnable)
+        chartTimerActive = false
 
         // Remove from window manager but keep view reference (preserves data)
         containerView?.let {
@@ -356,17 +367,8 @@ class ChartManager(
      * Schedule periodic chart updates.
      */
     private fun scheduleChartUpdate() {
-        chartUpdateRunnable = Runnable {
-            updateChart()
-            // Only reschedule if chart is still visible
-            if (state.isChartVisible.get()) {
-                scheduleChartUpdate()
-            } else {
-                chartUpdateRunnable = null
-                Log.d(TAG, "Chart update timer stopped - chart no longer visible")
-            }
-        }
-        chartUpdateHandler.postDelayed(chartUpdateRunnable!!, CHART_UPDATE_INTERVAL_MS)
+        chartTimerActive = true
+        chartUpdateHandler.postDelayed(chartUpdateRunnable, CHART_UPDATE_INTERVAL_MS)
     }
 
     /**
@@ -374,7 +376,7 @@ class ChartManager(
      * to self-heal if the timer stopped unexpectedly.
      */
     fun ensureRefreshRunning() {
-        if (chartUpdateRunnable == null && state.isChartVisible.get() && containerView != null) {
+        if (!chartTimerActive && state.isChartVisible.get() && containerView != null) {
             Log.d(TAG, "Restarting chart refresh timer (self-heal)")
             scheduleChartUpdate()
         }
@@ -489,8 +491,8 @@ class ChartManager(
      * Clean up resources.
      */
     fun cleanup() {
-        chartUpdateRunnable?.let { chartUpdateHandler.removeCallbacks(it) }
-        chartUpdateRunnable = null
+        chartUpdateHandler.removeCallbacks(chartUpdateRunnable)
+        chartTimerActive = false
 
         containerView?.let {
             try {

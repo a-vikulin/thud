@@ -103,6 +103,28 @@ class HUDDisplayManager(
     val isVisible: Boolean
         get() = state.isHudVisible.get()
 
+    // Lightweight formatters to avoid String.format() / Formatter allocation in hot paths.
+    // Integer arithmetic splits into integer + fractional parts.
+    private fun fmtOneDecimal(v: Double): String {
+        val negative = v < 0
+        val abs = if (negative) -v else v
+        val i = abs.toInt()
+        val f = ((abs - i) * 10 + 0.5).toInt()
+        return if (f >= 10) {
+            if (negative) "-${i + 1}.0" else "${i + 1}.0"
+        } else {
+            if (negative) "-$i.$f" else "$i.$f"
+        }
+    }
+
+    private fun fmtTwoDecimal(v: Double): String {
+        val i = v.toInt()
+        val f = ((v - i) * 100 + 0.5).toInt()
+        return if (f >= 100) "${i + 1}.00"
+        else if (f < 10) "$i.0$f"
+        else "$i.$f"
+    }
+
     /**
      * Show the HUD overlay.
      */
@@ -241,14 +263,14 @@ class HUDDisplayManager(
         lastElevationM = Double.NaN
         lastSpeedKph = state.currentSpeedKph
         updatePaceDisplay()
-        tvRawSpeed?.text = String.format(Locale.US, "(%.1f kph)", state.currentSpeedKph)
-        tvIncline?.text = String.format(Locale.US, "%.1f%%", state.currentInclinePercent)
-        tvHeartRate?.text = if (state.currentHeartRateBpm > 0) String.format(Locale.US, "%.0f", state.currentHeartRateBpm) else "--"
+        tvRawSpeed?.text = "(${fmtOneDecimal(state.currentSpeedKph)} kph)"
+        tvIncline?.text = "${fmtOneDecimal(state.currentInclinePercent)}%"
+        tvHeartRate?.text = if (state.currentHeartRateBpm > 0) state.currentHeartRateBpm.toInt().toString() else "--"
 
         val distance = getCalculatedDistance?.invoke() ?: 0.0
         val elevation = getCalculatedElevation?.invoke() ?: 0.0
-        tvDistance?.text = String.format(Locale.US, "%.2f", distance)
-        tvClimb?.text = String.format(Locale.US, "%.0fm", elevation)
+        tvDistance?.text = fmtTwoDecimal(distance)
+        tvClimb?.text = "${floor(elevation).toInt()}m"
 
         // Update HR box background color based on current zone
         updateHrBoxColor(state.currentHeartRateBpm)
@@ -266,7 +288,7 @@ class HUDDisplayManager(
         lastSpeedKph = kph
         mainHandler.post {
             updatePaceDisplay()
-            tvRawSpeed?.text = String.format(Locale.US, "(%.1f kph)", kph)
+            tvRawSpeed?.text = "(${fmtOneDecimal(kph)} kph)"
         }
     }
 
@@ -310,7 +332,7 @@ class HUDDisplayManager(
         if (percent == lastInclinePercent) return
         lastInclinePercent = percent
         mainHandler.post {
-            tvIncline?.text = String.format(Locale.US, "%.1f%%", percent)
+            tvIncline?.text = "${fmtOneDecimal(percent)}%"
         }
     }
 
@@ -321,7 +343,7 @@ class HUDDisplayManager(
         if (bpm == lastHeartRateBpm) return
         lastHeartRateBpm = bpm
         mainHandler.post {
-            tvHeartRate?.text = if (bpm > 0) String.format(Locale.US, "%.0f", bpm) else "--"
+            tvHeartRate?.text = if (bpm > 0) bpm.toInt().toString() else "--"
             updateHrBoxColor(bpm)
         }
     }
@@ -358,7 +380,7 @@ class HUDDisplayManager(
         if (floored == lastDistanceKm) return
         lastDistanceKm = floored
         mainHandler.post {
-            tvDistance?.text = String.format(Locale.US, "%.2f", floored)
+            tvDistance?.text = fmtTwoDecimal(floored)
         }
     }
 
@@ -371,7 +393,7 @@ class HUDDisplayManager(
         if (floored == lastElevationM) return
         lastElevationM = floored
         mainHandler.post {
-            tvClimb?.text = String.format(Locale.US, "%dm", floored.toInt())
+            tvClimb?.text = "${floored.toInt()}m"
         }
     }
 
