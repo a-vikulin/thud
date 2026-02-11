@@ -52,7 +52,7 @@ import io.github.avikulin.thud.util.FitFileExporter
 import io.github.avikulin.thud.util.HeartRateZones
 
 import io.github.avikulin.thud.util.PaceConverter
-import io.github.avikulin.thud.util.TrainingMetricsCalculator
+import io.github.avikulin.thud.util.TssCalculator
 import com.ifit.glassos.workout.WorkoutState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -853,21 +853,21 @@ class HUDService : Service(),
             .map { Pair(it.elapsedMs, it.speedKph) }
 
         // Calculate TSS (Power > HR > Pace priority)
-        val metrics = TrainingMetricsCalculator.calculate(
-            hrSamples = hrSamples,
+        val tssResult = TssCalculator.calculateFromSamples(
             powerSamples = powerSamples,
+            hrSamples = hrSamples,
             speedSamples = speedSamples,
-            hrRest = state.userHrRest,
-            lthr = state.userLthrBpm,
             ftpWatts = state.userFtpWatts,
+            lthr = state.userLthrBpm,
+            hrRest = state.userHrRest,
             thresholdPaceKph = state.thresholdPaceKph
         )
 
-        Log.v(TAG, "Training metrics: tss=${metrics.tss}, " +
-                "tssSource=${metrics.tssSource}, hrSamples=${hrSamples.size}, powerSamples=${powerSamples.size}")
+        Log.v(TAG, "Training metrics: tss=${tssResult.tss}, " +
+                "tssSource=${tssResult.source}, hrSamples=${hrSamples.size}, powerSamples=${powerSamples.size}")
 
         // Update HUD display with TSS only
-        hudDisplayManager.updateTrainingMetrics(metrics.tss)
+        hudDisplayManager.updateTrainingMetrics(tssResult.tss)
     }
 
     // ==================== HUD Visibility ====================

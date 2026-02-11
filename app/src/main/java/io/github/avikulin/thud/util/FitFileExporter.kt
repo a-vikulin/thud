@@ -492,7 +492,7 @@ class FitFileExporter(private val context: Context) {
 
         if (!hasStructuredWorkout) {
             // Free run - write single lap for entire workout
-            writeSingleLap(encoder, workoutData, workoutStartTimeMs, LapTrigger.SESSION_END, pauseEvents, lapIndex = 0, execStep = null, strydDevFields = strydDevFields)
+            writeSingleLap(encoder, workoutData, LapTrigger.SESSION_END, pauseEvents, lapIndex = 0, execStep = null, strydDevFields = strydDevFields)
             return 1
         }
 
@@ -527,7 +527,7 @@ class FitFileExporter(private val context: Context) {
             // Lap duration = next_lap_start - this_lap_start (not last_point - first_point + 1)
             val nextLapFirstPoint = if (!isLastLap) lapGroups[index + 1].firstOrNull() else null
 
-            writeSingleLap(encoder, lapData, workoutStartTimeMs, lapTrigger, pauseEvents, lapIndex = index, wktStepIndex = wktStepIndex, execStep = execStep, nextLapFirstPoint = nextLapFirstPoint, strydDevFields = strydDevFields)
+            writeSingleLap(encoder, lapData, lapTrigger, pauseEvents, lapIndex = index, wktStepIndex = wktStepIndex, execStep = execStep, nextLapFirstPoint = nextLapFirstPoint, strydDevFields = strydDevFields)
         }
 
         return lapGroups.size
@@ -542,7 +542,6 @@ class FitFileExporter(private val context: Context) {
     private fun writeSingleLap(
         encoder: FileEncoder,
         lapData: List<WorkoutDataPoint>,
-        workoutStartTimeMs: Long,
         lapTrigger: LapTrigger,
         pauseEvents: List<PauseEvent>,
         lapIndex: Int,

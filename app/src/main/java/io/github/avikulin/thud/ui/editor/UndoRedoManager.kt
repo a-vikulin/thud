@@ -76,13 +76,4 @@ class UndoRedoManager<T>(private val maxHistory: Int = 50) {
         redoStack.clear()
     }
 
-    /**
-     * Get the number of states in undo stack.
-     */
-    val undoCount: Int get() = undoStack.size
-
-    /**
-     * Get the number of states in redo stack.
-     */
-    val redoCount: Int get() = redoStack.size
 }

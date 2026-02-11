@@ -6,14 +6,11 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
 import android.util.AttributeSet
-import android.util.TypedValue
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import androidx.core.content.ContextCompat
-import io.github.avikulin.thud.util.HeartRateZones
 import io.github.avikulin.thud.R
-import io.github.avikulin.thud.util.PowerZones
 import java.util.Locale
 import kotlin.math.abs
 

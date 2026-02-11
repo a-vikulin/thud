@@ -91,6 +91,15 @@ class HUDDisplayManager(
     private var lastDistanceKm: Double = Double.NaN
     private var lastElevationM: Double = Double.NaN
 
+    // Cached colors — initialized in showHud() to avoid repeated ContextCompat.getColor lookups
+    private var colorTextPrimary = 0
+    private var colorTextLabelDim = 0
+    private var colorBoxInteractive = 0
+    private var colorHrZone3 = 0
+    private var colorToggleOnTint = 0
+    private var colorToggleOffTint = 0
+    private val zoneColors = IntArray(6)  // Zone 0-5 colors (shared by HR and Power zones)
+
     val isVisible: Boolean
         get() = state.isHudVisible.get()
 
@@ -144,6 +153,17 @@ class HUDDisplayManager(
             btnBluetooth = topView?.findViewById(R.id.btnBluetooth)
             btnSettings = topView?.findViewById(R.id.btnSettings)
             btnClose = topView?.findViewById(R.id.btnClose)
+
+            // Cache colors to avoid repeated ContextCompat.getColor lookups in update methods
+            colorTextPrimary = ContextCompat.getColor(service, R.color.text_primary)
+            colorTextLabelDim = ContextCompat.getColor(service, R.color.text_label_dim)
+            colorBoxInteractive = ContextCompat.getColor(service, R.color.box_interactive)
+            colorHrZone3 = ContextCompat.getColor(service, R.color.hr_zone_3)
+            colorToggleOnTint = ContextCompat.getColor(service, R.color.toggle_button_on_tint)
+            colorToggleOffTint = ContextCompat.getColor(service, R.color.toggle_button_off_tint)
+            for (zone in 0..5) {
+                zoneColors[zone] = ContextCompat.getColor(service, HeartRateZones.getZoneColorResId(zone))
+            }
 
             // Set up touch handlers
             paceBox?.setOnClickListener { listener?.onPaceBoxClicked() }
@@ -242,6 +262,7 @@ class HUDDisplayManager(
      * Update pace display.
      */
     fun updatePace(kph: Double) {
+        if (kph == lastSpeedKph) return
         lastSpeedKph = kph
         mainHandler.post {
             updatePaceDisplay()
@@ -279,12 +300,7 @@ class HUDDisplayManager(
         tvPace?.text = displayText
 
         // Update paceBox background: green when idle (ready to start), normal otherwise
-        paceBox?.setBackgroundColor(
-            ContextCompat.getColor(
-                service,
-                if (isIdle) R.color.hr_zone_3 else R.color.box_interactive
-            )
-        )
+        paceBox?.setBackgroundColor(if (isIdle) colorHrZone3 else colorBoxInteractive)
     }
 
     /**
@@ -317,8 +333,7 @@ class HUDDisplayManager(
      */
     fun updateHrSensorStatus(connected: Boolean) {
         mainHandler.post {
-            tvHrLabel?.setTextColor(ContextCompat.getColor(service,
-                if (connected) R.color.text_primary else R.color.text_label_dim))
+            tvHrLabel?.setTextColor(if (connected) colorTextPrimary else colorTextLabelDim)
         }
     }
 
@@ -366,8 +381,7 @@ class HUDDisplayManager(
     private fun updateHrBoxColor(bpm: Double) {
         hrBox?.let { box ->
             val zone = HeartRateZones.getZone(bpm, state.hrZone2Start, state.hrZone3Start, state.hrZone4Start, state.hrZone5Start)
-            val colorResId = HeartRateZones.getZoneColorResId(if (zone == 0) 1 else zone)
-            box.setBackgroundColor(ContextCompat.getColor(service, colorResId))
+            box.setBackgroundColor(zoneColors[if (zone == 0) 1 else zone])
         }
     }
 
@@ -384,10 +398,10 @@ class HUDDisplayManager(
                 tvFootPodLabel?.text = service.getString(R.string.label_foot_pod)
                 tvFootPodUnit?.text = ""
                 // Use zone 1 color for disconnected state
-                footPodBox?.setBackgroundColor(ContextCompat.getColor(service, R.color.hr_zone_1))
-                tvFootPodLabel?.setTextColor(ContextCompat.getColor(service, R.color.text_label_dim))
-                tvFootPodValue?.setTextColor(ContextCompat.getColor(service, R.color.text_primary))
-                tvFootPodUnit?.setTextColor(ContextCompat.getColor(service, R.color.text_primary))
+                footPodBox?.setBackgroundColor(zoneColors[1])
+                tvFootPodLabel?.setTextColor(colorTextLabelDim)
+                tvFootPodValue?.setTextColor(colorTextPrimary)
+                tvFootPodUnit?.setTextColor(colorTextPrimary)
                 return@post
             }
 
@@ -438,7 +452,7 @@ class HUDDisplayManager(
             tvFootPodUnit?.text = unit
 
             // Set background color based on metric and zone
-            val bgColorResId = when (metric) {
+            val bgZone = when (metric) {
                 "power" -> {
                     val power = state.currentPowerWatts
                     if (power > 0) {
@@ -447,17 +461,15 @@ class HUDDisplayManager(
                             state.powerZone2Start, state.powerZone3Start,
                             state.powerZone4Start, state.powerZone5Start
                         )
-                        PowerZones.getZoneColorResId(if (zone == 0) 1 else zone)
-                    } else {
-                        R.color.hr_zone_1  // Zone 1 for no power data
-                    }
+                        if (zone == 0) 1 else zone
+                    } else 1
                 }
-                else -> R.color.hr_zone_1  // Zone 1 for cadence/pace (no zone concept)
+                else -> 1  // Zone 1 for cadence/pace (no zone concept)
             }
-            footPodBox?.setBackgroundColor(ContextCompat.getColor(service, bgColorResId))
-            tvFootPodLabel?.setTextColor(ContextCompat.getColor(service, R.color.text_primary))
-            tvFootPodValue?.setTextColor(ContextCompat.getColor(service, R.color.text_primary))
-            tvFootPodUnit?.setTextColor(ContextCompat.getColor(service, R.color.text_primary))
+            footPodBox?.setBackgroundColor(zoneColors[bgZone])
+            tvFootPodLabel?.setTextColor(colorTextPrimary)
+            tvFootPodValue?.setTextColor(colorTextPrimary)
+            tvFootPodUnit?.setTextColor(colorTextPrimary)
         }
     }
 
@@ -502,16 +514,10 @@ class HUDDisplayManager(
         button ?: return
         if (isOn) {
             button.setBackgroundResource(R.drawable.service_button_toggle_on)
-            button.setColorFilter(
-                ContextCompat.getColor(service, R.color.toggle_button_on_tint),
-                android.graphics.PorterDuff.Mode.SRC_IN
-            )
+            button.setColorFilter(colorToggleOnTint, android.graphics.PorterDuff.Mode.SRC_IN)
         } else {
             button.setBackgroundResource(R.drawable.service_button_border)
-            button.setColorFilter(
-                ContextCompat.getColor(service, R.color.toggle_button_off_tint),
-                android.graphics.PorterDuff.Mode.SRC_IN
-            )
+            button.setColorFilter(colorToggleOffTint, android.graphics.PorterDuff.Mode.SRC_IN)
         }
     }
 

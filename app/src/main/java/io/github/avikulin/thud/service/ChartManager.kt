@@ -57,6 +57,12 @@ class ChartManager(
     private var showPower = true
     private var showFullScale = false
 
+    // Cached static toggle button colors
+    private val colorToggleActiveStroke = ContextCompat.getColor(service, R.color.chart_toggle_active_stroke)
+    private val colorToggleInactiveText = ContextCompat.getColor(service, R.color.chart_toggle_inactive_text)
+    private val colorToggleInactiveBg = ContextCompat.getColor(service, R.color.chart_toggle_inactive_background)
+    private val colorToggleInactiveStroke = ContextCompat.getColor(service, R.color.chart_toggle_inactive_stroke)
+
     val isVisible: Boolean
         get() = state.isChartVisible.get()
 
@@ -252,15 +258,11 @@ class ChartManager(
 
         if (isActive) {
             button.setTextColor(color)
-            val activeStroke = ContextCompat.getColor(service, R.color.chart_toggle_active_stroke)
-            button.background = createRoundedDrawable(dimColor, cornerRadius, activeStroke, strokeWidth)
+            button.background = createRoundedDrawable(dimColor, cornerRadius, colorToggleActiveStroke, strokeWidth)
             button.alpha = 1.0f
         } else {
-            val inactiveText = ContextCompat.getColor(service, R.color.chart_toggle_inactive_text)
-            val inactiveBg = ContextCompat.getColor(service, R.color.chart_toggle_inactive_background)
-            val inactiveStroke = ContextCompat.getColor(service, R.color.chart_toggle_inactive_stroke)
-            button.setTextColor(inactiveText)
-            button.background = createRoundedDrawable(inactiveBg, cornerRadius, inactiveStroke, strokeWidth)
+            button.setTextColor(colorToggleInactiveText)
+            button.background = createRoundedDrawable(colorToggleInactiveBg, cornerRadius, colorToggleInactiveStroke, strokeWidth)
             button.alpha = 0.7f
         }
     }

@@ -335,6 +335,10 @@ class WorkoutChart @JvmOverloads constructor(
     private val phaseWarmupBorderColor: Int
     private val phaseCooldownBorderColor: Int
 
+    // Pre-allocated objects for draw path (avoid GC pressure in onDraw)
+    private val clipRect = RectF()
+    private val stripeSpacingPx = 8f * resources.displayMetrics.density
+
     init {
         // Load phase colors
         phaseWarmupTintColor = ContextCompat.getColor(context, R.color.phase_warmup_tint)
@@ -2198,19 +2202,18 @@ class WorkoutChart @JvmOverloads constructor(
         canvas.drawRect(startX, topY, endX, bottomY, powerTargetRectPaint)
 
         // Draw diagonal stripes overlay
-        val stripeSpacing = 8f * resources.displayMetrics.density  // 8dp spacing
-        val rect = RectF(startX, topY, endX, bottomY)
+        clipRect.set(startX, topY, endX, bottomY)
 
-        canvas.withClip(rect) {
+        canvas.withClip(clipRect) {
             // Draw diagonal lines from bottom-left to top-right
             var x = startX - (bottomY - topY)  // Start before rect to ensure full coverage
-            while (x < endX + stripeSpacing) {
+            while (x < endX + stripeSpacingPx) {
                 drawLine(
                     x, bottomY,
                     x + (bottomY - topY), topY,
                     powerStripeOverlayPaint
                 )
-                x += stripeSpacing
+                x += stripeSpacingPx
             }
         }
     }

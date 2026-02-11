@@ -219,8 +219,8 @@ class GlassOsClient(
         private set
 
     interface TelemetryListener {
-        fun onSpeedUpdate(kph: Double, avgKph: Double, maxKph: Double)
-        fun onInclineUpdate(percent: Double, avgPercent: Double, maxPercent: Double)
+        fun onSpeedUpdate(kph: Double)
+        fun onInclineUpdate(percent: Double)
         fun onElapsedTimeUpdate(seconds: Int)
         fun onWorkoutStateChanged(state: WorkoutState)
         fun onConnectionStateChanged(connected: Boolean, message: String)
@@ -327,7 +327,7 @@ class GlassOsClient(
                 if (value.lastKph != lastSpeedKph) {
                     lastSpeedKph = value.lastKph
                     Log.d(TAG, "Speed update: ${value.lastKph} KPH")
-                    listener?.onSpeedUpdate(value.lastKph, value.avgKph, value.maxKph)
+                    listener?.onSpeedUpdate(value.lastKph)
                 }
             }
 
@@ -349,11 +349,7 @@ class GlassOsClient(
                 if (value.lastInclinePercent != lastInclinePercent) {
                     lastInclinePercent = value.lastInclinePercent
                     Log.d(TAG, "Incline update: ${value.lastInclinePercent}%")
-                    listener?.onInclineUpdate(
-                        value.lastInclinePercent,
-                        value.avgInclinePercent,
-                        value.maxInclinePercent
-                    )
+                    listener?.onInclineUpdate(value.lastInclinePercent)
                 }
             }
 

@@ -299,13 +299,13 @@ class TelemetryManager(
 
     // ==================== TelemetryListener Implementation ====================
 
-    override fun onSpeedUpdate(kph: Double, avgKph: Double, maxKph: Double) {
+    override fun onSpeedUpdate(kph: Double) {
         state.currentSpeedKph = kph
         listener?.onSpeedUpdate(kph)
         listener?.onTelemetryUpdated()
     }
 
-    override fun onInclineUpdate(percent: Double, avgPercent: Double, maxPercent: Double) {
+    override fun onInclineUpdate(percent: Double) {
         // Convert treadmill incline to effective incline (outdoor equivalent)
         // e.g., if adjustment=1.0, treadmill 1% → effective 0%, treadmill 3% → effective 2%
         val effectivePercent = percent - state.inclineAdjustment

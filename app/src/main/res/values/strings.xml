@@ -143,31 +143,14 @@
 
     <!-- Workout Panel Labels -->
     <string name="workout_panel_paused">PAUSED</string>
-    <string name="workout_panel_completed">COMPLETE</string>
     <string name="workout_panel_next_step">Next: %1$s</string>
-    <string name="workout_panel_step_progress">%1$s / %2$s</string>
-    <string name="workout_panel_hr_target">HR: %1$d-%2$d</string>
-    <string name="workout_panel_hr_adjusting">HR adj: %1$s</string>
     <string name="workout_panel_hr_target_detail">HR Target: %1$d-%2$d bpm</string>
     <string name="workout_panel_incline_detail">%1$.1f%%</string>
     <string name="workout_panel_pace_incline">Pace: %1$s  |  Incline: %2$s</string>
     <string name="workout_panel_open_step_indicator">OPEN - press Next to advance</string>
     <string name="workout_panel_more_steps">... %1$d more</string>
     <string name="workout_panel_default_workout_name">Workout</string>
-    <string name="workout_panel_starting">Starting...</string>
-    <string name="workout_panel_ready">Ready</string>
-    <string name="workout_panel_start_button">▶ START</string>
-    <string name="workout_panel_complete">Complete!</string>
-    <string name="workout_panel_summary_duration">Duration: %1$s</string>
-    <string name="workout_panel_summary_distance">Distance: %1$s</string>
-    <string name="workout_panel_summary_steps">Steps: %1$d/%2$d</string>
-    <string name="workout_panel_save">SAVE</string>
-    <string name="workout_panel_discard">DISCARD</string>
     <string name="workout_plan_complete">Plan Complete - Cooldown</string>
-    <plurals name="workout_panel_step_count">
-        <item quantity="one">%d step</item>
-        <item quantity="other">%d steps</item>
-    </plurals>
 
     <!-- Control Buttons -->
     <string name="btn_play">▶</string>
@@ -176,13 +159,6 @@
     <string name="btn_next">▶▶</string>
     <string name="btn_prev">◀◀</string>
     <string name="btn_reset_to_step">↺</string>
-
-    <!-- Execution Feedback -->
-    <string name="hr_adjusting_speed_up">HR low - increasing speed</string>
-    <string name="hr_adjusting_speed_down">HR high - reducing speed</string>
-    <string name="hr_adjusting_incline_up">HR low - increasing incline</string>
-    <string name="hr_adjusting_incline_down">HR high - reducing incline</string>
-    <string name="step_complete_countdown">Next in %1$d…</string>
 
     <!-- ==================== Workout Editor ==================== -->
 
@@ -194,9 +170,6 @@
     <string name="editor_steps_header">STEPS</string>
     <string name="editor_add_step">Add Step</string>
     <string name="editor_summary_format">%1$d steps • %2$s • %3$s</string>
-    <string name="editor_summary_time_only">%1$d steps • %2$s</string>
-    <string name="editor_summary_distance_only">%1$d steps • %2$s</string>
-    <string name="editor_summary_steps_only">%1$d steps</string>
     <string name="editor_unsaved_changes_title">Unsaved Changes</string>
     <string name="editor_unsaved_changes_message">Discard changes?</string>
     <string name="editor_discard">Discard</string>
@@ -276,12 +249,6 @@
     <string name="summary_distance_label">DISTANCE</string>
     <string name="summary_tss_label">TSS</string>
 
-    <!-- Validation Messages -->
-    <string name="validation_name_required">Workout name is required</string>
-    <string name="validation_steps_required">Add at least one step</string>
-    <string name="validation_pace_invalid">Invalid pace format (use min:sec)</string>
-    <string name="validation_hr_invalid">Invalid HR range</string>
-
     <!-- ==================== Warmup/Cooldown Templates ==================== -->
 
     <!-- Sentinel row labels in workout editor -->
@@ -303,12 +270,6 @@
     <string name="library_menu_edit">Edit</string>
     <string name="library_menu_duplicate">Duplicate</string>
     <string name="library_menu_delete">Delete</string>
-
-    <!-- Plurals -->
-    <plurals name="library_step_count">
-        <item quantity="one">%d step</item>
-        <item quantity="other">%d steps</item>
-    </plurals>
 
     <!-- Delete confirmation -->
     <string name="delete_workout_title">Delete Workout</string>
