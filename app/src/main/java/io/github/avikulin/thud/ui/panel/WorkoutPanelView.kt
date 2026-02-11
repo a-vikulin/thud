@@ -98,6 +98,16 @@ class WorkoutPanelView(context: Context) : View(context) {
     private val controlButtonBg = ContextCompat.getColor(context, R.color.control_button_background)
     private val hrWarningColor = ContextCompat.getColor(context, R.color.hr_target_warning)
 
+    // ==================== Cached Strings ====================
+
+    private val defaultWorkoutName = context.getString(R.string.workout_panel_default_workout_name)
+    private val btnPrevText = context.getString(R.string.btn_prev)
+    private val btnPlayText = context.getString(R.string.btn_play)
+    private val btnResetToStepText = context.getString(R.string.btn_reset_to_step)
+    private val btnNextText = context.getString(R.string.btn_next)
+    private val openStepIndicatorText = context.getString(R.string.workout_panel_open_step_indicator)
+    private val pausedText = context.getString(R.string.workout_panel_paused)
+
     /** Get step type color using centralized utility. */
     private fun getStepTypeColor(type: StepType): Int =
         ContextCompat.getColor(context, HeartRateZones.getStepTypeColorResId(type))
@@ -185,6 +195,13 @@ class WorkoutPanelView(context: Context) : View(context) {
         color = Color.argb(180, 0, 0, 0)
         style = Paint.Style.FILL
     }
+
+    // ==================== Reusable Drawing Objects ====================
+
+    private val bgRect = RectF()
+    private val buttonRect = RectF()
+    private val progressBgRect = RectF()
+    private val progressFillRect = RectF()
 
     // ==================== Touch Handling ====================
 
@@ -308,7 +325,7 @@ class WorkoutPanelView(context: Context) : View(context) {
         super.onDraw(canvas)
 
         // Draw background
-        val bgRect = RectF(0f, 0f, width.toFloat(), height.toFloat())
+        bgRect.set(0f, 0f, width.toFloat(), height.toFloat())
         canvas.drawRoundRect(bgRect, cornerRadius, cornerRadius, backgroundPaint)
 
         // Calculate reserved heights for fixed areas
@@ -385,7 +402,7 @@ class WorkoutPanelView(context: Context) : View(context) {
         // Draw centered workout name
         titlePaint.textAlign = Paint.Align.CENTER
         canvas.drawText(
-            workoutName.ifEmpty { context.getString(R.string.workout_panel_default_workout_name) },
+            workoutName.ifEmpty { defaultWorkoutName },
             width / 2f,
             startY + titleTextSize,
             titlePaint
@@ -411,28 +428,28 @@ class WorkoutPanelView(context: Context) : View(context) {
         var buttonX = panelPadding.toFloat()
 
         // Prev button
-        drawControlButton(canvas, buttonX, buttonY, "prev", context.getString(R.string.btn_prev), buttonWidth.toFloat(), buttonHeight.toFloat(), buttonsEnabled)
+        drawControlButton(canvas, buttonX, buttonY, "prev", btnPrevText, buttonWidth.toFloat(), buttonHeight.toFloat(), buttonsEnabled)
         buttonX += buttonWidth + controlButtonMargin
 
         // Center button: Play when paused, Reset to Step when running
-        val centerIcon = if (isPaused) context.getString(R.string.btn_play) else context.getString(R.string.btn_reset_to_step)
+        val centerIcon = if (isPaused) btnPlayText else btnResetToStepText
         drawControlButton(canvas, buttonX, buttonY, "resetToStep", centerIcon, buttonWidth.toFloat(), buttonHeight.toFloat(), buttonsEnabled)
         buttonX += buttonWidth + controlButtonMargin
 
         // Next button
-        drawControlButton(canvas, buttonX, buttonY, "next", context.getString(R.string.btn_next), buttonWidth.toFloat(), buttonHeight.toFloat(), buttonsEnabled)
+        drawControlButton(canvas, buttonX, buttonY, "next", btnNextText, buttonWidth.toFloat(), buttonHeight.toFloat(), buttonsEnabled)
     }
 
     private fun drawControlButton(canvas: Canvas, x: Float, y: Float, id: String, icon: String, buttonWidth: Float, buttonHeight: Float, enabled: Boolean = true) {
-        val rect = RectF(x, y, x + buttonWidth, y + buttonHeight)
-        buttonBounds[id] = rect
+        buttonRect.set(x, y, x + buttonWidth, y + buttonHeight)
+        buttonBounds[id] = RectF(buttonRect)  // Copy for touch hit-testing
 
         // Draw button background with reduced alpha when disabled
         val originalAlpha = controlButtonPaint.alpha
         if (!enabled) {
             controlButtonPaint.alpha = 80  // ~30% opacity when disabled
         }
-        canvas.drawRoundRect(rect, 8f, 8f, controlButtonPaint)
+        canvas.drawRoundRect(buttonRect, 8f, 8f, controlButtonPaint)
         controlButtonPaint.alpha = originalAlpha
 
         // Draw button text with reduced alpha when disabled
@@ -635,7 +652,7 @@ class WorkoutPanelView(context: Context) : View(context) {
         if (step.earlyEndCondition == EarlyEndCondition.OPEN) {
             stepDetailPaint.color = ContextCompat.getColor(context, R.color.hr_zone_3)  // Green
             canvas.drawText(
-                context.getString(R.string.workout_panel_open_step_indicator),
+                openStepIndicatorText,
                 panelPadding.toFloat(),
                 yOffset + stepDetailTextSize,
                 stepDetailPaint
@@ -646,24 +663,24 @@ class WorkoutPanelView(context: Context) : View(context) {
         // Progress bar
         yOffset += stepItemMargin
         val progressWidth = width - 2 * panelPadding
-        val progressRect = RectF(
+        progressBgRect.set(
             panelPadding.toFloat(),
             yOffset,
             panelPadding + progressWidth.toFloat(),
             yOffset + progressBarHeight
         )
-        canvas.drawRoundRect(progressRect, progressBarCornerRadius, progressBarCornerRadius, progressBgPaint)
+        canvas.drawRoundRect(progressBgRect, progressBarCornerRadius, progressBarCornerRadius, progressBgPaint)
 
         // Fill based on progress
         val progress = calculateStepProgress(step)
         val fillWidth = progressWidth * progress
-        val fillRect = RectF(
+        progressFillRect.set(
             panelPadding.toFloat(),
             yOffset,
             panelPadding + fillWidth,
             yOffset + progressBarHeight
         )
-        canvas.drawRoundRect(fillRect, progressBarCornerRadius, progressBarCornerRadius, progressFillPaint)
+        canvas.drawRoundRect(progressFillRect, progressBarCornerRadius, progressBarCornerRadius, progressFillPaint)
 
         yOffset += progressBarHeight + stepItemMargin
 
@@ -677,7 +694,7 @@ class WorkoutPanelView(context: Context) : View(context) {
         if (isPaused) {
             yOffset += stepItemMargin * 2
             titlePaint.color = hrWarningColor
-            canvas.drawText(context.getString(R.string.workout_panel_paused), panelPadding.toFloat(), yOffset + titleTextSize, titlePaint)
+            canvas.drawText(pausedText, panelPadding.toFloat(), yOffset + titleTextSize, titlePaint)
             titlePaint.color = textPrimary
         }
     }

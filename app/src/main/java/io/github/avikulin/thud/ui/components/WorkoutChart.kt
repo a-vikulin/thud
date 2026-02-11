@@ -100,6 +100,12 @@ class WorkoutChart @JvmOverloads constructor(
     private var powerZone4Start = 225  // Zone 4 starts at 90% of 250W
     private var powerZone5Start = 263  // Zone 5 starts at 105% of 250W
 
+    // Pre-cached zone colors (index 0-5, resolved once in init and on zone config change)
+    private val hrZoneColors = IntArray(6)
+    private val hrZoneDimmedColors = IntArray(6)
+    private val powerZoneColors = IntArray(6)
+    private val powerZoneDimmedColors = IntArray(6)
+
     // Line visibility flags for toggle buttons
     var showSpeedLine = true
     var showInclineLine = true
@@ -164,6 +170,9 @@ class WorkoutChart @JvmOverloads constructor(
         val dimmedColor: Int  // Pre-blended with background for rendering
     )
     private val powerSegments = mutableListOf<PowerSegment>()
+
+    // Reusable list for zone boundary crossings (cleared and reused per segment pair)
+    private val crossings = mutableListOf<Pair<Double, Int>>()
 
     /**
      * Planned segment per spec Section 4.4.
@@ -355,6 +364,9 @@ class WorkoutChart @JvmOverloads constructor(
         powerColor = ContextCompat.getColor(context, R.color.chart_power)
         powerTargetRectColor = ContextCompat.getColor(context, R.color.chart_power_target_rect)
         powerStripeOverlayColor = ContextCompat.getColor(context, R.color.chart_power_stripe_overlay)
+
+        // Cache zone colors (must be after backgroundColor is set)
+        rebuildZoneColorCache()
 
         // Initialize paints
         backgroundPaint = Paint().apply {
@@ -583,6 +595,7 @@ class WorkoutChart @JvmOverloads constructor(
         hrZone3Start = z3Start
         hrZone4Start = z4Start
         hrZone5Start = z5Start
+        rebuildZoneColorCache()
         // Recalculate initial HR max based on new zone5Start
         val newInitialHrMax = calculateInitialHrMax()
         if (newInitialHrMax > hrMaxBpm) {
@@ -600,6 +613,7 @@ class WorkoutChart @JvmOverloads constructor(
         powerZone3Start = z3Start
         powerZone4Start = z4Start
         powerZone5Start = z5Start
+        rebuildZoneColorCache()
         // Ensure power scale is high enough to show zone5Start
         ensurePowerScaleShowsZones()
         rebuildAllPaths()
@@ -1287,14 +1301,13 @@ class WorkoutChart @JvmOverloads constructor(
 
         if (startZone == endZone) {
             // Same zone - single segment
-            val color = ContextCompat.getColor(context, getHeartRateZoneColor(startZone))
-            hrSegments.add(HRSegment(startX, hrToY(startBpm), endX, hrToY(endBpm), color))
+            hrSegments.add(HRSegment(startX, hrToY(startBpm), endX, hrToY(endBpm), hrZoneColors[startZone]))
             return
         }
 
         // Different zones - find boundaries crossed and split
         val zoneBoundaries = listOf(hrZone2Start, hrZone3Start, hrZone4Start, hrZone5Start)
-        val crossings = mutableListOf<Pair<Double, Int>>()  // (bpm, zoneAbove)
+        crossings.clear()
 
         val minBpm = minOf(startBpm, endBpm)
         val maxBpm = maxOf(startBpm, endBpm)
@@ -1305,26 +1318,25 @@ class WorkoutChart @JvmOverloads constructor(
             }
         }
 
-        // Sort crossings by BPM (ascending if going up, descending if going down)
-        val sortedCrossings = if (endBpm > startBpm) {
-            crossings.sortedBy { it.first }
+        // Sort crossings in-place by BPM (ascending if going up, descending if going down)
+        if (endBpm > startBpm) {
+            crossings.sortBy { it.first }
         } else {
-            crossings.sortedByDescending { it.first }
+            crossings.sortByDescending { it.first }
         }
 
         // Build segments
         var currentBpm = startBpm
         var currentX = startX
 
-        for ((crossBpm, _) in sortedCrossings) {
+        for ((crossBpm, _) in crossings) {
             // Interpolate X position at crossing
             val t = (crossBpm - startBpm) / (endBpm - startBpm)
             val crossX = startX + t.toFloat() * (endX - startX)
 
             // Segment from current to crossing
             val segmentZone = getHeartRateZone(currentBpm)
-            val color = ContextCompat.getColor(context, getHeartRateZoneColor(segmentZone))
-            hrSegments.add(HRSegment(currentX, hrToY(currentBpm), crossX, hrToY(crossBpm), color))
+            hrSegments.add(HRSegment(currentX, hrToY(currentBpm), crossX, hrToY(crossBpm), hrZoneColors[segmentZone]))
 
             currentBpm = crossBpm
             currentX = crossX
@@ -1332,8 +1344,7 @@ class WorkoutChart @JvmOverloads constructor(
 
         // Final segment from last crossing to end
         val finalZone = getHeartRateZone(endBpm)
-        val finalColor = ContextCompat.getColor(context, getHeartRateZoneColor(finalZone))
-        hrSegments.add(HRSegment(currentX, hrToY(currentBpm), endX, hrToY(endBpm), finalColor))
+        hrSegments.add(HRSegment(currentX, hrToY(currentBpm), endX, hrToY(endBpm), hrZoneColors[finalZone]))
     }
 
     /**
@@ -1345,15 +1356,13 @@ class WorkoutChart @JvmOverloads constructor(
 
         if (startZone == endZone) {
             // Same zone - single segment
-            val color = ContextCompat.getColor(context, getPowerZoneColor(startZone))
-            val dimmed = blendColorWithBackground(color, 0.5f)
-            powerSegments.add(PowerSegment(startX, powerToNormalizedY(startWatts), endX, powerToNormalizedY(endWatts), color, dimmed))
+            powerSegments.add(PowerSegment(startX, powerToNormalizedY(startWatts), endX, powerToNormalizedY(endWatts), powerZoneColors[startZone], powerZoneDimmedColors[startZone]))
             return
         }
 
         // Different zones - find boundaries crossed and split
         val zoneBoundaries = listOf(powerZone2Start, powerZone3Start, powerZone4Start, powerZone5Start)
-        val crossings = mutableListOf<Pair<Double, Int>>()
+        crossings.clear()
 
         val minWatts = minOf(startWatts, endWatts)
         val maxWatts = maxOf(startWatts, endWatts)
@@ -1364,32 +1373,29 @@ class WorkoutChart @JvmOverloads constructor(
             }
         }
 
-        val sortedCrossings = if (endWatts > startWatts) {
-            crossings.sortedBy { it.first }
+        // Sort crossings in-place
+        if (endWatts > startWatts) {
+            crossings.sortBy { it.first }
         } else {
-            crossings.sortedByDescending { it.first }
+            crossings.sortByDescending { it.first }
         }
 
         var currentWatts = startWatts
         var currentX = startX
 
-        for ((crossWatts, _) in sortedCrossings) {
+        for ((crossWatts, _) in crossings) {
             val t = (crossWatts - startWatts) / (endWatts - startWatts)
             val crossX = startX + t.toFloat() * (endX - startX)
 
             val segmentZone = getPowerZone(currentWatts)
-            val color = ContextCompat.getColor(context, getPowerZoneColor(segmentZone))
-            val dimmed = blendColorWithBackground(color, 0.5f)
-            powerSegments.add(PowerSegment(currentX, powerToNormalizedY(currentWatts), crossX, powerToNormalizedY(crossWatts), color, dimmed))
+            powerSegments.add(PowerSegment(currentX, powerToNormalizedY(currentWatts), crossX, powerToNormalizedY(crossWatts), powerZoneColors[segmentZone], powerZoneDimmedColors[segmentZone]))
 
             currentWatts = crossWatts
             currentX = crossX
         }
 
         val finalZone = getPowerZone(endWatts)
-        val finalColor = ContextCompat.getColor(context, getPowerZoneColor(finalZone))
-        val finalDimmed = blendColorWithBackground(finalColor, 0.5f)
-        powerSegments.add(PowerSegment(currentX, powerToNormalizedY(currentWatts), endX, powerToNormalizedY(endWatts), finalColor, finalDimmed))
+        powerSegments.add(PowerSegment(currentX, powerToNormalizedY(currentWatts), endX, powerToNormalizedY(endWatts), powerZoneColors[finalZone], powerZoneDimmedColors[finalZone]))
     }
 
     // ==================== Coordinate Mapping ====================
@@ -1467,19 +1473,25 @@ class WorkoutChart @JvmOverloads constructor(
         return HeartRateZones.getZone(bpm, hrZone2Start, hrZone3Start, hrZone4Start, hrZone5Start)
     }
 
-    private fun getHeartRateZoneColor(zone: Int): Int {
-        return HeartRateZones.getZoneColorResId(zone)
-    }
-
     // ==================== Power Zone Helpers ====================
 
     private fun getPowerZone(watts: Double): Int {
         return PowerZones.getZone(watts, powerZone2Start, powerZone3Start, powerZone4Start, powerZone5Start)
     }
 
-    private fun getPowerZoneColor(zone: Int): Int {
-        // Use same zone colors as HR
-        return HeartRateZones.getZoneColorResId(zone)
+    /**
+     * Rebuild cached zone color arrays. Called from init and when zone config changes.
+     * Must be called after backgroundColor is set (needed for dimmed color blending).
+     */
+    private fun rebuildZoneColorCache() {
+        for (zone in 0..5) {
+            val resId = HeartRateZones.getZoneColorResId(zone)
+            val color = ContextCompat.getColor(context, resId)
+            hrZoneColors[zone] = color
+            hrZoneDimmedColors[zone] = blendColorWithBackground(color, 0.5f)
+            powerZoneColors[zone] = color
+            powerZoneDimmedColors[zone] = blendColorWithBackground(color, 0.5f)
+        }
     }
 
     // ==================== Segment Duration Calculation ====================
@@ -1759,7 +1771,7 @@ class WorkoutChart @JvmOverloads constructor(
             for ((boundary, zone) in zoneBoundaries) {
                 if (boundary.toDouble() <= hrMaxBpm && boundary.toDouble() >= hrMinBpm) {
                     val y = hrToY(boundary.toDouble())
-                    axisLabelPaint.color = ContextCompat.getColor(context, getHeartRateZoneColor(zone))
+                    axisLabelPaint.color = hrZoneColors[zone]
                     canvas.drawText(resources.getString(R.string.chart_axis_zone_format, zone), labelX, y + axisLabelSize / 3, axisLabelPaint)
                     // Tick mark extending right from chart edge
                     canvas.drawLine(chartRight, y, chartRight + tickLength, y, axisLabelPaint)
@@ -1767,7 +1779,7 @@ class WorkoutChart @JvmOverloads constructor(
             }
 
             // Axis title showing "Zone"
-            axisTitlePaint.color = ContextCompat.getColor(context, R.color.hr_zone_3)
+            axisTitlePaint.color = hrZoneColors[3]
             canvas.withRotation(90f, titleX, height / 2f) {
                 drawText(resources.getString(R.string.chart_axis_zone), titleX, height / 2f, axisTitlePaint)
             }
@@ -1783,7 +1795,7 @@ class WorkoutChart @JvmOverloads constructor(
             for ((boundary, zoneAbove) in zoneBoundaries) {
                 if (boundary.toDouble() <= hrMaxBpm && boundary.toDouble() >= hrMinBpm) {
                     val y = hrToY(boundary.toDouble())
-                    axisLabelPaint.color = ContextCompat.getColor(context, getHeartRateZoneColor(zoneAbove))
+                    axisLabelPaint.color = hrZoneColors[zoneAbove]
                     canvas.drawText("$boundary", labelX, y + axisLabelSize / 3, axisLabelPaint)
                     // Tick mark extending right from chart edge
                     canvas.drawLine(chartRight, y, chartRight + tickLength, y, axisLabelPaint)
@@ -1791,7 +1803,7 @@ class WorkoutChart @JvmOverloads constructor(
             }
 
             // Axis title for HR
-            axisTitlePaint.color = ContextCompat.getColor(context, R.color.hr_zone_5)
+            axisTitlePaint.color = hrZoneColors[5]
             canvas.withRotation(90f, titleX, height / 2f) {
                 drawText(resources.getString(R.string.chart_axis_hr), titleX, height / 2f, axisTitlePaint)
             }
@@ -1807,14 +1819,14 @@ class WorkoutChart @JvmOverloads constructor(
             for ((boundary, zone) in zoneBoundaries) {
                 // Use target scale so labels stay aligned with data paths
                 val y = powerToNormalizedY(boundary.toDouble())
-                axisLabelPaint.color = ContextCompat.getColor(context, getPowerZoneColor(zone))
+                axisLabelPaint.color = powerZoneColors[zone]
                 canvas.drawText("$boundary", labelX, y + axisLabelSize / 3, axisLabelPaint)
                 // Tick mark extending right from chart edge
                 canvas.drawLine(chartRight, y, chartRight + tickLength, y, axisLabelPaint)
             }
 
             // Axis title for Power
-            axisTitlePaint.color = ContextCompat.getColor(context, R.color.chart_power)
+            axisTitlePaint.color = powerColor
             canvas.withRotation(90f, titleX, height / 2f) {
                 drawText(resources.getString(R.string.chart_axis_power), titleX, height / 2f, axisTitlePaint)
             }
@@ -1843,8 +1855,7 @@ class WorkoutChart @JvmOverloads constructor(
             for ((boundary, zone) in boundaries) {
                 if (boundary.toDouble() <= targetHrMaxBpm && boundary.toDouble() >= targetHrMinBpm) {
                     val y = hrToY(boundary.toDouble())
-                    val baseColor = ContextCompat.getColor(context, getHeartRateZoneColor(zone))
-                    hrZoneBoundaryPaint.color = (baseColor and 0x00FFFFFF) or 0x80000000.toInt()
+                    hrZoneBoundaryPaint.color = (hrZoneColors[zone] and 0x00FFFFFF) or 0x80000000.toInt()
                     canvas.drawLine(chartLeft, y, chartRight, y, hrZoneBoundaryPaint)
                 }
             }
@@ -2019,10 +2030,7 @@ class WorkoutChart @JvmOverloads constructor(
         val bottomY = hrToY(hrMin.toDouble())
 
         // Get zone color with 40% opacity for fill
-        val zoneColorResId = getHeartRateZoneColor(zone)
-        val baseColor = ContextCompat.getColor(context, zoneColorResId)
-        // Apply 40% opacity (0x66 = 102 = 40% of 255)
-        hrTargetRectPaint.color = (baseColor and 0x00FFFFFF) or 0x66000000
+        hrTargetRectPaint.color = (hrZoneColors[zone] and 0x00FFFFFF) or 0x66000000
 
         canvas.drawRect(startX, topY, endX, bottomY, hrTargetRectPaint)
     }
@@ -2184,9 +2192,7 @@ class WorkoutChart @JvmOverloads constructor(
         zone: Int
     ) {
         // Get zone color with 40% opacity for fill (same as HR)
-        val zoneColorResId = getPowerZoneColor(zone)
-        val baseColor = ContextCompat.getColor(context, zoneColorResId)
-        powerTargetRectPaint.color = (baseColor and 0x00FFFFFF) or 0x66000000
+        powerTargetRectPaint.color = (powerZoneColors[zone] and 0x00FFFFFF) or 0x66000000
 
         // Draw filled background
         canvas.drawRect(startX, topY, endX, bottomY, powerTargetRectPaint)
@@ -2371,8 +2377,7 @@ class WorkoutChart @JvmOverloads constructor(
                     lastPoint.powerWatts,
                     powerZone2Start, powerZone3Start, powerZone4Start, powerZone5Start
                 )
-                val baseColor = ContextCompat.getColor(context, getPowerZoneColor(powerZone))
-                markerPaint.color = blendColorWithBackground(baseColor, 0.5f)
+                markerPaint.color = powerZoneDimmedColors[powerZone]
                 drawDiamond(canvas, chartRight, y, markerWidth, markerHeight)
             }
         }
@@ -2385,7 +2390,7 @@ class WorkoutChart @JvmOverloads constructor(
                     lastPoint.heartRateBpm,
                     hrZone2Start, hrZone3Start, hrZone4Start, hrZone5Start
                 )
-                markerPaint.color = ContextCompat.getColor(context, getHeartRateZoneColor(hrZone))
+                markerPaint.color = hrZoneColors[hrZone]
                 drawDiamond(canvas, chartRight, y, markerWidth, markerHeight)
             }
         }

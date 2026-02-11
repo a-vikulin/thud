@@ -112,13 +112,6 @@ object SavedBluetoothDevices {
         return getAll(prefs).any { it.mac == mac }
     }
 
-    /**
-     * Get all saved MAC addresses as a set.
-     */
-    fun getSavedMacs(prefs: SharedPreferences): Set<String> {
-        return getAll(prefs).map { it.mac }.toSet()
-    }
-
     private fun saveList(prefs: SharedPreferences, devices: List<SavedBluetoothDevice>) {
         val jsonArray = JSONArray()
         devices.forEach { jsonArray.put(it.toJson()) }

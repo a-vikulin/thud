@@ -86,6 +86,10 @@ class HUDDisplayManager(
     // Current treadmill workout state for pace box display
     private var currentTreadmillState: WorkoutState = WorkoutState.WORKOUT_STATE_IDLE
     private var lastSpeedKph: Double = 0.0
+    private var lastInclinePercent: Double = Double.NaN
+    private var lastHeartRateBpm: Double = Double.NaN
+    private var lastDistanceKm: Double = Double.NaN
+    private var lastElevationM: Double = Double.NaN
 
     val isVisible: Boolean
         get() = state.isHudVisible.get()
@@ -210,6 +214,11 @@ class HUDDisplayManager(
      * Refresh all HUD display values with current state.
      */
     fun refreshHudDisplay() {
+        // Reset cached values so the full refresh always takes effect
+        lastInclinePercent = Double.NaN
+        lastHeartRateBpm = Double.NaN
+        lastDistanceKm = Double.NaN
+        lastElevationM = Double.NaN
         lastSpeedKph = state.currentSpeedKph
         updatePaceDisplay()
         tvRawSpeed?.text = String.format(Locale.US, "(%.1f kph)", state.currentSpeedKph)
@@ -282,6 +291,8 @@ class HUDDisplayManager(
      * Update incline display.
      */
     fun updateIncline(percent: Double) {
+        if (percent == lastInclinePercent) return
+        lastInclinePercent = percent
         mainHandler.post {
             tvIncline?.text = String.format(Locale.US, "%.1f%%", percent)
         }
@@ -291,6 +302,8 @@ class HUDDisplayManager(
      * Update heart rate display.
      */
     fun updateHeartRate(bpm: Double) {
+        if (bpm == lastHeartRateBpm) return
+        lastHeartRateBpm = bpm
         mainHandler.post {
             tvHeartRate?.text = if (bpm > 0) String.format(Locale.US, "%.0f", bpm) else "--"
             updateHrBoxColor(bpm)
@@ -325,9 +338,11 @@ class HUDDisplayManager(
      * Update distance display.
      */
     fun updateDistance(distanceKm: Double) {
+        // Floor to 2 decimal places (never round up)
+        val floored = floor(distanceKm * 100) / 100
+        if (floored == lastDistanceKm) return
+        lastDistanceKm = floored
         mainHandler.post {
-            // Floor to 2 decimal places (never round up)
-            val floored = floor(distanceKm * 100) / 100
             tvDistance?.text = String.format(Locale.US, "%.2f", floored)
         }
     }
@@ -336,10 +351,12 @@ class HUDDisplayManager(
      * Update climb/elevation display.
      */
     fun updateClimb(elevationM: Double) {
+        // Floor to whole meters (never round up)
+        val floored = floor(elevationM)
+        if (floored == lastElevationM) return
+        lastElevationM = floored
         mainHandler.post {
-            // Floor to whole meters (never round up)
-            val floored = floor(elevationM).toInt()
-            tvClimb?.text = String.format(Locale.US, "%dm", floored)
+            tvClimb?.text = String.format(Locale.US, "%dm", floored.toInt())
         }
     }
 
