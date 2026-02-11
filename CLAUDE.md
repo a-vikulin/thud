@@ -60,6 +60,8 @@
 | Garmin auto-upload flag | `ServiceStateHolder` (SharedPrefs) | `HUDService` → export flow |
 | Garmin OAuth tokens | `GarminConnectUploader` (EncryptedSharedPrefs) | Upload flow only |
 | FIT bytes for upload | `FitFileExporter.FitExportResult` | `HUDService` → `GarminConnectUploader` |
+| Remote control config | `RemoteControlManager` (SharedPrefs JSON) | `RemoteControlBridge` → AccessibilityService |
+| Remote key events | `RemoteControlAccessibilityService` | `RemoteControlBridge` → `RemoteControlManager` |
 
 ### ⚠️ SPEED - ABSOLUTE RULES ⚠️
 
@@ -145,7 +147,7 @@ Exports to Downloads/tHUD via MediaStore. `saveToDownloads(context, sourceFile, 
 Unified BT sensor storage. `getAll/getByType/save/remove/isSaved/getSavedMacs`. Types: `HR_SENSOR`, `FOOT_POD`.
 
 ### SettingsManager (`service/SettingsManager.kt`)
-All SharedPreferences keys as constants. Key groups: `pace_coefficient` (calibration), `hr_zone*_max` (HR zones), `threshold_pace_kph`, `default_incline`, treadmill min/max ranges (from GlassOS), `fit_*` (FIT Export device ID), `ftms_*` (FTMS server settings), `garmin_auto_upload` (Garmin Connect).
+All SharedPreferences keys as constants. Key groups: `pace_coefficient` (calibration), `hr_zone*_max` (HR zones), `threshold_pace_kph`, `default_incline`, treadmill min/max ranges (from GlassOS), `fit_*` (FIT Export device ID), `ftms_*` (FTMS server settings), `garmin_auto_upload` (Garmin Connect), `remote_bindings` (BLE remote control config JSON).
 
 ### ⚠️ HR/Power Targets: Percentage-Based ⚠️
 All HR/Power targets stored as **% of threshold** (LTHR/FTP) so workouts survive threshold changes.
@@ -213,6 +215,7 @@ HUDService (Orchestrator)
 ├── FitFileExporter         → FIT file generation for Garmin Connect
 ├── GarminConnectUploader   → Garmin Connect OAuth + FIT/photo upload
 ├── TssCalculator           → TSS calculation (Power → HR → Pace fallback)
+├── RemoteControlManager    → BLE remote bindings, action dispatch
 ├── DirConServer            → Direct connection protocol for external apps
 ├── BleFtmsServer           → BLE FTMS server for external fitness apps
 └── UI Managers (Overlays)
@@ -243,6 +246,7 @@ app/src/main/java/io/github/avikulin/thud/
 ├── HUDService.kt              # Main foreground service
 ├── MainActivity.kt            # Main activity
 ├── BootReceiver.kt            # Auto-start on boot
+├── RemoteControlAccessibilityService.kt  # BLE remote key interception
 │
 ├── data/
 │   ├── db/TreadmillHudDatabase.kt, WorkoutDao.kt, Converters.kt
@@ -251,7 +255,7 @@ app/src/main/java/io/github/avikulin/thud/
 │   └── repository/WorkoutRepository.kt
 │
 ├── domain/
-│   ├── model/StepType.kt, DurationType.kt, AdjustmentType.kt, AutoAdjustMode.kt, EarlyEndCondition.kt, AdjustmentScope.kt
+│   ├── model/StepType.kt, DurationType.kt, AdjustmentType.kt, AutoAdjustMode.kt, EarlyEndCondition.kt, AdjustmentScope.kt, RemoteAction.kt
 │   └── engine/
 │       ├── WorkoutExecutionEngine.kt, ExecutionStep.kt, AdjustmentController.kt
 │       ├── WorkoutStepFlattener.kt, WorkoutEvent.kt, WorkoutExecutionState.kt
@@ -271,6 +275,8 @@ app/src/main/java/io/github/avikulin/thud/
 │   ├── StrydManager.kt            # Stryd foot pod BLE
 │   ├── SavedBluetoothDevices.kt   # Unified BT device storage
 │   ├── BluetoothSensorDialogManager.kt  # BT sensor dialog
+│   ├── RemoteControlManager.kt    # BLE remote bindings + action dispatch
+│   ├── RemoteControlBridge.kt     # Singleton connecting AccessibilityService ↔ HUDService
 │   ├── RunPersistenceManager.kt   # Crash recovery persistence
 │   ├── WorkoutRecorder.kt         # Thread-safe metrics recording
 │   ├── ScreenshotManager.kt       # Auto-screenshot via MediaProjection API
@@ -296,6 +302,10 @@ app/src/main/java/io/github/avikulin/thud/
 │   │   ├── WorkoutEditorActivityNew.kt, WorkoutEditorViewModel.kt
 │   │   ├── InlineStepAdapter.kt, WorkoutListAdapter.kt
 │   │   └── UndoRedoManager.kt     # Undo/redo for editor
+│   ├── remote/
+│   │   ├── RemoteControlActivity.kt  # Split-panel remote config
+│   │   ├── RemoteListAdapter.kt      # Left-pane remote list
+│   │   └── ActionBindingAdapter.kt   # Right-pane action bindings
 │   └── panel/WorkoutPanelView.kt
 │
 └── util/
@@ -322,6 +332,7 @@ app/src/main/java/io/github/avikulin/thud/
 | **AutoAdjustMode** | NONE, HR, POWER |
 | **EarlyEndCondition** | NONE, HR_RANGE |
 | **AdjustmentScope** | ALL_STEPS, ONE_STEP |
+| **RemoteAction** | SPEED_UP, SPEED_DOWN, INCLINE_UP, INCLINE_DOWN, BELT_START_PAUSE, BELT_STOP, NEXT_STEP, PREV_STEP, TOGGLE_MODE |
 
 ---
 
@@ -332,6 +343,20 @@ app/src/main/java/io/github/avikulin/thud/
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb logcat -s HUDService TelemetryManager WorkoutExecutionEngine
 ```
+
+### ⚠️ BLE Remote Control — Key Architecture ⚠️
+
+**AccessibilityService** (`RemoteControlAccessibilityService`) intercepts `KeyEvent`s globally via `flagRequestFilterKeyEvents`. It runs in the same app process as `HUDService` — no IPC needed.
+
+**RemoteControlBridge** is a plain `object` singleton connecting the two services. Volatile fields ensure thread-safe reads without synchronization overhead.
+
+**Device filtering is the FIRST check** in `onKeyEvent()`. Only devices whose `event.device.name` matches an explicitly configured remote are ever intercepted. All other input devices (BT keyboards, phone volume buttons, treadmill hardware keys) always pass through untouched.
+
+**TOGGLE_MODE always works** regardless of `isActive` state — otherwise users couldn't switch back to take-over mode without touching the phone.
+
+**Config is JSON in SharedPreferences** (key: `PREF_REMOTE_BINDINGS`), not Room DB. Structure: `{ "remotes": [{ "deviceName", "alias", "enabled", "bindings": [{ "action", "keyCode", "keyLabel", "value" }] }] }`. Parsing is duplicated across `RemoteControlManager`, `RemoteControlActivity`, and `RemoteControlAccessibilityService` because each may run independently.
+
+**Speed/incline actions** call `TelemetryManager.setTreadmillSpeed()`/`setTreadmillIncline()` (respecting the speed/incline absolute rules). Speed is read as `state.currentSpeedKph * state.paceCoefficient` (adjusted), clamped to `[minSpeed * paceCoefficient, maxSpeed * paceCoefficient]`. Incline is read as `state.currentInclinePercent` (already effective), clamped to effective bounds.
 
 ---
 

@@ -76,6 +76,17 @@ blown away by Claude's capabilities!
 - Power zone coloring
 - Power reading is corrected for incline
 
+### BLE Remote Control
+- Control treadmill speed, incline, belt, and workout navigation from BLE remote controls (camera shutters, media remotes)
+- Remotes pair with Android as HID keyboards — no special hardware required
+- Configurable key bindings per remote with learn-mode key detection
+- Adjustable increment values for speed (0.1–2.0 kph) and incline (0.5–5.0%)
+- Long-press auto-repeat for continuous adjustments
+- Take-over / pass-through mode toggle — switch between tHUD control and normal key passthrough (e.g., for Netflix)
+- HUD button with mode indicator and blink feedback on key press
+- Split-panel configuration activity (matching workout editor style)
+- Requires enabling tHUD Accessibility Service in Android Settings
+
 ### Auto-Screenshot
 - Capture the full screenshot of the treadmill's screen
 - Toggle screenshot mode with the camera button in HUD
@@ -212,9 +223,18 @@ Verify that auto-adjustment parameters are sensible
 1. For a free run either use physical Start button or touch Pace HUD box and select desired pace/speed
 2. tHUD starts the run and sets incline to effective 0%
 
+### Setting Up a BLE Remote
+1. Enable tHUD Accessibility Service: Android Settings → Accessibility → tHUD Remote Control
+2. Pair your BLE remote with the treadmill via Bluetooth Settings
+3. Tap the remote (gamepad) icon in the HUD to open the config activity
+4. Tap "+ Add" and select your remote from the list (or use Auto-detect)
+5. For each action, tap the key button and press the corresponding button on your remote
+6. Adjust increment values with the spinners for speed/incline actions
+7. Use the Toggle Mode action to switch between take-over and pass-through modes while running
+
 ### During a Run
-- Use physical Speed +/- buttons to adjust speed or use Pace box in the HUD to open popup menu with a list of paces
-- Use physical Incline +/- buttons to adjust incline or use Incline box in the HUD to open popup menu with a list of inclines
+- Use physical Speed +/- buttons or a configured BLE remote to adjust speed, or use Pace box in the HUD to open popup menu with a list of paces
+- Use physical Incline +/- buttons or a configured BLE remote to adjust incline, or use Incline box in the HUD to open popup menu with a list of inclines
 - Tap Chart button in the HUD to show/hide Chart
 - Tap X button in the HUD to hide all HUD panels
 - To open HUD again use tHUD icon. Installing Taskbar is highly recommended for that
