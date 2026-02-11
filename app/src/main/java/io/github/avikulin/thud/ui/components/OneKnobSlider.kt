@@ -31,9 +31,9 @@ class OneKnobSlider(context: Context) : View(context) {
 
     // Configurable range
     var minValue = 0.70
-        set(value) { field = value; invalidate() }
+        set(value) { field = value; updateRangeLabels(); invalidate() }
     var maxValue = 1.30
-        set(value) { field = value; invalidate() }
+        set(value) { field = value; updateRangeLabels(); invalidate() }
 
     // Current value
     private var value = 1.0
@@ -78,6 +78,12 @@ class OneKnobSlider(context: Context) : View(context) {
     // Preallocated rect for handle drawing
     private val handleRect = RectF()
 
+    // Cached label strings (avoids String.format per frame)
+    private var minLabel = String.format(Locale.US, "%.2f", minValue)
+    private var midLabel = String.format(Locale.US, "%.2f", (minValue + maxValue) / 2)
+    private var maxLabel = String.format(Locale.US, "%.2f", maxValue)
+    private var valueLabel = String.format(Locale.US, "%.3f", value)
+
     // Dragging state
     private var isDragging = false
 
@@ -90,7 +96,14 @@ class OneKnobSlider(context: Context) : View(context) {
 
     fun setValue(newValue: Double) {
         value = newValue.coerceIn(minValue, maxValue)
+        valueLabel = String.format(Locale.US, "%.3f", value)
         invalidate()
+    }
+
+    private fun updateRangeLabels() {
+        minLabel = String.format(Locale.US, "%.2f", minValue)
+        midLabel = String.format(Locale.US, "%.2f", (minValue + maxValue) / 2)
+        maxLabel = String.format(Locale.US, "%.2f", maxValue)
     }
 
     fun getValue(): Double = value
@@ -154,12 +167,12 @@ class OneKnobSlider(context: Context) : View(context) {
         // Draw bar border
         canvas.drawRect(barLeft, barTop, barRight, barBottom, borderPaint)
 
-        // Draw labels
+        // Draw labels (from cache)
         val labelY = barBottom + 15 * resources.displayMetrics.density
         val midValue = (minValue + maxValue) / 2
-        canvas.drawText(String.format(Locale.US, "%.2f", minValue), barLeft, labelY, labelPaint)
-        canvas.drawText(String.format(Locale.US, "%.2f", midValue), valueToX(midValue), labelY, labelPaint)
-        canvas.drawText(String.format(Locale.US, "%.2f", maxValue), barRight, labelY, labelPaint)
+        canvas.drawText(minLabel, barLeft, labelY, labelPaint)
+        canvas.drawText(midLabel, valueToX(midValue), labelY, labelPaint)
+        canvas.drawText(maxLabel, barRight, labelY, labelPaint)
 
         // Draw handle
         val x = valueToX(value)
@@ -173,9 +186,9 @@ class OneKnobSlider(context: Context) : View(context) {
         canvas.drawRoundRect(handleRect, handleRadius, handleRadius, handlePaint)
         canvas.drawRoundRect(handleRect, handleRadius, handleRadius, borderPaint)
 
-        // Draw value text on handle (3 significant digits)
+        // Draw value text on handle (from cache)
         val textY = handleTop + (handleBottom - handleTop) / 2 + textPaint.textSize / 3
-        canvas.drawText(String.format(Locale.US, "%.3f", value), x, textY, textPaint)
+        canvas.drawText(valueLabel, x, textY, textPaint)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -191,6 +204,7 @@ class OneKnobSlider(context: Context) : View(context) {
             MotionEvent.ACTION_MOVE -> {
                 if (isDragging) {
                     value = xToValue(event.x)
+                    valueLabel = String.format(Locale.US, "%.3f", value)
                     invalidate()
                     return true
                 }

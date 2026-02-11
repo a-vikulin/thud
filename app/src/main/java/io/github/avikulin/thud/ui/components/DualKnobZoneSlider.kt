@@ -55,6 +55,7 @@ class DualKnobZoneSlider @JvmOverloads constructor(
         set(value) {
             field = value
             recalculateZoneBoundaries()
+            updateCachedHandleTexts()
             invalidate()
         }
 
@@ -134,6 +135,12 @@ class DualKnobZoneSlider @JvmOverloads constructor(
         MIN_PERCENT.toDouble(), 80.0, 88.0, 95.0, 102.0, MAX_PERCENT.toDouble()
     )
 
+    // Cached per-handle text strings (avoids String.format per frame)
+    private var minPercentText = "80%"
+    private var minAbsoluteText = "136"
+    private var maxPercentText = "95%"
+    private var maxAbsoluteText = "162"
+
     // Dragging state
     private var draggingHandle = -1  // -1 = none, 0 = min handle, 1 = max handle
 
@@ -181,8 +188,19 @@ class DualKnobZoneSlider @JvmOverloads constructor(
     fun setRangePercent(minPct: Double, maxPct: Double) {
         _minPercent = minPct.coerceIn(MIN_PERCENT.toDouble(), MAX_PERCENT.toDouble() - MIN_GAP)
         _maxPercent = maxPct.coerceIn(_minPercent + MIN_GAP, MAX_PERCENT.toDouble())
+        updateCachedHandleTexts()
         invalidate()
     }
+
+    private fun updateCachedHandleTexts() {
+        minPercentText = formatPercentText(_minPercent)
+        minAbsoluteText = percentToAbsolute(_minPercent).toString()
+        maxPercentText = formatPercentText(_maxPercent)
+        maxAbsoluteText = percentToAbsolute(_maxPercent).toString()
+    }
+
+    private fun formatPercentText(p: Double): String =
+        if (p == p.toInt().toDouble()) "${p.toInt()}%" else String.format(Locale.US, "%.1f%%", p)
 
     /**
      * Convert percentage to absolute value using current threshold.
@@ -246,11 +264,12 @@ class DualKnobZoneSlider @JvmOverloads constructor(
         canvas.drawRect(maxX, barTop, barRight, barBottom, dimPaint)
 
         // Draw handles
-        drawHandle(canvas, _minPercent)
-        drawHandle(canvas, _maxPercent)
+        drawHandle(canvas, isMin = true)
+        drawHandle(canvas, isMin = false)
     }
 
-    private fun drawHandle(canvas: Canvas, percent: Double) {
+    private fun drawHandle(canvas: Canvas, isMin: Boolean) {
+        val percent = if (isMin) _minPercent else _maxPercent
         val x = percentToX(percent)
         val handleLeft = x - handleWidth / 2
         val handleRight = x + handleWidth / 2
@@ -268,16 +287,14 @@ class DualKnobZoneSlider @JvmOverloads constructor(
         // Draw handle border
         canvas.drawRoundRect(handleRect, handleRadius, handleRadius, handleBorderPaint)
 
-        // Draw value text: "85.3%" on top line, "145" on bottom line
-        val absoluteValue = percentToAbsolute(percent)
+        // Draw value text from cache: "85.3%" on top line, "145" on bottom line
         val lineHeight = textPaint.textSize * 1.2f
         val centerY = handleTop + (handleBottom - handleTop) / 2
 
-        // Top line: percentage with 1 decimal
-        val percentText = if (percent == percent.toInt().toDouble()) "${percent.toInt()}%" else String.format(Locale.US, "%.1f%%", percent)
-        canvas.drawText(percentText, x, centerY - lineHeight / 4, textPaint)
-        // Bottom line: absolute value (integer BPM/watts)
-        canvas.drawText(absoluteValue.toString(), x, centerY + lineHeight * 0.7f, textPaint)
+        val pctText = if (isMin) minPercentText else maxPercentText
+        val absText = if (isMin) minAbsoluteText else maxAbsoluteText
+        canvas.drawText(pctText, x, centerY - lineHeight / 4, textPaint)
+        canvas.drawText(absText, x, centerY + lineHeight * 0.7f, textPaint)
     }
 
     private fun getZoneColorForPercent(percent: Double): Int {
@@ -353,5 +370,6 @@ class DualKnobZoneSlider @JvmOverloads constructor(
                 _maxPercent = newPercent.coerceIn(_minPercent + MIN_GAP, MAX_PERCENT.toDouble())
             }
         }
+        updateCachedHandleTexts()
     }
 }

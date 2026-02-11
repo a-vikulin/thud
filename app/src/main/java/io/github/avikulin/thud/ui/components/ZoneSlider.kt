@@ -50,6 +50,7 @@ class ZoneSlider(context: Context) : View(context) {
     var thresholdValue: Int = 170
         set(value) {
             field = value
+            updateCachedZoneValues()
             invalidate()
         }
 
@@ -102,6 +103,15 @@ class ZoneSlider(context: Context) : View(context) {
     private var zoneValues = doubleArrayOf(
         MIN_PERCENT.toDouble(), 80.0, 88.0, 95.0, 102.0, MAX_PERCENT.toDouble()
     )
+
+    // Cached handle values for onDraw/findNearestHandle (avoids DoubleArray allocation per frame)
+    private val handleValues = DoubleArray(4).apply {
+        this[0] = 80.0; this[1] = 88.0; this[2] = 95.0; this[3] = 102.0
+    }
+
+    // Cached per-handle text strings (avoids String.format per frame)
+    private val handlePercentTexts = arrayOf("80%", "88%", "95%", "102%")
+    private val handleAbsoluteTexts = arrayOf("136", "150", "162", "173")
 
     // Dragging state
     private var draggingHandle = -1  // -1 = none, 0-3 = handle index
@@ -196,14 +206,13 @@ class ZoneSlider(context: Context) : View(context) {
         canvas.drawRect(barLeft, barTop, barRight, barBottom, borderPaint)
 
         // Draw handles (each handle is colored by the zone it starts)
-        val handleValues = doubleArrayOf(zone2StartPercent, zone3StartPercent, zone4StartPercent, zone5StartPercent)
         for (i in 0 until 4) {
-            drawHandle(canvas, handleValues[i], zoneColors[i + 1])
+            drawHandle(canvas, i, zoneColors[i + 1])
         }
     }
 
-    private fun drawHandle(canvas: Canvas, percent: Double, color: Int) {
-        val x = percentToX(percent)
+    private fun drawHandle(canvas: Canvas, handleIndex: Int, color: Int) {
+        val x = percentToX(handleValues[handleIndex])
         val handleLeft = x - handleWidth / 2
         val handleRight = x + handleWidth / 2
         val handleTop = barTop - 5 * resources.displayMetrics.density
@@ -217,17 +226,12 @@ class ZoneSlider(context: Context) : View(context) {
         // Draw handle border
         canvas.drawRoundRect(handleRect, handleRadius, handleRadius, borderPaint)
 
-        // Draw value text: "85.3%" on top line, "145" on bottom line
-        val absoluteValue = percentToAbsolute(percent)
-
+        // Draw value text: "85.3%" on top line, "145" on bottom line (from cache)
         val lineHeight = textPaint.textSize * 1.2f
         val centerY = handleTop + (handleBottom - handleTop) / 2
 
-        // Top line: percentage with 1 decimal
-        val percentText = if (percent == percent.toInt().toDouble()) "${percent.toInt()}%" else String.format(Locale.US, "%.1f%%", percent)
-        canvas.drawText(percentText, x, centerY - lineHeight / 4, textPaint)
-        // Bottom line: absolute value (integer BPM/watts)
-        canvas.drawText(absoluteValue.toString(), x, centerY + lineHeight * 0.7f, textPaint)
+        canvas.drawText(handlePercentTexts[handleIndex], x, centerY - lineHeight / 4, textPaint)
+        canvas.drawText(handleAbsoluteTexts[handleIndex], x, centerY + lineHeight * 0.7f, textPaint)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -265,7 +269,6 @@ class ZoneSlider(context: Context) : View(context) {
         val handleBottom = barBottom + 10 * resources.displayMetrics.density
         if (y < handleTop || y > handleBottom) return -1
 
-        val handleValues = doubleArrayOf(zone2StartPercent, zone3StartPercent, zone4StartPercent, zone5StartPercent)
         var nearestIndex = -1
         var nearestDist = Float.MAX_VALUE
 
@@ -308,9 +311,17 @@ class ZoneSlider(context: Context) : View(context) {
     }
 
     private fun updateCachedZoneValues() {
-        zoneValues = doubleArrayOf(
-            MIN_PERCENT.toDouble(), zone2StartPercent, zone3StartPercent,
-            zone4StartPercent, zone5StartPercent, MAX_PERCENT.toDouble()
-        )
+        zoneValues[1] = zone2StartPercent
+        zoneValues[2] = zone3StartPercent
+        zoneValues[3] = zone4StartPercent
+        zoneValues[4] = zone5StartPercent
+
+        val percents = doubleArrayOf(zone2StartPercent, zone3StartPercent, zone4StartPercent, zone5StartPercent)
+        for (i in 0 until 4) {
+            handleValues[i] = percents[i]
+            val p = percents[i]
+            handlePercentTexts[i] = if (p == p.toInt().toDouble()) "${p.toInt()}%" else String.format(Locale.US, "%.1f%%", p)
+            handleAbsoluteTexts[i] = percentToAbsolute(p).toString()
+        }
     }
 }
