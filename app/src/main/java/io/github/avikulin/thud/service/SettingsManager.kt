@@ -316,6 +316,10 @@ class SettingsManager(
         state.powerZone4StartPercent = getFloatOrInt(prefs, PREF_POWER_ZONE4_START_PERCENT, DEFAULT_POWER_ZONE4_START_PERCENT)
         state.powerZone5StartPercent = getFloatOrInt(prefs, PREF_POWER_ZONE5_START_PERCENT, DEFAULT_POWER_ZONE5_START_PERCENT)
 
+        // Recompute cached absolute zone boundaries from updated percentages/thresholds
+        state.invalidateHrZoneCaches()
+        state.invalidatePowerZoneCaches()
+
         // HR auto-adjust settings
         state.hrTrendWindowSeconds = prefs.getInt(PREF_HR_TREND_WINDOW_SECONDS, DEFAULT_HR_TREND_WINDOW_SECONDS)
         state.hrTrendThreshold = prefs.getFloat(PREF_HR_TREND_THRESHOLD, DEFAULT_HR_TREND_THRESHOLD.toFloat()).toDouble()
@@ -1567,6 +1571,10 @@ class SettingsManager(
             state.powerZone4StartPercent = zones[2]
             state.powerZone5StartPercent = zones[3]
         }
+
+        // Recompute cached absolute zone boundaries from updated percentages/thresholds
+        state.invalidateHrZoneCaches()
+        state.invalidatePowerZoneCaches()
 
         // Save HR auto-adjust parameters from spinners
         spinnerHrTrendWindow?.let { state.hrTrendWindowSeconds = it.value.toInt() }

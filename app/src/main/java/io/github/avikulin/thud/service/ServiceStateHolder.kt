@@ -59,11 +59,23 @@ class ServiceStateHolder {
     @Volatile var hrZone4StartPercent = 95.0   // ~162 bpm
     @Volatile var hrZone5StartPercent = 102.0  // ~173 bpm (slightly above LTHR)
 
-    // Computed absolute HR zone boundaries (from LTHR and percentages)
-    val hrZone2Start: Int get() = kotlin.math.round(hrZone2StartPercent * userLthrBpm / 100.0).toInt()
-    val hrZone3Start: Int get() = kotlin.math.round(hrZone3StartPercent * userLthrBpm / 100.0).toInt()
-    val hrZone4Start: Int get() = kotlin.math.round(hrZone4StartPercent * userLthrBpm / 100.0).toInt()
-    val hrZone5Start: Int get() = kotlin.math.round(hrZone5StartPercent * userLthrBpm / 100.0).toInt()
+    // Cached absolute HR zone boundaries (from LTHR and percentages)
+    // Call invalidateHrZoneCaches() after changing userLthrBpm or hrZone*StartPercent
+    var hrZone2Start: Int = kotlin.math.round(hrZone2StartPercent * userLthrBpm / 100.0).toInt()
+        private set
+    var hrZone3Start: Int = kotlin.math.round(hrZone3StartPercent * userLthrBpm / 100.0).toInt()
+        private set
+    var hrZone4Start: Int = kotlin.math.round(hrZone4StartPercent * userLthrBpm / 100.0).toInt()
+        private set
+    var hrZone5Start: Int = kotlin.math.round(hrZone5StartPercent * userLthrBpm / 100.0).toInt()
+        private set
+
+    fun invalidateHrZoneCaches() {
+        hrZone2Start = kotlin.math.round(hrZone2StartPercent * userLthrBpm / 100.0).toInt()
+        hrZone3Start = kotlin.math.round(hrZone3StartPercent * userLthrBpm / 100.0).toInt()
+        hrZone4Start = kotlin.math.round(hrZone4StartPercent * userLthrBpm / 100.0).toInt()
+        hrZone5Start = kotlin.math.round(hrZone5StartPercent * userLthrBpm / 100.0).toInt()
+    }
 
     // Power zones as % of FTP (zone start boundaries)
     // zone2Start = 55% means values >= 55% of FTP are zone 2
@@ -73,11 +85,23 @@ class ServiceStateHolder {
     @Volatile var powerZone4StartPercent = 90.0   // Tempo ends, Threshold begins
     @Volatile var powerZone5StartPercent = 105.0  // Threshold ends, VO2max begins
 
-    // Computed absolute Power zone boundaries (from FTP and percentages)
-    val powerZone2Start: Int get() = kotlin.math.round(powerZone2StartPercent * userFtpWatts / 100.0).toInt()
-    val powerZone3Start: Int get() = kotlin.math.round(powerZone3StartPercent * userFtpWatts / 100.0).toInt()
-    val powerZone4Start: Int get() = kotlin.math.round(powerZone4StartPercent * userFtpWatts / 100.0).toInt()
-    val powerZone5Start: Int get() = kotlin.math.round(powerZone5StartPercent * userFtpWatts / 100.0).toInt()
+    // Cached absolute Power zone boundaries (from FTP and percentages)
+    // Call invalidatePowerZoneCaches() after changing userFtpWatts or powerZone*StartPercent
+    var powerZone2Start: Int = kotlin.math.round(powerZone2StartPercent * userFtpWatts / 100.0).toInt()
+        private set
+    var powerZone3Start: Int = kotlin.math.round(powerZone3StartPercent * userFtpWatts / 100.0).toInt()
+        private set
+    var powerZone4Start: Int = kotlin.math.round(powerZone4StartPercent * userFtpWatts / 100.0).toInt()
+        private set
+    var powerZone5Start: Int = kotlin.math.round(powerZone5StartPercent * userFtpWatts / 100.0).toInt()
+        private set
+
+    fun invalidatePowerZoneCaches() {
+        powerZone2Start = kotlin.math.round(powerZone2StartPercent * userFtpWatts / 100.0).toInt()
+        powerZone3Start = kotlin.math.round(powerZone3StartPercent * userFtpWatts / 100.0).toInt()
+        powerZone4Start = kotlin.math.round(powerZone4StartPercent * userFtpWatts / 100.0).toInt()
+        powerZone5Start = kotlin.math.round(powerZone5StartPercent * userFtpWatts / 100.0).toInt()
+    }
 
     // Workout editor defaults
     @Volatile var thresholdPaceKph = 10.0  // User's threshold pace (6:00/km default)

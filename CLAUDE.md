@@ -163,6 +163,9 @@ ExecutionStep convenience: `step.getHrTargetMinBpm(lthrBpm)`, `step.getPowerTarg
 
 **paceCoefficient is NEVER changed by code!** AdjustmentController is stateless for values — WorkoutExecutionEngine owns coefficients, calculates from telemetry, provides `getEffectiveSpeed(step)`.
 
+### ⚠️ Zone Boundary Caches — MUST INVALIDATE ⚠️
+`ServiceStateHolder.hrZone2Start..hrZone5Start` and `powerZone2Start..powerZone5Start` are **cached** (not computed on access). After writing `userLthrBpm`, `userFtpWatts`, or any `hrZone*StartPercent` / `powerZone*StartPercent`, you **MUST** call `invalidateHrZoneCaches()` / `invalidatePowerZoneCaches()`. Currently only `SettingsManager` writes these (loadSettings + save callback).
+
 ### ⚠️ Adjustment Scope (Per-Workout Setting) ⚠️
 `Workout.adjustmentScope`: `ALL_STEPS` (default) or `ONE_STEP`.
 
