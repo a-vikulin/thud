@@ -216,29 +216,18 @@ class FitFileExporter(private val context: Context) {
         val totalDurationMs = endTimeMs - startTimeMs
         val totalDistanceM = workoutData.last().distanceKm * 1000.0
         val totalAscent = workoutData.last().elevationGainM
-        val avgHeartRate = workoutData.filter { it.heartRateBpm > 0 }
-            .map { it.heartRateBpm }
-            .average()
-            .takeIf { !it.isNaN() } ?: 0.0
-        val maxHeartRate = workoutData.maxOfOrNull { it.heartRateBpm } ?: 0.0
+        // Single-pass aggregation over all data points
+        val agg = aggregateData(workoutData)
+        val avgHeartRate = agg.avgHR
+        val maxHeartRate = agg.maxHR
         val avgSpeed = if (totalDurationMs > 0) {
             totalDistanceM / (totalDurationMs / 1000.0) // m/s
         } else 0.0
-        val maxSpeed = workoutData.maxOfOrNull { it.speedKph }?.let { it / 3.6 } ?: 0.0
-
-        // Power metrics from foot pod
-        val avgPower = workoutData.filter { it.powerWatts > 0 }
-            .map { it.powerWatts }
-            .average()
-            .takeIf { !it.isNaN() } ?: 0.0
-        val maxPower = workoutData.maxOfOrNull { it.powerWatts } ?: 0.0
-
-        // Cadence metrics from foot pod (stored as strides/min, same as FIT format)
-        val avgCadence = workoutData.filter { it.cadenceSpm > 0 }
-            .map { it.cadenceSpm.toDouble() }
-            .average()
-            .takeIf { !it.isNaN() } ?: 0.0
-        val maxCadence = workoutData.maxOfOrNull { it.cadenceSpm } ?: 0
+        val maxSpeed = agg.maxSpeedMs
+        val avgPower = agg.avgPower
+        val maxPower = agg.maxPower
+        val avgCadence = agg.avgCadence
+        val maxCadence = agg.maxCadence
 
         // Calories (cumulative, so take the last value)
         val totalCalories = workoutData.last().caloriesKcal
@@ -246,17 +235,8 @@ class FitFileExporter(private val context: Context) {
         // Note: TSS, Load, and TE are NOT written to FIT file
         // Let Garmin calculate them using their Firstbeat algorithms
 
-        // Calculate incline power metrics
-        val avgInclinePower = workoutData
-            .filter { it.inclinePowerWatts != 0.0 }
-            .map { it.inclinePowerWatts }
-            .average()
-            .takeIf { !it.isNaN() } ?: 0.0
-        val avgRawPower = workoutData
-            .filter { it.rawPowerWatts > 0 }
-            .map { it.rawPowerWatts }
-            .average()
-            .takeIf { !it.isNaN() } ?: 0.0
+        val avgInclinePower = agg.avgInclinePower
+        val avgRawPower = agg.avgRawPower
 
         // 1. File ID message (required first)
         writeFileIdMessage(encoder, startTimeMs, fitManufacturer, fitProductId, fitDeviceSerial)
@@ -583,53 +563,24 @@ class FitFileExporter(private val context: Context) {
         val lapEndElevation = lapData.last().elevationGainM
         val lapAscent = (lapEndElevation - lapStartElevation).coerceAtLeast(0.0)
 
-        // Calculate averages and max for this lap
-        val avgHeartRate = lapData.filter { it.heartRateBpm > 0 }
-            .map { it.heartRateBpm }
-            .average()
-            .takeIf { !it.isNaN() } ?: 0.0
-        val maxHeartRate = lapData.maxOfOrNull { it.heartRateBpm } ?: 0.0
-
-        // Average incline for this lap
-        val avgIncline = lapData.map { it.inclinePercent }
-            .average()
-            .takeIf { !it.isNaN() } ?: 0.0
-
-        // Average speed in kph (from recorded data points, not distance/time)
-        val avgSpeedKph = lapData.filter { it.speedKph > 0 }
-            .map { it.speedKph }
-            .average()
-            .takeIf { !it.isNaN() } ?: 0.0
+        // Single-pass aggregation over lap data points
+        val agg = aggregateData(lapData)
+        val avgHeartRate = agg.avgHR
+        val maxHeartRate = agg.maxHR
+        val avgIncline = agg.avgIncline
+        val avgSpeedKph = agg.avgSpeedKph
 
         // Use timer time for speed calculation (excludes pauses) - for FIT file
         val avgSpeed = if (lapTimerMs > 0) {
             lapDistanceM / (lapTimerMs / 1000.0)
         } else 0.0
-        val maxSpeed = lapData.maxOfOrNull { it.speedKph }?.let { it / 3.6 } ?: 0.0
-
-        val avgPower = lapData.filter { it.powerWatts > 0 }
-            .map { it.powerWatts }
-            .average()
-            .takeIf { !it.isNaN() } ?: 0.0
-        val maxPower = lapData.maxOfOrNull { it.powerWatts } ?: 0.0
-
-        val avgCadence = lapData.filter { it.cadenceSpm > 0 }
-            .map { it.cadenceSpm.toDouble() }
-            .average()
-            .takeIf { !it.isNaN() } ?: 0.0
-        val maxCadence = lapData.maxOfOrNull { it.cadenceSpm } ?: 0
-
-        // Incline power metrics for calibration
-        val avgInclinePower = lapData
-            .filter { it.inclinePowerWatts != 0.0 }
-            .map { it.inclinePowerWatts }
-            .average()
-            .takeIf { !it.isNaN() } ?: 0.0
-        val avgRawPower = lapData
-            .filter { it.rawPowerWatts > 0 }
-            .map { it.rawPowerWatts }
-            .average()
-            .takeIf { !it.isNaN() } ?: 0.0
+        val maxSpeed = agg.maxSpeedMs
+        val avgPower = agg.avgPower
+        val maxPower = agg.maxPower
+        val avgCadence = agg.avgCadence
+        val maxCadence = agg.maxCadence
+        val avgInclinePower = agg.avgInclinePower
+        val avgRawPower = agg.avgRawPower
 
         // Calories for this lap (difference between first and last point)
         val lapStartCalories = lapData.first().caloriesKcal
@@ -1335,6 +1286,63 @@ class FitFileExporter(private val context: Context) {
 
         Log.d(TAG, "Built flat-to-FIT index mapping: $mapping")
         return mapping
+    }
+
+    /**
+     * Aggregated metrics from a single pass over workout data points.
+     * Replaces multiple filter{}.map{}.average() chains.
+     */
+    private class DataAggregator {
+        var sumHR = 0.0; var countHR = 0; var maxHR = 0.0
+        var sumSpeed = 0.0; var countSpeed = 0; var maxSpeedKph = 0.0
+        var sumPower = 0.0; var countPower = 0; var maxPower = 0.0
+        var sumCadence = 0.0; var countCadence = 0; var maxCadence = 0
+        var sumIncline = 0.0
+        var sumInclinePower = 0.0; var countInclinePower = 0
+        var sumRawPower = 0.0; var countRawPower = 0
+        var count = 0
+
+        fun accumulate(dp: WorkoutDataPoint) {
+            count++
+            sumIncline += dp.inclinePercent
+            if (dp.heartRateBpm > 0) {
+                sumHR += dp.heartRateBpm; countHR++
+                if (dp.heartRateBpm > maxHR) maxHR = dp.heartRateBpm
+            }
+            if (dp.speedKph > 0) {
+                sumSpeed += dp.speedKph; countSpeed++
+                if (dp.speedKph > maxSpeedKph) maxSpeedKph = dp.speedKph
+            }
+            if (dp.powerWatts > 0) {
+                sumPower += dp.powerWatts; countPower++
+                if (dp.powerWatts > maxPower) maxPower = dp.powerWatts
+            }
+            if (dp.cadenceSpm > 0) {
+                sumCadence += dp.cadenceSpm; countCadence++
+                if (dp.cadenceSpm > maxCadence) maxCadence = dp.cadenceSpm
+            }
+            if (dp.inclinePowerWatts != 0.0) {
+                sumInclinePower += dp.inclinePowerWatts; countInclinePower++
+            }
+            if (dp.rawPowerWatts > 0) {
+                sumRawPower += dp.rawPowerWatts; countRawPower++
+            }
+        }
+
+        val avgHR: Double get() = if (countHR > 0) sumHR / countHR else 0.0
+        val avgSpeedKph: Double get() = if (countSpeed > 0) sumSpeed / countSpeed else 0.0
+        val maxSpeedMs: Double get() = maxSpeedKph / 3.6
+        val avgPower: Double get() = if (countPower > 0) sumPower / countPower else 0.0
+        val avgCadence: Double get() = if (countCadence > 0) sumCadence / countCadence else 0.0
+        val avgIncline: Double get() = if (count > 0) sumIncline / count else 0.0
+        val avgInclinePower: Double get() = if (countInclinePower > 0) sumInclinePower / countInclinePower else 0.0
+        val avgRawPower: Double get() = if (countRawPower > 0) sumRawPower / countRawPower else 0.0
+    }
+
+    private fun aggregateData(data: List<WorkoutDataPoint>): DataAggregator {
+        val agg = DataAggregator()
+        for (dp in data) agg.accumulate(dp)
+        return agg
     }
 
 }
