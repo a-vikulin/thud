@@ -82,9 +82,13 @@ blown away by Claude's capabilities!
 - Configurable key bindings per remote with learn-mode key detection
 - Adjustable increment values for speed (0.1–2.0 kph) and incline (0.5–5.0%)
 - Long-press auto-repeat for continuous adjustments
-- Take-over / pass-through mode toggle — switch between tHUD control and normal key passthrough (e.g., for Netflix)
+- **Two modes** with a toggle button on the remote:
+  - **Mode 1 (Take-over):** Remote keys control tHUD (speed, incline, belt, workout steps)
+  - **Mode 2 (Pass-through):** Remote keys trigger Android actions (media play/pause, next/prev track, volume, mute, Back/Home/Recent Apps)
+- Fallback: keys bound in only one mode work in both; keys bound in both modes follow mode priority
+- Same physical key can be assigned different actions per mode
+- Two-column configuration UI: tHUD actions (left) and Android actions (right) with universal Toggle Mode above
 - HUD button with mode indicator and blink feedback on key press
-- Split-panel configuration activity (matching workout editor style)
 - Requires enabling tHUD Accessibility Service in Android Settings
 
 ### Auto-Screenshot

@@ -61,7 +61,9 @@
 | Garmin OAuth tokens | `GarminConnectUploader` (EncryptedSharedPrefs) | Upload flow only |
 | FIT bytes for upload | `FitFileExporter.FitExportResult` | `HUDService` → `GarminConnectUploader` |
 | Remote control config | `RemoteControlManager` (SharedPrefs JSON) | `RemoteControlBridge` → AccessibilityService |
-| Remote key events | `RemoteControlAccessibilityService` | `RemoteControlBridge` → `RemoteControlManager` |
+| Remote key events (tHUD) | `RemoteControlAccessibilityService` | `RemoteControlBridge` → `RemoteControlManager` |
+| Remote key events (Android) | `RemoteControlAccessibilityService` | Executed directly (AudioManager / performGlobalAction) |
+| Panel save/restore | `HUDService` static helpers | Any full-screen activity via `notifyActivity{Foreground,Background,Closed}` |
 
 ### ⚠️ SPEED - ABSOLUTE RULES ⚠️
 
@@ -303,9 +305,10 @@ app/src/main/java/io/github/avikulin/thud/
 │   │   ├── InlineStepAdapter.kt, WorkoutListAdapter.kt
 │   │   └── UndoRedoManager.kt     # Undo/redo for editor
 │   ├── remote/
-│   │   ├── RemoteControlActivity.kt  # Split-panel remote config
-│   │   ├── RemoteListAdapter.kt      # Left-pane remote list
-│   │   └── ActionBindingAdapter.kt   # Right-pane action bindings
+│   │   ├── RemoteControlActivity.kt       # Split-panel remote config (two columns)
+│   │   ├── RemoteListAdapter.kt           # Left-pane remote list
+│   │   ├── ActionBindingAdapter.kt        # tHUD actions column (Mode 1)
+│   │   └── AndroidActionBindingAdapter.kt # Android actions column (Mode 2)
 │   └── panel/WorkoutPanelView.kt
 │
 └── util/
@@ -333,6 +336,7 @@ app/src/main/java/io/github/avikulin/thud/
 | **EarlyEndCondition** | NONE, HR_RANGE |
 | **AdjustmentScope** | ALL_STEPS, ONE_STEP |
 | **RemoteAction** | SPEED_UP, SPEED_DOWN, INCLINE_UP, INCLINE_DOWN, BELT_START_PAUSE, BELT_STOP, NEXT_STEP, PREV_STEP, TOGGLE_MODE |
+| **AndroidAction** | MEDIA_PLAY_PAUSE, MEDIA_NEXT, MEDIA_PREVIOUS, VOLUME_UP, VOLUME_DOWN, MUTE, BACK, HOME, RECENT_APPS |
 
 ---
 
@@ -352,11 +356,27 @@ adb logcat -s HUDService TelemetryManager WorkoutExecutionEngine
 
 **Device filtering is the FIRST check** in `onKeyEvent()`. Only devices whose `event.device.name` matches an explicitly configured remote are ever intercepted. All other input devices (BT keyboards, phone volume buttons, treadmill hardware keys) always pass through untouched.
 
-**TOGGLE_MODE always works** regardless of `isActive` state — otherwise users couldn't switch back to take-over mode without touching the phone.
+**TOGGLE_MODE always works** regardless of `isActive` state — otherwise users couldn't switch back to take-over mode without touching the phone. Toggle Mode lives in a universal row above both columns in the config UI.
 
-**Config is JSON in SharedPreferences** (key: `PREF_REMOTE_BINDINGS`), not Room DB. Structure: `{ "remotes": [{ "deviceName", "alias", "enabled", "bindings": [{ "action", "keyCode", "keyLabel", "value" }] }] }`. Parsing is duplicated across `RemoteControlManager`, `RemoteControlActivity`, and `RemoteControlAccessibilityService` because each may run independently.
+**Two modes with fallback-both-ways dispatch:**
+- **Mode 1 (take-over, `isActive=true`):** tHUD bindings fire first. If no tHUD binding for this key, android bindings fire as fallback.
+- **Mode 2 (pass-through, `isActive=false`):** Android bindings fire first. If no android binding, tHUD bindings fire as fallback.
+- Same physical key CAN be bound in both columns — mode determines priority.
+
+**Android action execution** happens directly in `RemoteControlAccessibilityService` (not in `RemoteControlManager`) because `performGlobalAction()` is only available on AccessibilityService. Media keys use `AudioManager.dispatchMediaKeyEvent()`, volume uses `AudioManager.adjustStreamVolume()`, navigation uses `performGlobalAction()`.
+
+**Config is JSON in SharedPreferences** (key: `PREF_REMOTE_BINDINGS`), not Room DB. Structure: `{ "remotes": [{ "deviceName", "alias", "enabled", "bindings": [{ "action", "keyCode", "keyLabel", "value" }], "androidBindings": [{ "action", "keyCode", "keyLabel" }] }] }`. The `androidBindings` array is optional for backward compatibility. Parsing is duplicated across `RemoteControlManager`, `RemoteControlActivity`, and `RemoteControlAccessibilityService` because each may run independently.
 
 **Speed/incline actions** call `TelemetryManager.setTreadmillSpeed()`/`setTreadmillIncline()` (respecting the speed/incline absolute rules). Speed is read as `state.currentSpeedKph * state.paceCoefficient` (adjusted), clamped to `[minSpeed * paceCoefficient, maxSpeed * paceCoefficient]`. Incline is read as `state.currentInclinePercent` (already effective), clamped to effective bounds.
+
+### ⚠️ Full-Screen Activity Panel Lifecycle ⚠️
+Any activity that opens from the HUD (workout editor, remote config) must manage overlay panel visibility. Use the static helpers — do NOT send raw intents:
+```kotlin
+override fun onResume() { super.onResume(); HUDService.notifyActivityForeground(this) }
+override fun onPause() { super.onPause(); HUDService.notifyActivityBackground(this) }
+override fun onDestroy() { HUDService.notifyActivityClosed(this); super.onDestroy() }
+```
+`savePanelState()` has a guard (`editorPanelStateSaved`) preventing double-save when `openXxx()` already saved before the activity's `onResume`.
 
 ---
 
