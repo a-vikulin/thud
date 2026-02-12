@@ -2,6 +2,7 @@ package io.github.avikulin.thud.ui.remote
 
 import android.app.AlertDialog
 import android.content.Context
+import android.content.Intent
 import android.hardware.input.InputManager
 import android.os.Bundle
 import android.os.Handler
@@ -19,11 +20,13 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import io.github.avikulin.thud.HUDService
 import io.github.avikulin.thud.R
+import io.github.avikulin.thud.domain.model.AndroidAction
 import io.github.avikulin.thud.domain.model.RemoteAction
 import io.github.avikulin.thud.service.RemoteControlBridge
-import io.github.avikulin.thud.service.RemoteControlManager
 import io.github.avikulin.thud.service.RemoteControlManager.ActionBinding
+import io.github.avikulin.thud.service.RemoteControlManager.AndroidActionBinding
 import io.github.avikulin.thud.service.RemoteControlManager.RemoteConfig
 import io.github.avikulin.thud.service.SettingsManager
 import org.json.JSONArray
@@ -32,7 +35,9 @@ import org.json.JSONObject
 /**
  * Split-panel config activity for BLE remote controls.
  * Left pane: list of configured remotes.
- * Right pane: all actions with key assignment and optional increment value.
+ * Right pane: universal Toggle Mode row at top, then two columns:
+ *   - Left column: tHUD actions (Mode 1)
+ *   - Right column: Android actions (Mode 2)
  */
 class RemoteControlActivity : AppCompatActivity() {
 
@@ -42,13 +47,18 @@ class RemoteControlActivity : AppCompatActivity() {
     }
 
     private lateinit var remoteListAdapter: RemoteListAdapter
-    private lateinit var actionBindingAdapter: ActionBindingAdapter
+    private lateinit var thudBindingAdapter: ActionBindingAdapter
+    private lateinit var androidBindingAdapter: AndroidActionBindingAdapter
 
     private lateinit var rvRemoteList: RecyclerView
-    private lateinit var rvActionBindings: RecyclerView
+    private lateinit var rvThudBindings: RecyclerView
+    private lateinit var rvAndroidBindings: RecyclerView
     private lateinit var etAlias: EditText
     private lateinit var btnDeleteRemote: Button
+    private lateinit var btnToggleModeKey: Button
     private lateinit var bindingsHeader: View
+    private lateinit var toggleModeRow: View
+    private lateinit var columnsArea: View
     private lateinit var tvEmptyState: TextView
     private lateinit var tvNoSelection: TextView
     private lateinit var rightPane: View
@@ -65,16 +75,20 @@ class RemoteControlActivity : AppCompatActivity() {
         setContentView(R.layout.activity_remote_control)
 
         rvRemoteList = findViewById(R.id.rvRemoteList)
-        rvActionBindings = findViewById(R.id.rvActionBindings)
+        rvThudBindings = findViewById(R.id.rvThudBindings)
+        rvAndroidBindings = findViewById(R.id.rvAndroidBindings)
         etAlias = findViewById(R.id.etAlias)
         btnDeleteRemote = findViewById(R.id.btnDeleteRemote)
+        btnToggleModeKey = findViewById(R.id.btnToggleModeKey)
         bindingsHeader = findViewById(R.id.bindingsHeader)
+        toggleModeRow = findViewById(R.id.toggleModeRow)
+        columnsArea = findViewById(R.id.columnsArea)
         tvEmptyState = findViewById(R.id.tvEmptyState)
         tvNoSelection = findViewById(R.id.tvNoSelection)
         rightPane = findViewById(R.id.rightPane)
 
         setupRemoteList()
-        setupActionBindings()
+        setupBindingAdapters()
         setupHeader()
 
         loadConfig()
@@ -82,18 +96,25 @@ class RemoteControlActivity : AppCompatActivity() {
         updateRightPane()
     }
 
+    override fun onResume() {
+        super.onResume()
+        HUDService.notifyActivityForeground(this)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        HUDService.notifyActivityBackground(this)
+    }
+
     override fun onDestroy() {
-        // Remove learn mode callback when activity closes
         RemoteControlBridge.learnModeCallback = null
         handler.removeCallbacksAndMessages(null)
+        HUDService.notifyActivityClosed(this)
         super.onDestroy()
     }
 
     private fun setupHeader() {
         findViewById<ImageButton>(R.id.btnBack).setOnClickListener { finish() }
-        findViewById<View>(R.id.btnBack).setOnClickListener { finish() }
-        // Also make the "Back" text clickable
-        val backLabel = try { findViewById<View>(R.id.btnBack).parent as? View } catch (_: Exception) { null }
 
         findViewById<Button>(R.id.btnAddRemote).setOnClickListener { showAddRemoteDialog() }
 
@@ -128,6 +149,10 @@ class RemoteControlActivity : AppCompatActivity() {
                 }
             }
         })
+
+        btnToggleModeKey.setOnClickListener {
+            showLearnDialogForToggleMode()
+        }
     }
 
     private fun setupRemoteList() {
@@ -148,13 +173,19 @@ class RemoteControlActivity : AppCompatActivity() {
         rvRemoteList.adapter = remoteListAdapter
     }
 
-    private fun setupActionBindings() {
-        actionBindingAdapter = ActionBindingAdapter(
-            onAssignKey = { action -> showLearnDialog(action) },
-            onValueChanged = { action, value -> onBindingValueChanged(action, value) }
+    private fun setupBindingAdapters() {
+        thudBindingAdapter = ActionBindingAdapter(
+            onAssignKey = { action -> showLearnDialogForThudAction(action) },
+            onValueChanged = { action, value -> onThudBindingValueChanged(action, value) }
         )
-        rvActionBindings.layoutManager = LinearLayoutManager(this)
-        rvActionBindings.adapter = actionBindingAdapter
+        rvThudBindings.layoutManager = LinearLayoutManager(this)
+        rvThudBindings.adapter = thudBindingAdapter
+
+        androidBindingAdapter = AndroidActionBindingAdapter(
+            onAssignKey = { action -> showLearnDialogForAndroidAction(action) }
+        )
+        rvAndroidBindings.layoutManager = LinearLayoutManager(this)
+        rvAndroidBindings.adapter = androidBindingAdapter
     }
 
     private fun updateEmptyState() {
@@ -170,56 +201,173 @@ class RemoteControlActivity : AppCompatActivity() {
     private fun updateRightPane() {
         if (selectedIndex !in remoteConfigs.indices) {
             bindingsHeader.visibility = View.GONE
-            rvActionBindings.visibility = View.GONE
+            toggleModeRow.visibility = View.GONE
+            columnsArea.visibility = View.GONE
             tvNoSelection.visibility = View.VISIBLE
             return
         }
 
         bindingsHeader.visibility = View.VISIBLE
-        rvActionBindings.visibility = View.VISIBLE
+        toggleModeRow.visibility = View.VISIBLE
+        columnsArea.visibility = View.VISIBLE
         tvNoSelection.visibility = View.GONE
 
         val config = remoteConfigs[selectedIndex]
         etAlias.setText(config.alias)
 
-        // Build binding map from the config's bindings
-        val map = mutableMapOf<RemoteAction, ActionBinding>()
+        // Toggle Mode key button
+        val toggleBinding = config.bindings.find { it.action == RemoteAction.TOGGLE_MODE }
+        btnToggleModeKey.text = toggleBinding?.keyLabel
+            ?: getString(R.string.remote_key_not_assigned)
+
+        // tHUD bindings (left column, excluding TOGGLE_MODE)
+        val thudMap = mutableMapOf<RemoteAction, ActionBinding>()
         for (binding in config.bindings) {
-            map[binding.action] = binding
+            if (binding.action != RemoteAction.TOGGLE_MODE) {
+                thudMap[binding.action] = binding
+            }
         }
-        actionBindingAdapter.bindingMap = map
+        thudBindingAdapter.bindingMap = thudMap
+
+        // Android bindings (right column)
+        val androidMap = mutableMapOf<AndroidAction, AndroidActionBinding>()
+        for (binding in config.androidBindings) {
+            androidMap[binding.action] = binding
+        }
+        androidBindingAdapter.bindingMap = androidMap
     }
 
-    // ==================== Learn Mode Dialog ====================
+    // ==================== Learn Mode Dialogs ====================
 
-    private fun showLearnDialog(action: RemoteAction) {
+    private fun showLearnDialogForToggleMode() {
+        if (selectedIndex !in remoteConfigs.indices) return
+        val config = remoteConfigs[selectedIndex]
+        val existingBinding = config.bindings.find { it.action == RemoteAction.TOGGLE_MODE }
+
+        showGenericLearnDialog(
+            title = getString(R.string.remote_learn_title, getString(R.string.remote_action_toggle_mode)),
+            currentKeyLabel = existingBinding?.keyLabel,
+            onAssign = { keyCode, keyLabel ->
+                assignThudKey(config, RemoteAction.TOGGLE_MODE, keyCode, keyLabel)
+            },
+            onClear = {
+                existingBinding?.let {
+                    it.keyCode = null
+                    it.keyLabel = null
+                }
+                updateRightPane()
+                remoteListAdapter.notifyItemChanged(selectedIndex)
+                scheduleSave()
+            }
+        )
+    }
+
+    private fun showLearnDialogForThudAction(action: RemoteAction) {
         if (selectedIndex !in remoteConfigs.indices) return
         val config = remoteConfigs[selectedIndex]
         val existingBinding = config.bindings.find { it.action == action }
 
-        val dialogView = layoutInflater.inflate(android.R.layout.simple_list_item_1, null)
-        // Build a custom dialog with a text view for detected key
+        showGenericLearnDialog(
+            title = getString(R.string.remote_learn_title, getString(action.labelResId)),
+            currentKeyLabel = existingBinding?.keyLabel,
+            onAssign = { keyCode, keyLabel ->
+                // Duplicate check within tHUD bindings only (excluding TOGGLE_MODE)
+                val duplicate = config.bindings.find {
+                    it.keyCode == keyCode && it.action != action && it.action != RemoteAction.TOGGLE_MODE
+                }
+                if (duplicate != null) {
+                    AlertDialog.Builder(this)
+                        .setMessage(getString(R.string.remote_learn_duplicate, getString(duplicate.action.labelResId)))
+                        .setPositiveButton(getString(R.string.btn_ok)) { _, _ ->
+                            duplicate.keyCode = null
+                            duplicate.keyLabel = null
+                            assignThudKey(config, action, keyCode, keyLabel)
+                        }
+                        .setNegativeButton(getString(R.string.btn_cancel), null)
+                        .show()
+                } else {
+                    assignThudKey(config, action, keyCode, keyLabel)
+                }
+            },
+            onClear = {
+                existingBinding?.let {
+                    it.keyCode = null
+                    it.keyLabel = null
+                }
+                updateRightPane()
+                remoteListAdapter.notifyItemChanged(selectedIndex)
+                scheduleSave()
+            }
+        )
+    }
+
+    private fun showLearnDialogForAndroidAction(action: AndroidAction) {
+        if (selectedIndex !in remoteConfigs.indices) return
+        val config = remoteConfigs[selectedIndex]
+        val existingBinding = config.androidBindings.find { it.action == action }
+
+        showGenericLearnDialog(
+            title = getString(R.string.remote_learn_title, getString(action.labelResId)),
+            currentKeyLabel = existingBinding?.keyLabel,
+            onAssign = { keyCode, keyLabel ->
+                // Duplicate check within android bindings only
+                val duplicate = config.androidBindings.find {
+                    it.keyCode == keyCode && it.action != action
+                }
+                if (duplicate != null) {
+                    AlertDialog.Builder(this)
+                        .setMessage(getString(R.string.remote_learn_duplicate, getString(duplicate.action.labelResId)))
+                        .setPositiveButton(getString(R.string.btn_ok)) { _, _ ->
+                            duplicate.keyCode = null
+                            duplicate.keyLabel = null
+                            assignAndroidKey(config, action, keyCode, keyLabel)
+                        }
+                        .setNegativeButton(getString(R.string.btn_cancel), null)
+                        .show()
+                } else {
+                    assignAndroidKey(config, action, keyCode, keyLabel)
+                }
+            },
+            onClear = {
+                existingBinding?.let {
+                    it.keyCode = null
+                    it.keyLabel = null
+                }
+                updateRightPane()
+                remoteListAdapter.notifyItemChanged(selectedIndex)
+                scheduleSave()
+            }
+        )
+    }
+
+    /**
+     * Generic learn dialog — shared by Toggle Mode, tHUD actions, and Android actions.
+     * The caller provides the title, current key label, and callbacks for assign/clear.
+     */
+    private fun showGenericLearnDialog(
+        title: String,
+        currentKeyLabel: String?,
+        onAssign: (keyCode: Int, keyLabel: String) -> Unit,
+        onClear: () -> Unit
+    ) {
         val builder = AlertDialog.Builder(this)
-            .setTitle(getString(R.string.remote_learn_title, getString(action.labelResId)))
-            .setMessage(buildLearnMessage(existingBinding?.keyLabel, null))
-            .setPositiveButton(getString(R.string.btn_ok), null) // set later
+            .setTitle(title)
+            .setMessage(buildLearnMessage(currentKeyLabel, null))
+            .setPositiveButton(getString(R.string.btn_ok), null)
             .setNegativeButton(getString(R.string.btn_cancel), null)
-            .setNeutralButton(getString(R.string.btn_clear), null) // set later
+            .setNeutralButton(getString(R.string.btn_clear), null)
 
         val dialog = builder.create()
         var detectedKeyCode: Int? = null
         var detectedKeyLabel: String? = null
-        var detectedDeviceName: String? = null
 
         dialog.show()
 
-        // Set up learn mode callback
-        RemoteControlBridge.learnModeCallback = { keyCode, keyLabel, deviceName ->
+        RemoteControlBridge.learnModeCallback = { keyCode, keyLabel, _ ->
             handler.post {
                 detectedKeyCode = keyCode
                 detectedKeyLabel = keyLabel
-                detectedDeviceName = deviceName
-                dialog.setMessage(buildLearnMessage(existingBinding?.keyLabel, keyLabel))
+                dialog.setMessage(buildLearnMessage(currentKeyLabel, keyLabel))
             }
         }
 
@@ -227,45 +375,17 @@ class RemoteControlActivity : AppCompatActivity() {
             RemoteControlBridge.learnModeCallback = null
         }
 
-        // OK button — assign the detected key
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             val keyCode = detectedKeyCode
             val keyLabel = detectedKeyLabel
             if (keyCode != null && keyLabel != null) {
-                // Check for duplicate on this remote
-                val existingAction = config.bindings.find { it.keyCode == keyCode && it.action != action }
-                if (existingAction != null) {
-                    AlertDialog.Builder(this)
-                        .setMessage(getString(R.string.remote_learn_duplicate, getString(existingAction.action.labelResId)))
-                        .setPositiveButton(getString(R.string.btn_ok)) { _, _ ->
-                            // Remove old binding
-                            existingAction.keyCode = null
-                            existingAction.keyLabel = null
-                            // Assign new
-                            assignKey(config, action, keyCode, keyLabel)
-                            dialog.dismiss()
-                        }
-                        .setNegativeButton(getString(R.string.btn_cancel), null)
-                        .show()
-                } else {
-                    assignKey(config, action, keyCode, keyLabel)
-                    dialog.dismiss()
-                }
-            } else {
-                dialog.dismiss()
+                onAssign(keyCode, keyLabel)
             }
+            dialog.dismiss()
         }
 
-        // Clear button — remove binding
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
-            val binding = config.bindings.find { it.action == action }
-            if (binding != null) {
-                binding.keyCode = null
-                binding.keyLabel = null
-            }
-            updateRightPane()
-            remoteListAdapter.notifyItemChanged(selectedIndex)
-            scheduleSave()
+            onClear()
             dialog.dismiss()
         }
     }
@@ -287,7 +407,9 @@ class RemoteControlActivity : AppCompatActivity() {
         return sb.toString()
     }
 
-    private fun assignKey(config: RemoteConfig, action: RemoteAction, keyCode: Int, keyLabel: String) {
+    // ==================== Key Assignment ====================
+
+    private fun assignThudKey(config: RemoteConfig, action: RemoteAction, keyCode: Int, keyLabel: String) {
         var binding = config.bindings.find { it.action == action }
         if (binding != null) {
             binding.keyCode = keyCode
@@ -306,14 +428,27 @@ class RemoteControlActivity : AppCompatActivity() {
         scheduleSave()
     }
 
-    private fun onBindingValueChanged(action: RemoteAction, value: Double) {
+    private fun assignAndroidKey(config: RemoteConfig, action: AndroidAction, keyCode: Int, keyLabel: String) {
+        var binding = config.androidBindings.find { it.action == action }
+        if (binding != null) {
+            binding.keyCode = keyCode
+            binding.keyLabel = keyLabel
+        } else {
+            binding = AndroidActionBinding(action, keyCode, keyLabel)
+            config.androidBindings.add(binding)
+        }
+        updateRightPane()
+        remoteListAdapter.notifyItemChanged(selectedIndex)
+        scheduleSave()
+    }
+
+    private fun onThudBindingValueChanged(action: RemoteAction, value: Double) {
         if (selectedIndex !in remoteConfigs.indices) return
         val config = remoteConfigs[selectedIndex]
         val binding = config.bindings.find { it.action == action }
         if (binding != null) {
             binding.value = value
         } else {
-            // Create binding with just the value (no key assigned yet)
             config.bindings.add(ActionBinding(action, null, null, value))
         }
         scheduleSave()
@@ -428,7 +563,25 @@ class RemoteControlActivity : AppCompatActivity() {
                     ))
                 }
 
-                result.add(RemoteConfig(deviceName, alias, enabled, bindings))
+                // Android bindings (backward-compatible)
+                val androidArray = remote.optJSONArray("androidBindings") ?: JSONArray()
+                val androidBindingsList = mutableListOf<AndroidActionBinding>()
+
+                for (k in 0 until androidArray.length()) {
+                    val ab = androidArray.getJSONObject(k)
+                    val androidAction = try {
+                        AndroidAction.valueOf(ab.getString("action"))
+                    } catch (_: IllegalArgumentException) {
+                        continue
+                    }
+                    androidBindingsList.add(AndroidActionBinding(
+                        action = androidAction,
+                        keyCode = ab.getInt("keyCode"),
+                        keyLabel = if (ab.has("keyLabel")) ab.getString("keyLabel") else null
+                    ))
+                }
+
+                result.add(RemoteConfig(deviceName, alias, enabled, bindings, androidBindingsList))
             }
 
             remoteConfigs = result
@@ -466,6 +619,19 @@ class RemoteControlActivity : AppCompatActivity() {
                 bindingsArray.put(bObj)
             }
             remoteObj.put("bindings", bindingsArray)
+
+            val androidArray = JSONArray()
+            for (binding in config.androidBindings) {
+                if (binding.keyCode == null) continue
+                val abObj = JSONObject().apply {
+                    put("action", binding.action.name)
+                    put("keyCode", binding.keyCode)
+                    put("keyLabel", binding.keyLabel)
+                }
+                androidArray.put(abObj)
+            }
+            remoteObj.put("androidBindings", androidArray)
+
             remotesArray.put(remoteObj)
         }
 
@@ -473,24 +639,35 @@ class RemoteControlActivity : AppCompatActivity() {
         val prefs = getSharedPreferences(SettingsManager.PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(SettingsManager.PREF_REMOTE_BINDINGS, root.toString()).apply()
 
-        // Push to bridge so AccessibilityService picks up changes immediately
         pushBindingsToBridge()
     }
 
     private fun pushBindingsToBridge() {
-        val result = mutableMapOf<String, Map<Int, RemoteControlBridge.ResolvedBinding>>()
+        val thudResult = mutableMapOf<String, Map<Int, RemoteControlBridge.ResolvedBinding>>()
+        val androidResult = mutableMapOf<String, Map<Int, AndroidAction>>()
         for (config in remoteConfigs) {
             if (!config.enabled) continue
+
             val keyMap = mutableMapOf<Int, RemoteControlBridge.ResolvedBinding>()
             for (binding in config.bindings) {
                 val keyCode = binding.keyCode ?: continue
                 keyMap[keyCode] = RemoteControlBridge.ResolvedBinding(binding.action, binding.value)
             }
             if (keyMap.isNotEmpty()) {
-                result[config.deviceName] = keyMap
+                thudResult[config.deviceName] = keyMap
+            }
+
+            val androidKeyMap = mutableMapOf<Int, AndroidAction>()
+            for (binding in config.androidBindings) {
+                val keyCode = binding.keyCode ?: continue
+                androidKeyMap[keyCode] = binding.action
+            }
+            if (androidKeyMap.isNotEmpty()) {
+                androidResult[config.deviceName] = androidKeyMap
             }
         }
-        RemoteControlBridge.bindings = result
+        RemoteControlBridge.bindings = thudResult
+        RemoteControlBridge.androidBindings = androidResult
     }
 
     private fun scheduleSave() {

@@ -471,30 +471,17 @@ class WorkoutEditorActivityNew : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Refresh system workout summaries (may have been edited)
         viewModel.refreshSystemWorkoutSummaries()
-        // Hide all overlay panels while editor is in foreground
-        val intent = Intent(this, HUDService::class.java).apply {
-            action = HUDService.ACTION_EDITOR_FOREGROUND
-        }
-        startService(intent)
+        HUDService.notifyActivityForeground(this)
     }
 
     override fun onPause() {
         super.onPause()
-        // Restore overlay panels when editor goes to background
-        val intent = Intent(this, HUDService::class.java).apply {
-            action = HUDService.ACTION_EDITOR_BACKGROUND
-        }
-        startService(intent)
+        HUDService.notifyActivityBackground(this)
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        // Clear saved state when editor is fully closed
-        val intent = Intent(this, HUDService::class.java).apply {
-            action = HUDService.ACTION_EDITOR_CLOSED
-        }
-        startService(intent)
+        HUDService.notifyActivityClosed(this)
     }
 }

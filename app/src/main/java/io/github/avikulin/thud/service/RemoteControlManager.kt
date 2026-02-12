@@ -3,6 +3,7 @@ package io.github.avikulin.thud.service
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import io.github.avikulin.thud.domain.model.AndroidAction
 import io.github.avikulin.thud.domain.model.RemoteAction
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,7 +50,8 @@ class RemoteControlManager(
         var deviceName: String,
         var alias: String,
         var enabled: Boolean = true,
-        var bindings: MutableList<ActionBinding> = mutableListOf()
+        var bindings: MutableList<ActionBinding> = mutableListOf(),
+        var androidBindings: MutableList<AndroidActionBinding> = mutableListOf()
     )
 
     data class ActionBinding(
@@ -57,6 +59,12 @@ class RemoteControlManager(
         var keyCode: Int? = null,
         var keyLabel: String? = null,
         var value: Double? = null
+    )
+
+    data class AndroidActionBinding(
+        val action: AndroidAction,
+        var keyCode: Int? = null,
+        var keyLabel: String? = null
     )
 
     fun initialize() {
@@ -75,6 +83,7 @@ class RemoteControlManager(
 
     fun cleanup() {
         RemoteControlBridge.actionHandler = null
+        RemoteControlBridge.androidActionHandler = null
         RemoteControlBridge.keyPressIndicator = null
         RemoteControlBridge.learnModeCallback = null
     }
@@ -176,7 +185,25 @@ class RemoteControlManager(
                     ))
                 }
 
-                result.add(RemoteConfig(deviceName, alias, enabled, bindings))
+                // Android bindings (backward-compatible — may not exist in old configs)
+                val androidArray = remote.optJSONArray("androidBindings") ?: JSONArray()
+                val androidBindingsList = mutableListOf<AndroidActionBinding>()
+
+                for (j in 0 until androidArray.length()) {
+                    val b = androidArray.getJSONObject(j)
+                    val androidAction = try {
+                        AndroidAction.valueOf(b.getString("action"))
+                    } catch (_: IllegalArgumentException) {
+                        continue
+                    }
+                    androidBindingsList.add(AndroidActionBinding(
+                        action = androidAction,
+                        keyCode = b.getInt("keyCode"),
+                        keyLabel = if (b.has("keyLabel")) b.getString("keyLabel") else null
+                    ))
+                }
+
+                result.add(RemoteConfig(deviceName, alias, enabled, bindings, androidBindingsList))
             }
 
             remoteConfigs = result
@@ -206,6 +233,19 @@ class RemoteControlManager(
                 bindingsArray.put(bObj)
             }
             remoteObj.put("bindings", bindingsArray)
+
+            val androidArray = JSONArray()
+            for (binding in config.androidBindings) {
+                if (binding.keyCode == null) continue
+                val bObj = JSONObject().apply {
+                    put("action", binding.action.name)
+                    put("keyCode", binding.keyCode)
+                    put("keyLabel", binding.keyLabel)
+                }
+                androidArray.put(bObj)
+            }
+            remoteObj.put("androidBindings", androidArray)
+
             remotesArray.put(remoteObj)
         }
 
@@ -220,21 +260,33 @@ class RemoteControlManager(
 
     /** Push current in-memory config to the bridge so AccessibilityService picks it up. */
     fun pushBindingsToBridge() {
-        val result = mutableMapOf<String, Map<Int, RemoteControlBridge.ResolvedBinding>>()
+        val thudResult = mutableMapOf<String, Map<Int, RemoteControlBridge.ResolvedBinding>>()
+        val androidResult = mutableMapOf<String, Map<Int, AndroidAction>>()
 
         for (config in remoteConfigs) {
             if (!config.enabled) continue
+
             val keyMap = mutableMapOf<Int, RemoteControlBridge.ResolvedBinding>()
             for (binding in config.bindings) {
                 val keyCode = binding.keyCode ?: continue
                 keyMap[keyCode] = RemoteControlBridge.ResolvedBinding(binding.action, binding.value)
             }
             if (keyMap.isNotEmpty()) {
-                result[config.deviceName] = keyMap
+                thudResult[config.deviceName] = keyMap
+            }
+
+            val androidKeyMap = mutableMapOf<Int, AndroidAction>()
+            for (binding in config.androidBindings) {
+                val keyCode = binding.keyCode ?: continue
+                androidKeyMap[keyCode] = binding.action
+            }
+            if (androidKeyMap.isNotEmpty()) {
+                androidResult[config.deviceName] = androidKeyMap
             }
         }
 
-        RemoteControlBridge.bindings = result
+        RemoteControlBridge.bindings = thudResult
+        RemoteControlBridge.androidBindings = androidResult
     }
 
     fun addRemote(deviceName: String, alias: String = deviceName): RemoteConfig {

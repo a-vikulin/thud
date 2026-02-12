@@ -136,14 +136,117 @@
             android:layout_height="1dp"
             android:background="@color/editor_divider" />
 
-        <!-- Action bindings list -->
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/rvActionBindings"
+        <!-- Universal Toggle Mode row -->
+        <LinearLayout
+            android:id="@+id/toggleModeRow"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/remote_action_row_height"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/remote_action_row_padding"
+            android:background="@color/editor_step_background">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/remote_action_toggle_mode"
+                android:textColor="@color/text_primary"
+                android:textSize="@dimen/text_step_type"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnToggleModeKey"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/remote_key_button_height"
+                android:minWidth="@dimen/remote_key_button_min_width"
+                android:textColor="@color/text_label"
+                android:textSize="@dimen/text_step_details"
+                android:background="@color/editor_input_background"
+                android:textAllCaps="false"
+                android:paddingHorizontal="@dimen/editor_input_padding" />
+        </LinearLayout>
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/editor_divider" />
+
+        <!-- Two-column area -->
+        <LinearLayout
+            android:id="@+id/columnsArea"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:clipToPadding="false"
-            android:paddingBottom="8dp" />
+            android:orientation="horizontal">
+
+            <!-- Left column: tHUD actions (Mode 1) -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/remote_column_thud"
+                    android:textColor="@color/text_label"
+                    android:textSize="@dimen/text_step_details"
+                    android:padding="@dimen/remote_action_row_padding"
+                    android:background="@color/workout_list_background" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/editor_divider" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rvThudBindings"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:clipToPadding="false"
+                    android:paddingBottom="8dp" />
+            </LinearLayout>
+
+            <!-- Vertical divider -->
+            <View
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:background="@color/editor_divider" />
+
+            <!-- Right column: Android actions (Mode 2) -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/remote_column_android"
+                    android:textColor="@color/text_label"
+                    android:textSize="@dimen/text_step_details"
+                    android:padding="@dimen/remote_action_row_padding"
+                    android:background="@color/workout_list_background" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/editor_divider" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rvAndroidBindings"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:clipToPadding="false"
+                    android:paddingBottom="8dp" />
+            </LinearLayout>
+        </LinearLayout>
 
         <!-- Placeholder when no remote selected -->
         <TextView

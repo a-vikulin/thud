@@ -1,5 +1,6 @@
 package io.github.avikulin.thud.service
 
+import io.github.avikulin.thud.domain.model.AndroidAction
 import io.github.avikulin.thud.domain.model.RemoteAction
 
 /**
@@ -24,4 +25,10 @@ object RemoteControlBridge {
 
     /** deviceName → (keyCode → binding). Updated by RemoteControlManager when config changes. */
     @Volatile var bindings: Map<String, Map<Int, ResolvedBinding>> = emptyMap()
+
+    /** deviceName → (keyCode → AndroidAction). Updated alongside tHUD bindings. */
+    @Volatile var androidBindings: Map<String, Map<Int, AndroidAction>> = emptyMap()
+
+    /** Called when an android action fires (for HUD blink feedback only — execution is in AccessibilityService). */
+    @Volatile var androidActionHandler: ((AndroidAction) -> Unit)? = null
 }

@@ -95,14 +95,38 @@ class HUDService : Service(),
         const val ACTION_RESTORE_PANELS = "io.github.avikulin.thud.RESTORE_PANELS"
         const val EXTRA_WORKOUT_ID = "workout_id"
 
-        // Editor lifecycle actions
-        const val ACTION_EDITOR_FOREGROUND = "io.github.avikulin.thud.EDITOR_FOREGROUND"
-        const val ACTION_EDITOR_BACKGROUND = "io.github.avikulin.thud.EDITOR_BACKGROUND"
-        const val ACTION_EDITOR_CLOSED = "io.github.avikulin.thud.EDITOR_CLOSED"
+        // Full-screen activity lifecycle actions (panel hide/restore)
+        const val ACTION_ACTIVITY_FOREGROUND = "io.github.avikulin.thud.ACTIVITY_FOREGROUND"
+        const val ACTION_ACTIVITY_BACKGROUND = "io.github.avikulin.thud.ACTIVITY_BACKGROUND"
+        const val ACTION_ACTIVITY_CLOSED = "io.github.avikulin.thud.ACTIVITY_CLOSED"
 
         // Notification
         private const val NOTIFICATION_CHANNEL_ID = "HUD_SERVICE_CHANNEL"
         private const val NOTIFICATION_ID = 1
+
+        /** Call from onResume() of any activity that should hide HUD panels. */
+        fun notifyActivityForeground(context: Context) {
+            val intent = Intent(context, HUDService::class.java).apply {
+                action = ACTION_ACTIVITY_FOREGROUND
+            }
+            context.startService(intent)
+        }
+
+        /** Call from onPause() to restore HUD panels. */
+        fun notifyActivityBackground(context: Context) {
+            val intent = Intent(context, HUDService::class.java).apply {
+                action = ACTION_ACTIVITY_BACKGROUND
+            }
+            context.startService(intent)
+        }
+
+        /** Call from onDestroy() to clear saved panel state. */
+        fun notifyActivityClosed(context: Context) {
+            val intent = Intent(context, HUDService::class.java).apply {
+                action = ACTION_ACTIVITY_CLOSED
+            }
+            context.startService(intent)
+        }
     }
 
     // ==================== Run Export Snapshot ====================
@@ -258,13 +282,6 @@ class HUDService : Service(),
             hudDisplayManager.updateCameraButtonState(isEnabled)
         }
 
-        // Initialize remote control manager
-        remoteControlManager = RemoteControlManager(
-            this, state, telemetryManager, workoutEngineManager, serviceScope
-        )
-        remoteControlManager.listener = remoteControlListener
-        remoteControlManager.initialize()
-
         // Pass user profile to workout recorder for calorie calculation
         updateRecorderUserProfile()
 
@@ -354,6 +371,13 @@ class HUDService : Service(),
         workoutEngineManager.listener = this
         workoutEngineManager.chartManager = chartManager
 
+        // Initialize remote control manager (needs telemetryManager + workoutEngineManager)
+        remoteControlManager = RemoteControlManager(
+            this, state, telemetryManager, workoutEngineManager, serviceScope
+        )
+        remoteControlManager.listener = remoteControlListener
+        remoteControlManager.initialize()
+
         // Start foreground service with appropriate types
         createNotificationChannel()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -436,17 +460,17 @@ class HUDService : Service(),
                 Log.d(TAG, "Restoring panels")
                 restorePanels()
             }
-            ACTION_EDITOR_FOREGROUND -> {
+            ACTION_ACTIVITY_FOREGROUND -> {
                 Log.d(TAG, "Editor came to foreground")
-                onEditorForeground()
+                onActivityForeground()
             }
-            ACTION_EDITOR_BACKGROUND -> {
+            ACTION_ACTIVITY_BACKGROUND -> {
                 Log.d(TAG, "Editor went to background")
-                onEditorBackground()
+                onActivityBackground()
             }
-            ACTION_EDITOR_CLOSED -> {
+            ACTION_ACTIVITY_CLOSED -> {
                 Log.d(TAG, "Editor closed")
-                onEditorClosed()
+                onActivityClosed()
             }
             else -> {
                 // Default: show HUD (for backwards compatibility)
@@ -995,9 +1019,9 @@ class HUDService : Service(),
         savedWorkoutPanelVisible = false
     }
 
-    // ==================== Editor Lifecycle ====================
+    // ==================== Activity Lifecycle (Panel Save/Restore) ====================
 
-    private fun onEditorForeground() {
+    private fun onActivityForeground() {
         savePanelState()
         if (editorPanelStateSaved) {
             Log.d(TAG, "Editor foreground - saved state: hud=$savedHudVisible, chart=$savedChartVisible, panel=$savedWorkoutPanelVisible")
@@ -1005,11 +1029,11 @@ class HUDService : Service(),
         hideAllPanels()
     }
 
-    private fun onEditorBackground() {
+    private fun onActivityBackground() {
         restorePanelState()
     }
 
-    private fun onEditorClosed() {
+    private fun onActivityClosed() {
         Log.d(TAG, "Editor closed - clearing saved state flag")
         clearSavedPanelState()
     }

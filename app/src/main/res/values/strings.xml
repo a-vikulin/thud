@@ -391,6 +391,21 @@
     <string name="remote_action_prev_step">Prev Workout Step</string>
     <string name="remote_action_toggle_mode">Toggle Mode</string>
 
+    <!-- Android action labels (Mode 2) -->
+    <string name="android_action_play_pause">Play / Pause</string>
+    <string name="android_action_next_track">Next Track</string>
+    <string name="android_action_prev_track">Prev Track</string>
+    <string name="android_action_volume_up">Volume Up</string>
+    <string name="android_action_volume_down">Volume Down</string>
+    <string name="android_action_mute">Mute</string>
+    <string name="android_action_back">Back</string>
+    <string name="android_action_home">Home</string>
+    <string name="android_action_recent_apps">Recent Apps</string>
+
+    <!-- Remote config column headers -->
+    <string name="remote_column_thud">tHUD Actions (Mode 1)</string>
+    <string name="remote_column_android">Android Actions (Mode 2)</string>
+
     <!-- Remote config activity -->
     <string name="remote_config_title">Remote Controls</string>
     <string name="remote_add">+ Add</string>

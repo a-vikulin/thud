@@ -3,10 +3,11 @@ package io.github.avikulin.thud
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
-import android.content.SharedPreferences
+import android.media.AudioManager
 import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
+import io.github.avikulin.thud.domain.model.AndroidAction
 import io.github.avikulin.thud.domain.model.RemoteAction
 import io.github.avikulin.thud.service.RemoteControlBridge
 import io.github.avikulin.thud.service.SettingsManager
@@ -18,6 +19,9 @@ import org.json.JSONObject
  * CRITICAL: Device filtering is the FIRST check. Only explicitly configured
  * remote devices are ever intercepted. All other input devices (hardware keyboards,
  * treadmill buttons, phone volume keys) always pass through untouched.
+ *
+ * Dispatch uses fallback-both-ways: mode determines priority, but keys bound
+ * in only one column work in both modes.
  */
 class RemoteControlAccessibilityService : AccessibilityService() {
 
@@ -25,11 +29,14 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         private const val TAG = "RemoteAccessibility"
     }
 
+    private lateinit var audioManager: AudioManager
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         serviceInfo = serviceInfo.apply {
             flags = flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
         }
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         loadBindingsIntoBridge()
         Log.d(TAG, "Service connected, bindings loaded")
     }
@@ -37,12 +44,13 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     override fun onKeyEvent(event: KeyEvent): Boolean {
         // 1. Get device name — if null or not configured, pass through immediately
         val deviceName = event.device?.name ?: return false
-        val deviceBindings = RemoteControlBridge.bindings[deviceName] ?: return false
+        val thudBindings = RemoteControlBridge.bindings[deviceName]
+        val androidBindingMap = RemoteControlBridge.androidBindings[deviceName]
 
-        // 2. Look up this keyCode in the device's binding map
-        val binding = deviceBindings[event.keyCode]
+        // Device not configured at all?
+        if (thudBindings == null && androidBindingMap == null) return false
 
-        // 3. If learn mode is active, forward key info to config activity
+        // 2. If learn mode is active, forward key info to config activity
         val learnCallback = RemoteControlBridge.learnModeCallback
         if (learnCallback != null) {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
@@ -53,22 +61,73 @@ class RemoteControlAccessibilityService : AccessibilityService() {
             return true // consume all events from configured remotes during learn mode
         }
 
-        // No binding for this key on this remote — pass through
-        if (binding == null) return false
+        // 3. Look up keyCode in both binding maps
+        val thudBinding = thudBindings?.get(event.keyCode)
+        val androidAction = androidBindingMap?.get(event.keyCode)
 
-        // 4. TOGGLE_MODE always works regardless of isActive.
-        //    All other actions only work in take-over mode.
-        if (binding.action != RemoteAction.TOGGLE_MODE && !RemoteControlBridge.isActive) {
-            return false
+        // Nothing bound in either column?
+        if (thudBinding == null && androidAction == null) return false
+
+        // 4. TOGGLE_MODE always executes regardless of mode
+        if (thudBinding?.action == RemoteAction.TOGGLE_MODE) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                RemoteControlBridge.keyPressIndicator?.invoke()
+                RemoteControlBridge.actionHandler?.invoke(thudBinding)
+            }
+            return true
         }
 
-        // 5. On ACTION_DOWN (including repeats): dispatch action
+        // 5. Fallback both ways: mode determines priority, other column is fallback
         if (event.action == KeyEvent.ACTION_DOWN) {
             RemoteControlBridge.keyPressIndicator?.invoke()
-            RemoteControlBridge.actionHandler?.invoke(binding)
+            if (RemoteControlBridge.isActive) {
+                // Mode 1 (take-over): tHUD first, android fallback
+                if (thudBinding != null) {
+                    RemoteControlBridge.actionHandler?.invoke(thudBinding)
+                } else if (androidAction != null) {
+                    executeAndroidAction(androidAction)
+                }
+            } else {
+                // Mode 2 (pass-through): android first, tHUD fallback
+                if (androidAction != null) {
+                    executeAndroidAction(androidAction)
+                } else if (thudBinding != null) {
+                    RemoteControlBridge.actionHandler?.invoke(thudBinding)
+                }
+            }
         }
 
-        return true // consume the event
+        return true // consume — key is bound in at least one column
+    }
+
+    private fun executeAndroidAction(action: AndroidAction) {
+        when (action) {
+            AndroidAction.MEDIA_PLAY_PAUSE -> dispatchMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+            AndroidAction.MEDIA_NEXT -> dispatchMediaKey(KeyEvent.KEYCODE_MEDIA_NEXT)
+            AndroidAction.MEDIA_PREVIOUS -> dispatchMediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+            AndroidAction.VOLUME_UP -> adjustVolume(AudioManager.ADJUST_RAISE)
+            AndroidAction.VOLUME_DOWN -> adjustVolume(AudioManager.ADJUST_LOWER)
+            AndroidAction.MUTE -> adjustVolume(AudioManager.ADJUST_TOGGLE_MUTE)
+            AndroidAction.BACK -> performGlobalAction(GLOBAL_ACTION_BACK)
+            AndroidAction.HOME -> performGlobalAction(GLOBAL_ACTION_HOME)
+            AndroidAction.RECENT_APPS -> performGlobalAction(GLOBAL_ACTION_RECENTS)
+        }
+        RemoteControlBridge.androidActionHandler?.invoke(action)
+    }
+
+    private fun dispatchMediaKey(keyCode: Int) {
+        val downEvent = KeyEvent(KeyEvent.ACTION_DOWN, keyCode)
+        val upEvent = KeyEvent(KeyEvent.ACTION_UP, keyCode)
+        audioManager.dispatchMediaKeyEvent(downEvent)
+        audioManager.dispatchMediaKeyEvent(upEvent)
+    }
+
+    private fun adjustVolume(direction: Int) {
+        audioManager.adjustStreamVolume(
+            AudioManager.STREAM_MUSIC,
+            direction,
+            AudioManager.FLAG_SHOW_UI
+        )
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -90,35 +149,59 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         try {
             val config = JSONObject(json)
             val remotesArray = config.optJSONArray("remotes") ?: return
-            val result = mutableMapOf<String, Map<Int, RemoteControlBridge.ResolvedBinding>>()
+            val thudResult = mutableMapOf<String, Map<Int, RemoteControlBridge.ResolvedBinding>>()
+            val androidResult = mutableMapOf<String, Map<Int, AndroidAction>>()
 
             for (i in 0 until remotesArray.length()) {
                 val remote = remotesArray.getJSONObject(i)
                 if (!remote.optBoolean("enabled", true)) continue
 
                 val deviceName = remote.getString("deviceName")
-                val bindingsArray = remote.optJSONArray("bindings") ?: continue
-                val keyMap = mutableMapOf<Int, RemoteControlBridge.ResolvedBinding>()
 
-                for (j in 0 until bindingsArray.length()) {
-                    val b = bindingsArray.getJSONObject(j)
-                    val action = try {
-                        RemoteAction.valueOf(b.getString("action"))
-                    } catch (_: IllegalArgumentException) {
-                        continue
+                // tHUD bindings
+                val bindingsArray = remote.optJSONArray("bindings")
+                if (bindingsArray != null) {
+                    val keyMap = mutableMapOf<Int, RemoteControlBridge.ResolvedBinding>()
+                    for (j in 0 until bindingsArray.length()) {
+                        val b = bindingsArray.getJSONObject(j)
+                        val action = try {
+                            RemoteAction.valueOf(b.getString("action"))
+                        } catch (_: IllegalArgumentException) {
+                            continue
+                        }
+                        val keyCode = b.getInt("keyCode")
+                        val value = if (b.has("value")) b.getDouble("value") else null
+                        keyMap[keyCode] = RemoteControlBridge.ResolvedBinding(action, value)
                     }
-                    val keyCode = b.getInt("keyCode")
-                    val value = if (b.has("value")) b.getDouble("value") else null
-                    keyMap[keyCode] = RemoteControlBridge.ResolvedBinding(action, value)
+                    if (keyMap.isNotEmpty()) {
+                        thudResult[deviceName] = keyMap
+                    }
                 }
 
-                if (keyMap.isNotEmpty()) {
-                    result[deviceName] = keyMap
+                // Android bindings
+                val androidArray = remote.optJSONArray("androidBindings")
+                if (androidArray != null) {
+                    val androidKeyMap = mutableMapOf<Int, AndroidAction>()
+                    for (j in 0 until androidArray.length()) {
+                        val b = androidArray.getJSONObject(j)
+                        val action = try {
+                            AndroidAction.valueOf(b.getString("action"))
+                        } catch (_: IllegalArgumentException) {
+                            continue
+                        }
+                        val keyCode = b.getInt("keyCode")
+                        androidKeyMap[keyCode] = action
+                    }
+                    if (androidKeyMap.isNotEmpty()) {
+                        androidResult[deviceName] = androidKeyMap
+                    }
                 }
             }
 
-            RemoteControlBridge.bindings = result
-            Log.d(TAG, "Loaded bindings for ${result.size} remote(s)")
+            RemoteControlBridge.bindings = thudResult
+            RemoteControlBridge.androidBindings = androidResult
+            Log.d(TAG, "Loaded bindings for ${thudResult.size} remote(s), " +
+                    "android bindings for ${androidResult.size} remote(s)")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse remote bindings", e)
         }

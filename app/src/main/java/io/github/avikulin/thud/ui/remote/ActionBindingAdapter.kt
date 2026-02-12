@@ -25,7 +25,7 @@ class ActionBindingAdapter(
     var bindingMap: Map<RemoteAction, ActionBinding> = emptyMap()
         set(value) { field = value; notifyDataSetChanged() }
 
-    private val allActions = RemoteAction.entries.toList()
+    private val allActions = RemoteAction.entries.filter { it != RemoteAction.TOGGLE_MODE }
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val tvActionLabel: TextView = view.findViewById(R.id.tvActionLabel)

@@ -38,7 +38,8 @@ class RemoteListAdapter(
         val context = holder.itemView.context
 
         holder.tvRemoteName.text = config.alias.ifBlank { config.deviceName }
-        val bindingCount = config.bindings.count { it.keyCode != null }
+        val bindingCount = config.bindings.count { it.keyCode != null } +
+            config.androidBindings.count { it.keyCode != null }
         holder.tvBindingsCount.text = context.getString(R.string.remote_bindings_count, bindingCount)
 
         holder.cbEnabled.setOnCheckedChangeListener(null)

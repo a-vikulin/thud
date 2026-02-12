@@ -286,7 +286,7 @@
                 android:layout_height="@dimen/service_button_height"
                 android:src="@drawable/ic_remote"
                 android:scaleType="centerInside"
-                android:padding="20dp"
+                android:padding="6dp"
                 android:background="@drawable/service_button_border"
                 android:clickable="true"
                 android:focusable="true"

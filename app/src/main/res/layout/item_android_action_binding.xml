@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Right-column android action row: action label + key button (no value spinner) -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="@dimen/remote_action_row_height"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingHorizontal="@dimen/remote_action_row_padding"
+    android:background="@color/editor_step_background">
+
+    <!-- Action label -->
+    <TextView
+        android:id="@+id/tvActionLabel"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:textColor="@color/text_primary"
+        android:textSize="@dimen/text_step_type" />
+
+    <!-- Key assignment button -->
+    <Button
+        android:id="@+id/btnAssignKey"
+        android:layout_width="wrap_content"
+        android:layout_height="@dimen/remote_key_button_height"
+        android:minWidth="@dimen/remote_key_button_min_width"
+        android:textColor="@color/text_label"
+        android:textSize="@dimen/text_step_details"
+        android:background="@color/editor_input_background"
+        android:textAllCaps="false"
+        android:paddingHorizontal="@dimen/editor_input_padding" />
+</LinearLayout>
