@@ -988,10 +988,15 @@ class WorkoutChart @JvmOverloads constructor(
 
     /**
      * Resolve speed/incline coefficients for a specific segment.
-     * In ALL_STEPS mode (perStepCoefficients == null): uses global coefficients.
+     * Coefficients never cross phase boundaries (warmup/main/cooldown).
+     * In ALL_STEPS mode (perStepCoefficients == null): uses global coefficients within same phase.
      * In ONE_STEP mode: current step uses active coefficients, others use per-step map lookup.
      */
     private fun getSegmentCoefficients(segment: PlannedSegment, index: Int): Pair<Double, Double> {
+        // Coefficients don't cross phase boundaries — segments in a different phase use 1.0
+        val currentPhase = plannedSegments.getOrNull(currentStepIndex)?.phase
+        if (currentPhase != null && segment.phase != currentPhase) return Pair(1.0, 1.0)
+
         val map = perStepCoefficients ?: return Pair(speedCoefficient, inclineCoefficient)
         // Current step: use active coefficients (freshest from telemetry)
         if (index == currentStepIndex) return Pair(speedCoefficient, inclineCoefficient)
