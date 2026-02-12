@@ -752,8 +752,11 @@ class HUDService : Service(),
             if (uploadResult.activityId > 0) {
                 val screenshot = findLastScreenshot(workoutName, startTimeMs)
                 if (screenshot != null) {
+                    Log.d(TAG, "Uploading screenshot: ${screenshot.name} (${screenshot.length()} bytes)")
                     val photoResult = garminUploader.uploadScreenshot(uploadResult.activityId, screenshot)
                     Log.d(TAG, "Screenshot upload: $photoResult")
+                } else {
+                    Log.d(TAG, "No screenshot found for workoutName=$workoutName, startTimeMs=$startTimeMs")
                 }
             } else {
                 Log.d(TAG, "Upload accepted (uploadId=${uploadResult.uploadId}) but no activity ID — skipping screenshot")
@@ -831,16 +834,23 @@ class HUDService : Service(),
                 android.os.Environment.DIRECTORY_DOWNLOADS
             )
             val screenshotsDir = java.io.File(downloadsDir, "tHUD/screenshots")
-            if (!screenshotsDir.exists()) return null
+            if (!screenshotsDir.exists()) {
+                Log.d(TAG, "findLastScreenshot: screenshots dir does not exist: ${screenshotsDir.absolutePath}")
+                return null
+            }
 
             val sanitizedName = workoutName.replace(Regex("[^a-zA-Z0-9_-]"), "_")
             val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.US)
             val runStartStr = dateFormat.format(java.util.Date(startTimeMs))
             val prefix = "${sanitizedName}_${runStartStr}_"
 
-            screenshotsDir.listFiles()
+            val allFiles = screenshotsDir.listFiles()
+            val matching = allFiles
                 ?.filter { it.name.startsWith(prefix) && it.name.endsWith(".png") }
-                ?.maxByOrNull { it.lastModified() }
+            Log.d(TAG, "findLastScreenshot: prefix='$prefix', dir=${screenshotsDir.absolutePath}, " +
+                "totalFiles=${allFiles?.size ?: "null"}, matching=${matching?.size ?: "null"}")
+
+            matching?.maxByOrNull { it.lastModified() }
         } catch (e: Exception) {
             Log.e(TAG, "Error finding screenshot: ${e.message}")
             null
@@ -866,23 +876,15 @@ class HUDService : Service(),
             return
         }
 
-        // Extract HR samples (elapsedMs, heartRateBpm)
-        val hrSamples = workoutData
-            .filter { it.heartRateBpm > 0 }
-            .map { Pair(it.elapsedMs, it.heartRateBpm) }
-
-        if (hrSamples.isEmpty()) {
-            Log.v(TAG, "Training metrics: no HR samples (workoutData=${workoutData.size})")
-            hudDisplayManager.updateTrainingMetrics(0.0)
-            return
-        }
-
-        // Extract power samples (elapsedMs, powerWatts) for power-based TSS
+        // Extract samples for 3-tier TSS calculation (Power → HR → Pace)
         val powerSamples = workoutData
             .filter { it.powerWatts > 0 }
             .map { Pair(it.elapsedMs, it.powerWatts) }
 
-        // Extract speed samples (elapsedMs, speedKph) for pace-based TSS fallback
+        val hrSamples = workoutData
+            .filter { it.heartRateBpm > 0 }
+            .map { Pair(it.elapsedMs, it.heartRateBpm) }
+
         val speedSamples = workoutData
             .filter { it.speedKph > 0 }
             .map { Pair(it.elapsedMs, it.speedKph) }
@@ -2175,6 +2177,9 @@ class HUDService : Service(),
         // Note: Don't clear data here - startNewRun() handles saving/clearing before load
         workoutPanelManager.showPanel()
         chartManager.showChart()
+
+        // Update screenshot manager so filenames match FIT export name
+        screenshotManager.setWorkoutInfo(workout.name, workoutStartTimeMs)
 
         workoutPanelManager.setWorkoutInfo(workout, steps, workoutEngineManager.getPhaseCounts())
 
