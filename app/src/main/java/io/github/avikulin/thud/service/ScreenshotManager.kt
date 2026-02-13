@@ -133,9 +133,9 @@ class ScreenshotManager(
         runStartTimeMs = startTimeMs
 
         if (isEnabled) {
-            // Turning off
+            // Turning off (user toggle)
             isEnabled = false
-            Log.d(TAG, "Screenshot mode disabled")
+            Log.d(TAG, "Screenshot mode toggled OFF by user")
             return false
         }
 
@@ -225,20 +225,17 @@ class ScreenshotManager(
     }
 
     /**
-     * Disable screenshot mode (called when run ends).
-     */
-    fun disable() {
-        isEnabled = false
-    }
-
-    /**
      * Take a screenshot if enabled.
      * Called on step start and pause.
      *
      * @param trigger Description of what triggered the screenshot (for logging)
      */
     fun takeScreenshotIfEnabled(trigger: String) {
-        if (!isEnabled) return
+        if (!isEnabled) {
+            Log.d(TAG, "Screenshot skipped (disabled): trigger=$trigger")
+            return
+        }
+        Log.d(TAG, "Screenshot taking: trigger=$trigger")
         takeScreenshot(trigger)
     }
 

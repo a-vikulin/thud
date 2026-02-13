@@ -538,7 +538,8 @@ class HUDService : Service(),
      * Pause recording (e.g., treadmill enters PAUSED state).
      */
     private fun pauseRun() {
-        Log.d(TAG, "Pausing run recording")
+        Log.d(TAG, "Pausing run recording, engineState=${workoutEngineManager.getState()?.javaClass?.simpleName}, " +
+            "recording=${workoutRecorder.isRecording}, screenshotsEnabled=${screenshotManager.isEnabled}")
         workoutRecorder.pauseRecording()
         // Persist immediately on pause (crash protection)
         persistCurrentRunState()
@@ -558,8 +559,6 @@ class HUDService : Service(),
         chartManager.clearPlannedSegments()
         hudDisplayManager.updateTrainingMetrics(0.0)  // Reset TSS display
         hudDisplayManager.updateDistance(0.0)  // Reset distance display
-        screenshotManager.disable()
-        hudDisplayManager.updateCameraButtonState(false)
         workoutDataExported = false
         lastWorkoutName = null
         // Clear persisted data and stop persistence
@@ -1857,13 +1856,15 @@ class HUDService : Service(),
         val dataPointCount = workoutRecorder.getDataPointCount()
 
         Log.d(TAG, "Treadmill stopped (from $previousState), speed=${state.currentSpeedKph}, " +
-            "isSecondStop=$isSecondStop, dataPoints=$dataPointCount")
+            "isSecondStop=$isSecondStop, dataPoints=$dataPointCount, screenshotsEnabled=${screenshotManager.isEnabled}")
 
         // Pause recording only on first stop (RUNNING → PAUSED)
         // On double-stop (PAUSED → IDLE): already paused, no screenshot wanted
         // On stop-while-stopped (IDLE → IDLE): nothing to pause
         if (state.currentSpeedKph <= 0 && !isSecondStop && !isStopWhileStopped) {
             pauseRun()
+        } else if (screenshotManager.isEnabled) {
+            Log.d(TAG, "Skipping pauseRun (no screenshot): isSecondStop=$isSecondStop, isStopWhileStopped=$isStopWhileStopped, speed=${state.currentSpeedKph}")
         }
 
         // CRITICAL: For double-stop, capture snapshot BEFORE any cleanup.
@@ -2242,8 +2243,13 @@ class HUDService : Service(),
             is WorkoutEvent.StepStarted -> {
                 // Persist immediately on step transition
                 persistCurrentRunState()
-                // Take screenshot on step start (captures each transition)
-                screenshotManager.takeScreenshotIfEnabled("step_started")
+                // Take screenshot on step start — only during active running, not manual prev/next while paused
+                val engineState = workoutEngineManager.getState()
+                Log.d(TAG, "StepStarted screenshot check: engineState=${engineState?.javaClass?.simpleName}, " +
+                    "recording=${workoutRecorder.isRecording}, screenshotsEnabled=${screenshotManager.isEnabled}")
+                if (engineState is WorkoutExecutionState.Running || engineState is WorkoutExecutionState.Paused) {
+                    screenshotManager.takeScreenshotIfEnabled("step_started")
+                }
             }
             is WorkoutEvent.StepCompleted -> {
                 // Persist immediately on step completion
