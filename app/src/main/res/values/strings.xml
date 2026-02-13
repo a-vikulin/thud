@@ -440,7 +440,8 @@
     <string name="btn_remote">Remote</string>
     <string name="remote_mode_takeover">Remote: Take-over</string>
     <string name="remote_mode_passthrough">Remote: Pass-through</string>
-    <string name="remote_accessibility_not_enabled">Enable tHUD Remote Control in Accessibility Settings to use remotes</string>
+    <string name="remote_accessibility_not_enabled">Accessibility Service not enabled — remotes won\'t work</string>
+    <string name="remote_accessibility_enable">Enable</string>
 
     <!-- Accessibility service -->
     <string name="remote_accessibility_label">tHUD Remote Control</string>

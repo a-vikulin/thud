@@ -42,31 +42,41 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
-        // 1. Get device name — if null or not configured, pass through immediately
+        // 1. Get device name
         val deviceName = event.device?.name ?: return false
-        val thudBindings = RemoteControlBridge.bindings[deviceName]
-        val androidBindingMap = RemoteControlBridge.androidBindings[deviceName]
-
-        // Device not configured at all?
-        if (thudBindings == null && androidBindingMap == null) return false
 
         // 2. If learn mode is active, forward key info to config activity
+        //    This MUST be before device filtering — auto-detect needs unconfigured devices
         val learnCallback = RemoteControlBridge.learnModeCallback
         if (learnCallback != null) {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
                 val keyLabel = KeyEvent.keyCodeToString(event.keyCode)
                     .removePrefix("KEYCODE_")
+                Log.d(TAG, "Learn mode: keyCode=${event.keyCode}, label=$keyLabel, device=$deviceName")
                 learnCallback(event.keyCode, keyLabel, deviceName)
             }
-            return true // consume all events from configured remotes during learn mode
+            return true // consume all events during learn mode
         }
+
+        // 3. Device filtering — only configured remotes are intercepted
+        val isConfigured = deviceName in RemoteControlBridge.configuredDeviceNames
+        if (!isConfigured) return false
+
+        val thudBindings = RemoteControlBridge.bindings[deviceName]
+        val androidBindingMap = RemoteControlBridge.androidBindings[deviceName]
 
         // 3. Look up keyCode in both binding maps
         val thudBinding = thudBindings?.get(event.keyCode)
         val androidAction = androidBindingMap?.get(event.keyCode)
 
-        // Nothing bound in either column?
-        if (thudBinding == null && androidAction == null) return false
+        // Nothing bound in either column? Log it so we can see unbound keys from configured devices
+        if (thudBinding == null && androidAction == null) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                val keyLabel = KeyEvent.keyCodeToString(event.keyCode).removePrefix("KEYCODE_")
+                Log.d(TAG, "Unbound key from configured device: keyCode=${event.keyCode}, label=$keyLabel, device=$deviceName")
+            }
+            return false
+        }
 
         // 4. TOGGLE_MODE always executes regardless of mode
         if (thudBinding?.action == RemoteAction.TOGGLE_MODE) {
@@ -151,12 +161,14 @@ class RemoteControlAccessibilityService : AccessibilityService() {
             val remotesArray = config.optJSONArray("remotes") ?: return
             val thudResult = mutableMapOf<String, Map<Int, RemoteControlBridge.ResolvedBinding>>()
             val androidResult = mutableMapOf<String, Map<Int, AndroidAction>>()
+            val deviceNames = mutableSetOf<String>()
 
             for (i in 0 until remotesArray.length()) {
                 val remote = remotesArray.getJSONObject(i)
                 if (!remote.optBoolean("enabled", true)) continue
 
                 val deviceName = remote.getString("deviceName")
+                deviceNames.add(deviceName)
 
                 // tHUD bindings
                 val bindingsArray = remote.optJSONArray("bindings")
@@ -198,10 +210,11 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                 }
             }
 
+            RemoteControlBridge.configuredDeviceNames = deviceNames
             RemoteControlBridge.bindings = thudResult
             RemoteControlBridge.androidBindings = androidResult
-            Log.d(TAG, "Loaded bindings for ${thudResult.size} remote(s), " +
-                    "android bindings for ${androidResult.size} remote(s)")
+            Log.d(TAG, "Loaded ${deviceNames.size} device(s): $deviceNames, " +
+                    "thud bindings for ${thudResult.size}, android bindings for ${androidResult.size}")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse remote bindings", e)
         }

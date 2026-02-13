@@ -262,9 +262,11 @@ class RemoteControlManager(
     fun pushBindingsToBridge() {
         val thudResult = mutableMapOf<String, Map<Int, RemoteControlBridge.ResolvedBinding>>()
         val androidResult = mutableMapOf<String, Map<Int, AndroidAction>>()
+        val deviceNames = mutableSetOf<String>()
 
         for (config in remoteConfigs) {
             if (!config.enabled) continue
+            deviceNames.add(config.deviceName)
 
             val keyMap = mutableMapOf<Int, RemoteControlBridge.ResolvedBinding>()
             for (binding in config.bindings) {
@@ -285,6 +287,7 @@ class RemoteControlManager(
             }
         }
 
+        RemoteControlBridge.configuredDeviceNames = deviceNames
         RemoteControlBridge.bindings = thudResult
         RemoteControlBridge.androidBindings = androidResult
     }

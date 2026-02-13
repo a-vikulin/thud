@@ -1,9 +1,12 @@
 package io.github.avikulin.thud.ui.remote
 
 import android.app.AlertDialog
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
 import android.content.Intent
 import android.hardware.input.InputManager
+import android.provider.Settings
+import android.view.accessibility.AccessibilityManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -22,6 +25,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.github.avikulin.thud.HUDService
 import io.github.avikulin.thud.R
+import io.github.avikulin.thud.RemoteControlAccessibilityService
 import io.github.avikulin.thud.domain.model.AndroidAction
 import io.github.avikulin.thud.domain.model.RemoteAction
 import io.github.avikulin.thud.service.RemoteControlBridge
@@ -62,10 +66,10 @@ class RemoteControlActivity : AppCompatActivity() {
     private lateinit var tvEmptyState: TextView
     private lateinit var tvNoSelection: TextView
     private lateinit var rightPane: View
+    private lateinit var accessibilityWarningBanner: View
 
     private val handler = Handler(Looper.getMainLooper())
     private var saveRunnable: Runnable? = null
-
     /** In-memory config loaded from SharedPreferences. */
     private var remoteConfigs: MutableList<RemoteConfig> = mutableListOf()
     private var selectedIndex: Int = -1
@@ -86,6 +90,11 @@ class RemoteControlActivity : AppCompatActivity() {
         tvEmptyState = findViewById(R.id.tvEmptyState)
         tvNoSelection = findViewById(R.id.tvNoSelection)
         rightPane = findViewById(R.id.rightPane)
+        accessibilityWarningBanner = findViewById(R.id.accessibilityWarningBanner)
+
+        findViewById<Button>(R.id.btnEnableAccessibility).setOnClickListener {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
 
         setupRemoteList()
         setupBindingAdapters()
@@ -99,6 +108,7 @@ class RemoteControlActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         HUDService.notifyActivityForeground(this)
+        updateAccessibilityWarning()
     }
 
     override fun onPause() {
@@ -111,6 +121,19 @@ class RemoteControlActivity : AppCompatActivity() {
         handler.removeCallbacksAndMessages(null)
         HUDService.notifyActivityClosed(this)
         super.onDestroy()
+    }
+
+    private fun updateAccessibilityWarning() {
+        accessibilityWarningBanner.visibility =
+            if (isAccessibilityServiceEnabled()) View.GONE else View.VISIBLE
+    }
+
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val am = getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+        val enabled = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+        return enabled.any {
+            it.resolveInfo.serviceInfo.name == RemoteControlAccessibilityService::class.java.name
+        }
     }
 
     private fun setupHeader() {
@@ -469,6 +492,7 @@ class RemoteControlActivity : AppCompatActivity() {
             }
 
         if (externalDevices.isEmpty()) {
+            // No keyboard-type devices — go straight to auto-detect
             showAutoDetectDialog()
             return
         }
@@ -645,8 +669,10 @@ class RemoteControlActivity : AppCompatActivity() {
     private fun pushBindingsToBridge() {
         val thudResult = mutableMapOf<String, Map<Int, RemoteControlBridge.ResolvedBinding>>()
         val androidResult = mutableMapOf<String, Map<Int, AndroidAction>>()
+        val deviceNames = mutableSetOf<String>()
         for (config in remoteConfigs) {
             if (!config.enabled) continue
+            deviceNames.add(config.deviceName)
 
             val keyMap = mutableMapOf<Int, RemoteControlBridge.ResolvedBinding>()
             for (binding in config.bindings) {
@@ -666,6 +692,7 @@ class RemoteControlActivity : AppCompatActivity() {
                 androidResult[config.deviceName] = androidKeyMap
             }
         }
+        RemoteControlBridge.configuredDeviceNames = deviceNames
         RemoteControlBridge.bindings = thudResult
         RemoteControlBridge.androidBindings = androidResult
     }

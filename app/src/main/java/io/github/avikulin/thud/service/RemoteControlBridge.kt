@@ -23,6 +23,9 @@ object RemoteControlBridge {
     /** Non-null during learn mode — AccessibilityService forwards key info here. */
     @Volatile var learnModeCallback: ((keyCode: Int, keyLabel: String, deviceName: String) -> Unit)? = null
 
+    /** All enabled device names, including those with no bindings yet. */
+    @Volatile var configuredDeviceNames: Set<String> = emptySet()
+
     /** deviceName → (keyCode → binding). Updated by RemoteControlManager when config changes. */
     @Volatile var bindings: Map<String, Map<Int, ResolvedBinding>> = emptyMap()
 

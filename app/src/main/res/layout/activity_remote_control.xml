@@ -4,8 +4,46 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="horizontal"
+    android:orientation="vertical"
     android:background="@color/editor_background">
+
+    <!-- Accessibility service warning banner -->
+    <LinearLayout
+        android:id="@+id/accessibilityWarningBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="@dimen/editor_padding"
+        android:paddingVertical="@dimen/remote_action_row_padding"
+        android:background="@color/accessibility_warning_background"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/remote_accessibility_not_enabled"
+            android:textColor="@color/hr_target_warning"
+            android:textSize="@dimen/text_step_details" />
+
+        <Button
+            android:id="@+id/btnEnableAccessibility"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/editor_padding"
+            android:text="@string/remote_accessibility_enable"
+            android:textColor="@color/hr_target_warning"
+            android:background="?attr/selectableItemBackground"
+            android:textAllCaps="false"
+            android:minWidth="0dp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
 
     <!-- ==================== LEFT PANE (25%) - Remote List ==================== -->
     <LinearLayout
@@ -258,5 +296,7 @@
             android:textColor="@color/text_label_dim"
             android:textSize="@dimen/text_editor_label"
             android:visibility="gone" />
+    </LinearLayout>
+
     </LinearLayout>
 </LinearLayout>

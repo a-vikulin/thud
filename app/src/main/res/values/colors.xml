@@ -97,6 +97,7 @@
     <color name="step_rest">#8080A0</color>
     <color name="step_cooldown">#9370DB</color>
     <color name="hr_target_warning">#FF4444</color>
+    <color name="accessibility_warning_background">#663D1F00</color>
     <color name="progress_bar_background">#333355</color>
     <color name="progress_bar_fill">#00FF00</color>
     <color name="control_button_background">#44FFFFFF</color>
