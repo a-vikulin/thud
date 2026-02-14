@@ -350,7 +350,12 @@ class GarminConnectUploader(private val context: Context) {
             .post("".toRequestBody("application/x-www-form-urlencoded".toMediaType()))
             .build()
 
-        val response = client.newCall(request).execute()
+        val response = try {
+            client.newCall(request).execute()
+        } catch (e: java.io.IOException) {
+            Log.e(TAG, "OAuth2 exchange network error: ${e.message}")
+            return false
+        }
         val body = response.body?.string() ?: ""
         response.close()
 

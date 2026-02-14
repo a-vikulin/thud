@@ -89,6 +89,16 @@ class StrydManager(
     private var metricSelectorRefreshRunnable: Runnable? = null
     private val metricValueViews = mutableMapOf<String, TextView>()
 
+    // Auto-reconnect on unexpected disconnect
+    private var intentionalDisconnect = false
+    private var reconnectAttempt = 0
+    private val MAX_RECONNECT_ATTEMPTS = 3
+    private val RECONNECT_DELAYS = longArrayOf(5000, 10000, 20000)
+    private var reconnectRunnable: Runnable? = null
+
+    // Scan timeout tracking
+    private var scanTimeoutRunnable: Runnable? = null
+
     // Pending subscriptions (after service discovery)
     private var pendingSubscriptions = mutableListOf<BluetoothGattCharacteristic>()
     private var currentSubscriptionIndex = 0
@@ -382,12 +392,14 @@ class StrydManager(
         bluetoothLeScanner?.startScan(listOf(scanFilter), scanSettings, scanCallback)
 
         // Stop scan after timeout
-        handler.postDelayed({
+        val timeout = Runnable {
             stopScan()
             if (discoveredDevices.isEmpty()) {
                 statusText?.text = service.getString(R.string.foot_pod_no_devices)
             }
-        }, SCAN_TIMEOUT_MS)
+        }
+        scanTimeoutRunnable = timeout
+        handler.postDelayed(timeout, SCAN_TIMEOUT_MS)
 
         Log.d(TAG, "Started BLE scan")
     }
@@ -402,7 +414,8 @@ class StrydManager(
         scanning = false
         bluetoothLeScanner?.stopScan(scanCallback)
         scanProgressBar?.visibility = View.GONE
-        handler.removeCallbacksAndMessages(null)
+        scanTimeoutRunnable?.let { handler.removeCallbacks(it) }
+        scanTimeoutRunnable = null
 
         if (discoveredDevices.isNotEmpty()) {
             statusText?.text = service.getString(R.string.foot_pod_found_devices, discoveredDevices.size)
@@ -470,6 +483,9 @@ class StrydManager(
     fun disconnect() {
         Log.d(TAG, "Disconnecting from Stryd")
 
+        intentionalDisconnect = true
+        cancelPendingReconnect()
+
         bluetoothGatt?.disconnect()
         bluetoothGatt?.close()
         bluetoothGatt = null
@@ -495,6 +511,7 @@ class StrydManager(
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     Log.d(TAG, "Connected to GATT server")
+                    reconnectAttempt = 0
                     // Save device to unified list for auto-connect
                     val deviceName = gatt.device.name ?: "Stryd"
                     val prefs = service.getSharedPreferences(SettingsManager.PREFS_NAME, Context.MODE_PRIVATE)
@@ -508,6 +525,8 @@ class StrydManager(
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     Log.d(TAG, "Disconnected from GATT server")
+                    val wasIntentional = intentionalDisconnect
+                    intentionalDisconnect = false
                     handler.post {
                         state.strydConnected = false
                         state.currentPowerWatts = 0.0
@@ -519,6 +538,11 @@ class StrydManager(
 
                         if (dialogView != null) {
                             updateDialogForDisconnected()
+                        }
+
+                        // Auto-reconnect on unexpected disconnect while service is alive
+                        if (!wasIntentional && state.isRunning) {
+                            scheduleReconnect()
                         }
                     }
                 }
@@ -983,10 +1007,42 @@ class StrydManager(
     }
 
     /**
+     * Schedule a reconnect attempt with exponential backoff.
+     * Attempts to reconnect to the last saved Stryd foot pod.
+     */
+    private fun scheduleReconnect() {
+        if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+            Log.w(TAG, "Max reconnect attempts ($MAX_RECONNECT_ATTEMPTS) reached, giving up")
+            reconnectAttempt = 0
+            return
+        }
+        val delay = RECONNECT_DELAYS[reconnectAttempt]
+        Log.d(TAG, "Scheduling Stryd reconnect attempt ${reconnectAttempt + 1}/$MAX_RECONNECT_ATTEMPTS in ${delay}ms")
+        reconnectAttempt++
+        val runnable = Runnable {
+            if (!state.isRunning) return@Runnable
+            Log.d(TAG, "Attempting Stryd auto-reconnect")
+            autoConnect()
+        }
+        reconnectRunnable = runnable
+        handler.postDelayed(runnable, delay)
+    }
+
+    /**
+     * Cancel any pending reconnect attempt.
+     */
+    private fun cancelPendingReconnect() {
+        reconnectRunnable?.let { handler.removeCallbacks(it) }
+        reconnectRunnable = null
+        reconnectAttempt = 0
+    }
+
+    /**
      * Clean up resources.
      */
     @SuppressLint("MissingPermission")
     fun cleanup() {
+        cancelPendingReconnect()
         removeDialog()
         removeMetricSelector()
         stopScan()

@@ -10,6 +10,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -50,6 +54,7 @@ import io.github.avikulin.thud.service.PersistedRunState
 import io.github.avikulin.thud.ui.editor.WorkoutEditorActivityNew
 import io.github.avikulin.thud.service.garmin.GarminConnectUploader
 import io.github.avikulin.thud.util.FitFileExporter
+import java.io.File
 import io.github.avikulin.thud.util.HeartRateZones
 
 import io.github.avikulin.thud.util.PaceConverter
@@ -103,6 +108,12 @@ class HUDService : Service(),
         // Notification
         private const val NOTIFICATION_CHANNEL_ID = "HUD_SERVICE_CHANNEL"
         private const val NOTIFICATION_ID = 1
+
+        // Pending Garmin upload persistence keys
+        private const val PENDING_GARMIN_FILE = "pending_garmin_upload.fit"
+        private const val PREF_PENDING_GARMIN_FILENAME = "pending_garmin_filename"
+        private const val PREF_PENDING_GARMIN_WORKOUT_NAME = "pending_garmin_workout_name"
+        private const val PREF_PENDING_GARMIN_START_TIME = "pending_garmin_start_time"
 
         /** Call from onResume() of any activity that should hide HUD panels. */
         fun notifyActivityForeground(context: Context) {
@@ -190,6 +201,7 @@ class HUDService : Service(),
     private lateinit var fitFileExporter: FitFileExporter
 
     private lateinit var garminUploader: GarminConnectUploader
+    private var connectivityCallback: ConnectivityManager.NetworkCallback? = null
     private var workoutStartTimeMs: Long = 0
     private var workoutDataExported = false  // Tracks if FIT export already happened for current session
     private var lastWorkoutName: String? = null  // Stores workout name before engine stop (since getCurrentWorkout() returns null after stop)
@@ -288,6 +300,9 @@ class HUDService : Service(),
         // Initialize FIT file exporter
         fitFileExporter = FitFileExporter(applicationContext)
         garminUploader = GarminConnectUploader(applicationContext)
+
+        // Register network callback for retrying failed Garmin uploads
+        registerNetworkCallback()
 
         // Set up workout recorder callback for UI updates
         workoutRecorder.onMetricsUpdated = { distanceKm, elevationM ->
@@ -739,6 +754,7 @@ class HUDService : Service(),
         val uploadResult = garminUploader.uploadFitFile(fitResult.fitData, fitResult.filename)
 
         if (uploadResult != null) {
+            clearPendingGarminUpload()
             withContext(Dispatchers.Main) {
                 Toast.makeText(
                     this@HUDService,
@@ -766,6 +782,8 @@ class HUDService : Service(),
                 launchGarminLoginForUpload(fitResult, workoutName, startTimeMs)
             }
         } else {
+            // Network or unknown failure — save for retry when network is restored
+            savePendingGarminUpload(fitResult, workoutName, startTimeMs)
             withContext(Dispatchers.Main) {
                 Toast.makeText(
                     this@HUDService,
@@ -816,6 +834,94 @@ class HUDService : Service(),
                 ).show()
             }
         }
+    }
+
+    // ==================== Network Callback for Garmin Upload Retry ====================
+
+    private fun registerNetworkCallback() {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                Log.d(TAG, "Network available — checking pending Garmin upload")
+                serviceScope.launch(Dispatchers.IO) {
+                    retryPendingGarminUpload()
+                }
+            }
+        }
+        connectivityCallback = callback
+        cm.registerNetworkCallback(request, callback)
+    }
+
+    private fun unregisterNetworkCallback() {
+        connectivityCallback?.let {
+            try {
+                val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                cm.unregisterNetworkCallback(it)
+            } catch (e: Exception) {
+                Log.w(TAG, "Error unregistering network callback: ${e.message}")
+            }
+        }
+        connectivityCallback = null
+    }
+
+    private fun savePendingGarminUpload(
+        fitResult: FitFileExporter.FitExportResult,
+        workoutName: String,
+        startTimeMs: Long
+    ) {
+        try {
+            File(filesDir, PENDING_GARMIN_FILE).writeBytes(fitResult.fitData)
+            val prefs = getSharedPreferences(SettingsManager.PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit {
+                putString(PREF_PENDING_GARMIN_FILENAME, fitResult.filename)
+                putString(PREF_PENDING_GARMIN_WORKOUT_NAME, workoutName)
+                putLong(PREF_PENDING_GARMIN_START_TIME, startTimeMs)
+            }
+            Log.d(TAG, "Saved pending Garmin upload: ${fitResult.filename}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save pending Garmin upload: ${e.message}")
+        }
+    }
+
+    private fun clearPendingGarminUpload() {
+        try {
+            File(filesDir, PENDING_GARMIN_FILE).delete()
+        } catch (e: Exception) {
+            // Ignore — file may not exist
+        }
+        val prefs = getSharedPreferences(SettingsManager.PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit {
+            remove(PREF_PENDING_GARMIN_FILENAME)
+            remove(PREF_PENDING_GARMIN_WORKOUT_NAME)
+            remove(PREF_PENDING_GARMIN_START_TIME)
+        }
+    }
+
+    private suspend fun retryPendingGarminUpload() {
+        val pendingFile = File(filesDir, PENDING_GARMIN_FILE)
+        if (!pendingFile.exists()) return
+
+        val prefs = getSharedPreferences(SettingsManager.PREFS_NAME, Context.MODE_PRIVATE)
+        val filename = prefs.getString(PREF_PENDING_GARMIN_FILENAME, null) ?: return
+        val workoutName = prefs.getString(PREF_PENDING_GARMIN_WORKOUT_NAME, null) ?: return
+        val startTimeMs = prefs.getLong(PREF_PENDING_GARMIN_START_TIME, 0L)
+        if (startTimeMs == 0L) return
+
+        Log.d(TAG, "Retrying pending Garmin upload: $filename")
+        val fitData = pendingFile.readBytes()
+        val fitResult = FitFileExporter.FitExportResult(
+            displayPath = "",
+            fitData = fitData,
+            filename = filename
+        )
+
+        // Clear pending BEFORE retry to avoid infinite retry loops on persistent failures
+        clearPendingGarminUpload()
+
+        uploadToGarminConnect(fitResult, workoutName, startTimeMs)
     }
 
     /**
@@ -2598,6 +2704,9 @@ class HUDService : Service(),
         if (workoutRecorder.getDataPointCount() > 0 && !workoutDataExported) {
             persistCurrentRunState()
         }
+
+        // Unregister network callback
+        unregisterNetworkCallback()
 
         // Cancel coroutine scope
         serviceScope.cancel()

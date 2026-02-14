@@ -68,6 +68,16 @@ class HrSensorManager(
     // Handler for scan timeout
     private val handler = Handler(Looper.getMainLooper())
 
+    // Auto-reconnect on unexpected disconnect
+    private var intentionalDisconnect = false
+    private var reconnectAttempt = 0
+    private val MAX_RECONNECT_ATTEMPTS = 3
+    private val RECONNECT_DELAYS = longArrayOf(5000, 10000, 20000)
+    private var reconnectRunnable: Runnable? = null
+
+    // Scan timeout tracking
+    private var scanTimeoutRunnable: Runnable? = null
+
     // Discovered devices
     private val discoveredDevices = mutableListOf<BluetoothDevice>()
     private val discoveredMacs = mutableSetOf<String>()
@@ -335,12 +345,14 @@ class HrSensorManager(
         bluetoothLeScanner?.startScan(listOf(scanFilter), scanSettings, scanCallback)
 
         // Stop scan after timeout
-        handler.postDelayed({
+        val timeout = Runnable {
             stopScan()
             if (discoveredDevices.isEmpty()) {
                 statusText?.text = service.getString(R.string.hr_dialog_no_discovered)
             }
-        }, SCAN_TIMEOUT_MS)
+        }
+        scanTimeoutRunnable = timeout
+        handler.postDelayed(timeout, SCAN_TIMEOUT_MS)
 
         Log.d(TAG, "Started HR sensor scan")
     }
@@ -359,7 +371,8 @@ class HrSensorManager(
             Log.e(TAG, "Error stopping scan: ${e.message}")
         }
 
-        handler.removeCallbacksAndMessages(null)
+        scanTimeoutRunnable?.let { handler.removeCallbacks(it) }
+        scanTimeoutRunnable = null
         scanProgressBar?.visibility = View.GONE
 
         Log.d(TAG, "Stopped HR sensor scan")
@@ -458,6 +471,9 @@ class HrSensorManager(
     fun disconnect() {
         Log.d(TAG, "Disconnecting from HR sensor")
 
+        intentionalDisconnect = true
+        cancelPendingReconnect()
+
         bluetoothGatt?.disconnect()
         bluetoothGatt?.close()
         bluetoothGatt = null
@@ -510,6 +526,7 @@ class HrSensorManager(
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     Log.d(TAG, "Connected to GATT server")
+                    reconnectAttempt = 0
                     // Save device to unified list for auto-connect
                     val deviceName = gatt.device.name ?: "HR Sensor"
                     val prefs = service.getSharedPreferences(SettingsManager.PREFS_NAME, Context.MODE_PRIVATE)
@@ -523,6 +540,8 @@ class HrSensorManager(
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     Log.d(TAG, "Disconnected from GATT server")
+                    val wasIntentional = intentionalDisconnect
+                    intentionalDisconnect = false
                     handler.post {
                         state.hrSensorConnected = false
                         state.currentHeartRateBpm = 0.0
@@ -531,6 +550,11 @@ class HrSensorManager(
 
                         if (dialogView != null) {
                             updateDialogForDisconnected()
+                        }
+
+                        // Auto-reconnect on unexpected disconnect while service is alive
+                        if (!wasIntentional && state.isRunning) {
+                            scheduleReconnect()
                         }
                     }
                 }
@@ -708,10 +732,42 @@ class HrSensorManager(
     }
 
     /**
+     * Schedule a reconnect attempt with exponential backoff.
+     * Attempts to reconnect to the last saved HR sensor.
+     */
+    private fun scheduleReconnect() {
+        if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+            Log.w(TAG, "Max reconnect attempts ($MAX_RECONNECT_ATTEMPTS) reached, giving up")
+            reconnectAttempt = 0
+            return
+        }
+        val delay = RECONNECT_DELAYS[reconnectAttempt]
+        Log.d(TAG, "Scheduling HR reconnect attempt ${reconnectAttempt + 1}/$MAX_RECONNECT_ATTEMPTS in ${delay}ms")
+        reconnectAttempt++
+        val runnable = Runnable {
+            if (!state.isRunning) return@Runnable
+            Log.d(TAG, "Attempting HR auto-reconnect")
+            autoConnect()
+        }
+        reconnectRunnable = runnable
+        handler.postDelayed(runnable, delay)
+    }
+
+    /**
+     * Cancel any pending reconnect attempt.
+     */
+    private fun cancelPendingReconnect() {
+        reconnectRunnable?.let { handler.removeCallbacks(it) }
+        reconnectRunnable = null
+        reconnectAttempt = 0
+    }
+
+    /**
      * Clean up resources.
      */
     @SuppressLint("MissingPermission")
     fun cleanup() {
+        cancelPendingReconnect()
         stopScan()
         removeDialog()
         bluetoothGatt?.close()
