@@ -553,6 +553,10 @@ class HUDService : Service(),
      * Pause recording (e.g., treadmill enters PAUSED state).
      */
     private fun pauseRun() {
+        if (workoutRecorder.getDataPointCount() == 0) {
+            Log.d(TAG, "Skipping pauseRun — no run data")
+            return
+        }
         Log.d(TAG, "Pausing run recording, engineState=${workoutEngineManager.getState()?.javaClass?.simpleName}, " +
             "recording=${workoutRecorder.isRecording}, screenshotsEnabled=${screenshotManager.isEnabled}")
         workoutRecorder.pauseRecording()
@@ -712,7 +716,10 @@ class HUDService : Service(),
 
                 // Auto-upload to Garmin Connect if enabled
                 if (state.garminAutoUploadEnabled) {
-                    uploadToGarminConnect(fitResult, snapshot.workoutName, snapshot.startTimeMs)
+                    // Resolve screenshot NOW, before upload starts — a post-clear
+                    // screenshot may overwrite it by the time upload finishes
+                    val screenshotFile = findLastScreenshot(snapshot.workoutName, snapshot.startTimeMs)
+                    uploadToGarminConnect(fitResult, snapshot.workoutName, snapshot.startTimeMs, screenshotFile = screenshotFile)
                 }
             } else {
                 withContext(Dispatchers.Main) {
@@ -741,12 +748,13 @@ class HUDService : Service(),
         fitResult: FitFileExporter.FitExportResult,
         workoutName: String,
         startTimeMs: Long,
-        isRetryAfterLogin: Boolean = false
+        isRetryAfterLogin: Boolean = false,
+        screenshotFile: File? = null
     ) {
         if (!garminUploader.isAuthenticated()) {
             if (isRetryAfterLogin) return
             withContext(Dispatchers.Main) {
-                launchGarminLoginForUpload(fitResult, workoutName, startTimeMs)
+                launchGarminLoginForUpload(fitResult, workoutName, startTimeMs, screenshotFile)
             }
             return
         }
@@ -765,7 +773,7 @@ class HUDService : Service(),
 
             // Try to attach screenshot (only if we got an activity ID)
             if (uploadResult.activityId > 0) {
-                val screenshot = findLastScreenshot(workoutName, startTimeMs)
+                val screenshot = screenshotFile ?: findLastScreenshot(workoutName, startTimeMs)
                 if (screenshot != null) {
                     Log.d(TAG, "Uploading screenshot: ${screenshot.name} (${screenshot.length()} bytes)")
                     val photoResult = garminUploader.uploadScreenshot(uploadResult.activityId, screenshot)
@@ -779,7 +787,7 @@ class HUDService : Service(),
         } else if (!isRetryAfterLogin && garminUploader.isOAuth2Expired()) {
             Log.d(TAG, "Garmin upload auth failed, launching re-auth")
             withContext(Dispatchers.Main) {
-                launchGarminLoginForUpload(fitResult, workoutName, startTimeMs)
+                launchGarminLoginForUpload(fitResult, workoutName, startTimeMs, screenshotFile)
             }
         } else {
             // Network or unknown failure — save for retry when network is restored
@@ -801,7 +809,8 @@ class HUDService : Service(),
     private fun launchGarminLoginForUpload(
         fitResult: FitFileExporter.FitExportResult,
         workoutName: String,
-        startTimeMs: Long
+        startTimeMs: Long,
+        screenshotFile: File? = null
     ) {
         showGarminLoginOverlay { ticket ->
             if (ticket != null) {
@@ -815,7 +824,7 @@ class HUDService : Service(),
                                 Toast.LENGTH_SHORT
                             ).show()
                         }
-                        uploadToGarminConnect(fitResult, workoutName, startTimeMs, isRetryAfterLogin = true)
+                        uploadToGarminConnect(fitResult, workoutName, startTimeMs, isRetryAfterLogin = true, screenshotFile = screenshotFile)
                     } else {
                         withContext(Dispatchers.Main) {
                             Toast.makeText(
