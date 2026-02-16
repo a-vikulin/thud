@@ -47,8 +47,12 @@ import io.github.avikulin.thud.service.WorkoutPanelManager
 import io.github.avikulin.thud.service.WorkoutRecorder
 import io.github.avikulin.thud.service.StrydManager
 import io.github.avikulin.thud.service.RunPersistenceManager
+import io.github.avikulin.thud.service.RemoteControlBridge
 import io.github.avikulin.thud.service.RemoteControlManager
 import io.github.avikulin.thud.service.ScreenshotManager
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.provider.Settings
+import android.view.accessibility.AccessibilityManager
 import io.github.avikulin.thud.service.PersistedRunType
 import io.github.avikulin.thud.service.PersistedRunState
 import io.github.avikulin.thud.ui.editor.WorkoutEditorActivityNew
@@ -234,6 +238,7 @@ class HUDService : Service(),
 
     // Remote control
     private lateinit var remoteControlManager: RemoteControlManager
+    private var accessibilityDialogView: LinearLayout? = null
     private var resumeRunDialogView: LinearLayout? = null
     private val persistenceHandler = Handler(Looper.getMainLooper())
     private val persistenceInterval = 15_000L  // 15 seconds
@@ -392,6 +397,23 @@ class HUDService : Service(),
         )
         remoteControlManager.listener = remoteControlListener
         remoteControlManager.initialize()
+
+        // Wire up auto-return when accessibility service is granted
+        RemoteControlBridge.onAccessibilityServiceConnected = {
+            mainHandler.post {
+                dismissAccessibilityDialog()
+                updateRemoteButtonForCurrentState()
+                if (RemoteControlBridge.awaitingAccessibilityGrant) {
+                    RemoteControlBridge.awaitingAccessibilityGrant = false
+                    // AccessibilityService fires 2 BACKs at 300ms and 600ms to close Settings.
+                    // Delay opening RemoteConfig until after those BACKs have landed.
+                    mainHandler.postDelayed({ openRemoteConfig() }, 1000)
+                }
+            }
+        }
+
+        // Set initial remote button state
+        updateRemoteButtonForCurrentState()
 
         // Start foreground service with appropriate types
         createNotificationChannel()
@@ -1040,6 +1062,7 @@ class HUDService : Service(),
         // Set initial toggle button states
         hudDisplayManager.updateChartButtonState(chartVisible)
         hudDisplayManager.updateCameraButtonState(screenshotManager.isEnabled)
+        updateRemoteButtonForCurrentState()
         // Note: Recording is NOT started here - it's controlled by treadmill state, not HUD visibility
     }
 
@@ -1082,13 +1105,79 @@ class HUDService : Service(),
         startActivity(intent)
     }
 
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val am = getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+        val enabled = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+        return enabled.any {
+            it.resolveInfo.serviceInfo.name == RemoteControlAccessibilityService::class.java.name
+        }
+    }
+
+    private fun updateRemoteButtonForCurrentState() {
+        val buttonState = when {
+            !isAccessibilityServiceEnabled() -> HUDDisplayManager.RemoteButtonState.NO_PERMISSION
+            remoteControlManager.remoteConfigs.isEmpty() -> HUDDisplayManager.RemoteButtonState.OFF
+            RemoteControlBridge.isActive -> HUDDisplayManager.RemoteButtonState.MODE1
+            else -> HUDDisplayManager.RemoteButtonState.MODE2
+        }
+        hudDisplayManager.updateRemoteButtonState(buttonState)
+    }
+
+    private fun showAccessibilityPermissionDialog() {
+        if (accessibilityDialogView != null) return
+
+        val dialogWidthFraction = resources.getFloat(R.dimen.dialog_width_fraction)
+        val container = OverlayHelper.createDialogContainer(this)
+        container.addView(OverlayHelper.createDialogTitle(this, getString(R.string.remote_accessibility_dialog_title)))
+        container.addView(OverlayHelper.createDialogMessage(this, getString(R.string.remote_accessibility_dialog_message)))
+
+        val buttonsRow = OverlayHelper.createDialogButtonRow(this)
+
+        val cancelBtn = Button(this).apply {
+            text = getString(R.string.btn_cancel)
+            setOnClickListener { dismissAccessibilityDialog() }
+        }
+        buttonsRow.addView(cancelBtn)
+
+        val okBtn = Button(this).apply {
+            text = getString(R.string.btn_ok)
+            setOnClickListener {
+                dismissAccessibilityDialog()
+                RemoteControlBridge.awaitingAccessibilityGrant = true
+                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(intent)
+            }
+        }
+        buttonsRow.addView(okBtn)
+
+        container.addView(buttonsRow)
+        accessibilityDialogView = container
+
+        val dialogWidth = OverlayHelper.calculateWidth(state.screenWidth, dialogWidthFraction)
+        val params = OverlayHelper.createOverlayParams(dialogWidth)
+        windowManager.addView(container, params)
+    }
+
+    private fun dismissAccessibilityDialog() {
+        accessibilityDialogView?.let {
+            try {
+                windowManager.removeView(it)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removing accessibility dialog: ${e.message}")
+            }
+        }
+        accessibilityDialogView = null
+    }
+
     private val remoteControlListener = object : RemoteControlManager.Listener {
         override fun onRemoteAction(action: io.github.avikulin.thud.domain.model.RemoteAction) {
             // Action already dispatched by manager — could add logging or toast here
         }
 
         override fun onModeChanged(isActive: Boolean) {
-            hudDisplayManager.updateRemoteButtonState(isActive)
+            updateRemoteButtonForCurrentState()
         }
 
         override fun onKeyPressed() {
@@ -1147,6 +1236,10 @@ class HUDService : Service(),
 
     private fun onActivityBackground() {
         restorePanelState()
+        // Reload remote config in case user changed bindings in RemoteControlActivity
+        remoteControlManager.loadConfig()
+        remoteControlManager.pushBindingsToBridge()
+        updateRemoteButtonForCurrentState()
     }
 
     private fun onActivityClosed() {
@@ -2248,6 +2341,10 @@ class HUDService : Service(),
     }
 
     override fun onRemoteClicked() {
+        if (!isAccessibilityServiceEnabled()) {
+            showAccessibilityPermissionDialog()
+            return
+        }
         openRemoteConfig()
     }
 
@@ -2735,6 +2832,9 @@ class HUDService : Service(),
         dismissResumeRunDialog()
         dismissCertificateErrorDialog()
         dismissGarminLoginOverlay(ticket = null)
+        dismissAccessibilityDialog()
+        RemoteControlBridge.onAccessibilityServiceConnected = null
+        RemoteControlBridge.awaitingAccessibilityGrant = false
         remoteControlManager.cleanup()
         screenshotManager.cleanup()
         workoutPanelManager.cleanup()

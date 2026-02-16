@@ -205,7 +205,7 @@
     <!-- Master-Detail Editor -->
     <string name="workout_search_hint">Search workouts...</string>
     <string name="workout_add_new">+ New</string>
-    <string name="workout_back">Back</string>
+    <string name="workout_close">Close</string>
     <string name="workout_run">RUN</string>
     <string name="editor_undo">Undo</string>
     <string name="editor_redo">Redo</string>
@@ -409,7 +409,7 @@
     <!-- Remote config activity -->
     <string name="remote_config_title">Remote Controls</string>
     <string name="remote_add">+ Add</string>
-    <string name="remote_back">Back</string>
+    <string name="remote_close">Close</string>
     <string name="remote_alias_hint">Remote alias</string>
     <string name="remote_delete">Delete</string>
     <string name="remote_no_remotes">No remotes configured</string>
@@ -440,8 +440,11 @@
     <string name="btn_remote">Remote</string>
     <string name="remote_mode_takeover">Remote: Take-over</string>
     <string name="remote_mode_passthrough">Remote: Pass-through</string>
-    <string name="remote_accessibility_not_enabled">Accessibility Service not enabled — remotes won\'t work</string>
-    <string name="remote_accessibility_enable">Enable</string>
+    <string name="remote_accessibility_dialog_title">Accessibility Service Required</string>
+    <string name="remote_accessibility_dialog_message">Remote control requires the tHUD Accessibility Service to intercept key events from your BLE remote.\n\nEnable it now in Settings?</string>
+
+    <!-- Consume all keys option -->
+    <string name="remote_consume_all_keys">Block unbound keys</string>
 
     <!-- Accessibility service -->
     <string name="remote_accessibility_label">tHUD Remote Control</string>

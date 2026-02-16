@@ -64,7 +64,7 @@ class ActionBindingAdapter(
                 step = if (isSpeed) 0.1 else 0.5
                 format = TouchSpinner.Format.DECIMAL
                 suffix = if (isSpeed) " ${context.getString(R.string.remote_unit_kph)}"
-                         else " ${context.getString(R.string.remote_unit_percent)}"
+                         else " ${String.format(context.getString(R.string.remote_unit_percent))}"
                 value = binding?.value ?: if (isSpeed) 0.5 else 0.5
                 onValueChanged = { newValue ->
                     onValueChanged(action, newValue)

@@ -1,4 +1,5 @@
 # ⚠️ NEVER COMMIT WITHOUT USER CONSENT!!! ⚠️
+# ⚠️ ZERO CODE DUPLICATION — Extract shared logic into a single source of truth. Never copy-paste logic across files; if two places need the same behavior, create one shared method/utility and call it from both. ⚠️
 
 ## Agent Behavioral Rules
 

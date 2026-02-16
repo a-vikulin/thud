@@ -6,7 +6,7 @@
     android:orientation="horizontal"
     android:gravity="center_vertical"
     android:paddingHorizontal="@dimen/remote_action_row_padding"
-    android:background="@color/editor_step_background">
+    android:background="@android:color/transparent">
 
     <!-- Action label -->
     <TextView
@@ -23,9 +23,9 @@
         android:layout_width="wrap_content"
         android:layout_height="@dimen/remote_key_button_height"
         android:minWidth="@dimen/remote_key_button_min_width"
-        android:textColor="@color/text_label"
+        android:textColor="@color/text_primary"
         android:textSize="@dimen/text_step_details"
-        android:background="@color/editor_input_background"
+        android:background="@color/box_data"
         android:textAllCaps="false"
         android:paddingHorizontal="@dimen/editor_input_padding" />
 

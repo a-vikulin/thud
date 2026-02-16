@@ -100,9 +100,12 @@ class HUDDisplayManager(
     private var colorHrZone3 = 0
     private var colorToggleOnTint = 0
     private var colorToggleOffTint = 0
-    private var colorRemoteActive = 0
-    private var colorRemoteInactive = 0
-    private var colorRemoteBlink = 0
+    private var colorRemoteNoPermissionTint = 0
+    private var colorRemoteMode1Tint = 0
+    private var colorRemoteMode2Tint = 0
+    private var currentRemoteState = RemoteButtonState.OFF
+
+    enum class RemoteButtonState { NO_PERMISSION, OFF, MODE1, MODE2 }
     private val zoneColors = IntArray(6)  // Zone 0-5 colors (shared by HR and Power zones)
 
     val isVisible: Boolean
@@ -189,9 +192,9 @@ class HUDDisplayManager(
             colorHrZone3 = ContextCompat.getColor(service, R.color.hr_zone_3)
             colorToggleOnTint = ContextCompat.getColor(service, R.color.toggle_button_on_tint)
             colorToggleOffTint = ContextCompat.getColor(service, R.color.toggle_button_off_tint)
-            colorRemoteActive = ContextCompat.getColor(service, R.color.remote_active)
-            colorRemoteInactive = ContextCompat.getColor(service, R.color.remote_inactive)
-            colorRemoteBlink = ContextCompat.getColor(service, R.color.remote_blink)
+            colorRemoteNoPermissionTint = ContextCompat.getColor(service, R.color.remote_no_permission_tint)
+            colorRemoteMode1Tint = ContextCompat.getColor(service, R.color.remote_mode1_tint)
+            colorRemoteMode2Tint = ContextCompat.getColor(service, R.color.remote_mode2_tint)
             for (zone in 0..5) {
                 zoneColors[zone] = ContextCompat.getColor(service, HeartRateZones.getZoneColorResId(zone))
             }
@@ -541,51 +544,60 @@ class HUDDisplayManager(
     }
 
     /**
-     * Update remote button to reflect take-over vs pass-through mode.
+     * Update remote button to reflect current state:
+     * NO_PERMISSION (red), OFF (gray), MODE1/take-over (green), MODE2/pass-through (blue).
      */
-    fun updateRemoteButtonState(isActive: Boolean) {
+    fun updateRemoteButtonState(state: RemoteButtonState) {
         mainHandler.post {
             val btn = btnRemote ?: return@post
-            if (isActive) {
-                btn.setBackgroundColor(colorRemoteActive)
-                btn.setColorFilter(colorToggleOnTint, android.graphics.PorterDuff.Mode.SRC_IN)
-            } else {
-                btn.setBackgroundResource(R.drawable.service_button_border)
-                btn.setColorFilter(colorToggleOffTint, android.graphics.PorterDuff.Mode.SRC_IN)
+            currentRemoteState = state
+            when (state) {
+                RemoteButtonState.NO_PERMISSION ->
+                    setButtonStyle(btn, R.drawable.service_button_remote_no_permission, colorRemoteNoPermissionTint)
+                RemoteButtonState.OFF ->
+                    setButtonStyle(btn, R.drawable.service_button_border, colorToggleOffTint)
+                RemoteButtonState.MODE1 ->
+                    setButtonStyle(btn, R.drawable.service_button_remote_mode1, colorRemoteMode1Tint)
+                RemoteButtonState.MODE2 ->
+                    setButtonStyle(btn, R.drawable.service_button_remote_mode2, colorRemoteMode2Tint)
             }
         }
     }
 
     /**
      * Flash the remote button briefly to indicate a key press was received.
+     * Uses mode-appropriate blink color (green for Mode 1, blue for Mode 2).
      */
     fun blinkRemoteButton() {
         mainHandler.post {
             val btn = btnRemote ?: return@post
-            btn.setBackgroundColor(colorRemoteBlink)
+            val blinkRes = if (RemoteControlBridge.isActive)
+                R.drawable.service_button_remote_mode1_blink else R.drawable.service_button_remote_mode2_blink
+            btn.setBackgroundResource(blinkRes)
             mainHandler.postDelayed({
-                // Restore to current mode state
-                val isActive = RemoteControlBridge.isActive
-                if (isActive) {
-                    btn.setBackgroundColor(colorRemoteActive)
-                } else {
-                    btn.setBackgroundResource(R.drawable.service_button_border)
-                }
+                updateRemoteButtonState(currentRemoteState)
             }, 200L)
         }
     }
 
     /**
-     * Apply toggle button styling (background and icon tint).
+     * Apply button styling: background drawable and icon tint.
+     * All service buttons use shape drawables with rounded corners and borders.
+     */
+    private fun setButtonStyle(button: ImageView, backgroundRes: Int, tintColor: Int) {
+        button.setBackgroundResource(backgroundRes)
+        button.setColorFilter(tintColor, android.graphics.PorterDuff.Mode.SRC_IN)
+    }
+
+    /**
+     * Apply toggle button styling (on/off).
      */
     private fun updateToggleButtonStyle(button: ImageView?, isOn: Boolean) {
         button ?: return
         if (isOn) {
-            button.setBackgroundResource(R.drawable.service_button_toggle_on)
-            button.setColorFilter(colorToggleOnTint, android.graphics.PorterDuff.Mode.SRC_IN)
+            setButtonStyle(button, R.drawable.service_button_toggle_on, colorToggleOnTint)
         } else {
-            button.setBackgroundResource(R.drawable.service_button_border)
-            button.setColorFilter(colorToggleOffTint, android.graphics.PorterDuff.Mode.SRC_IN)
+            setButtonStyle(button, R.drawable.service_button_border, colorToggleOffTint)
         }
     }
 

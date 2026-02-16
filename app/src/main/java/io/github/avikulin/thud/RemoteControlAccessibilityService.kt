@@ -4,6 +4,8 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
 import android.media.AudioManager
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
@@ -39,6 +41,17 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         loadBindingsIntoBridge()
         Log.d(TAG, "Service connected, bindings loaded")
+
+        // Signal HUDService that accessibility was just enabled
+        RemoteControlBridge.onAccessibilityServiceConnected?.invoke()
+
+        // Only press BACK to close Settings if we came from the permission dialog
+        if (RemoteControlBridge.awaitingAccessibilityGrant) {
+            val handler = Handler(Looper.getMainLooper())
+            handler.postDelayed({ performGlobalAction(GLOBAL_ACTION_BACK) }, 300)
+            handler.postDelayed({ performGlobalAction(GLOBAL_ACTION_BACK) }, 600)
+            Log.d(TAG, "Auto-returning from Settings via 2 BACK actions")
+        }
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
@@ -59,23 +72,28 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         }
 
         // 3. Device filtering — only configured remotes are intercepted
-        val isConfigured = deviceName in RemoteControlBridge.configuredDeviceNames
-        if (!isConfigured) return false
+        val configName = RemoteControlBridge.resolveConfiguredDeviceName(deviceName) ?: return false
 
-        val thudBindings = RemoteControlBridge.bindings[deviceName]
-        val androidBindingMap = RemoteControlBridge.androidBindings[deviceName]
+        val thudBindings = RemoteControlBridge.bindings[configName]
+        val androidBindingMap = RemoteControlBridge.androidBindings[configName]
 
-        // 3. Look up keyCode in both binding maps
+        // 4. Look up keyCode in both binding maps
         val thudBinding = thudBindings?.get(event.keyCode)
         val androidAction = androidBindingMap?.get(event.keyCode)
 
-        // Nothing bound in either column? Log it so we can see unbound keys from configured devices
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            val keyLabel = KeyEvent.keyCodeToString(event.keyCode).removePrefix("KEYCODE_")
+            Log.d(TAG, "Key: $keyLabel (${event.keyCode}), device=$deviceName→$configName, " +
+                    "thud=${thudBinding?.action}, android=$androidAction, isActive=${RemoteControlBridge.isActive}")
+        }
+
+        // Nothing bound in either column? Consume if configured, otherwise pass through
         if (thudBinding == null && androidAction == null) {
             if (event.action == KeyEvent.ACTION_DOWN) {
                 val keyLabel = KeyEvent.keyCodeToString(event.keyCode).removePrefix("KEYCODE_")
                 Log.d(TAG, "Unbound key from configured device: keyCode=${event.keyCode}, label=$keyLabel, device=$deviceName")
             }
-            return false
+            return configName in RemoteControlBridge.consumeAllDeviceNames
         }
 
         // 4. TOGGLE_MODE always executes regardless of mode
@@ -162,6 +180,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
             val thudResult = mutableMapOf<String, Map<Int, RemoteControlBridge.ResolvedBinding>>()
             val androidResult = mutableMapOf<String, Map<Int, AndroidAction>>()
             val deviceNames = mutableSetOf<String>()
+            val consumeAllNames = mutableSetOf<String>()
 
             for (i in 0 until remotesArray.length()) {
                 val remote = remotesArray.getJSONObject(i)
@@ -169,6 +188,9 @@ class RemoteControlAccessibilityService : AccessibilityService() {
 
                 val deviceName = remote.getString("deviceName")
                 deviceNames.add(deviceName)
+                if (remote.optBoolean("consumeAllKeys", false)) {
+                    consumeAllNames.add(deviceName)
+                }
 
                 // tHUD bindings
                 val bindingsArray = remote.optJSONArray("bindings")
@@ -213,6 +235,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
             RemoteControlBridge.configuredDeviceNames = deviceNames
             RemoteControlBridge.bindings = thudResult
             RemoteControlBridge.androidBindings = androidResult
+            RemoteControlBridge.consumeAllDeviceNames = consumeAllNames
             Log.d(TAG, "Loaded ${deviceNames.size} device(s): $deviceNames, " +
                     "thud bindings for ${thudResult.size}, android bindings for ${androidResult.size}")
         } catch (e: Exception) {

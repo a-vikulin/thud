@@ -25,25 +25,22 @@
             android:background="@color/editor_step_background"
             android:paddingHorizontal="@dimen/workout_list_item_padding">
 
-            <!-- Back button -->
-            <ImageButton
-                android:id="@+id/btnBack"
-                android:layout_width="@dimen/step_action_button_size"
+            <!-- Close button -->
+            <Button
+                android:id="@+id/btnClose"
+                android:layout_width="wrap_content"
                 android:layout_height="@dimen/step_action_button_size"
-                android:src="@drawable/ic_back"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/workout_back"
-                app:tint="@color/text_primary" />
-
-            <TextView
-                android:id="@+id/tvBackLabel"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/workout_back"
+                android:text="@string/workout_close"
                 android:textColor="@color/text_primary"
-                android:textSize="@dimen/text_step_type"
-                android:layout_marginStart="@dimen/editor_input_margin" />
+                android:backgroundTint="@color/editor_button_secondary"
+                android:textAllCaps="false"
+                android:minWidth="0dp"
+                android:paddingHorizontal="@dimen/editor_padding" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
 
             <!-- Add workout button -->
             <Button
@@ -51,8 +48,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="@dimen/step_action_button_size"
                 android:text="@string/workout_add_new"
-                android:textColor="@color/editor_button_primary"
-                android:background="?attr/selectableItemBackground"
+                android:textColor="@color/text_primary"
+                android:backgroundTint="@color/editor_button_primary"
                 android:textAllCaps="false"
                 android:minWidth="0dp"
                 android:paddingHorizontal="@dimen/editor_padding" />

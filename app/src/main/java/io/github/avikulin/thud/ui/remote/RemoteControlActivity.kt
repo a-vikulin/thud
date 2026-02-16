@@ -1,23 +1,22 @@
 package io.github.avikulin.thud.ui.remote
 
 import android.app.AlertDialog
-import android.accessibilityservice.AccessibilityServiceInfo
+import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothClass
+import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.Intent
-import android.hardware.input.InputManager
-import android.provider.Settings
-import android.view.accessibility.AccessibilityManager
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.text.Editable
-import android.text.TextWatcher
 import android.util.Log
-import android.view.InputDevice
 import android.view.View
+import androidx.core.content.ContextCompat
 import android.widget.Button
-import android.widget.EditText
-import android.widget.ImageButton
+import android.widget.CheckBox
+
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -25,7 +24,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.github.avikulin.thud.HUDService
 import io.github.avikulin.thud.R
-import io.github.avikulin.thud.RemoteControlAccessibilityService
 import io.github.avikulin.thud.domain.model.AndroidAction
 import io.github.avikulin.thud.domain.model.RemoteAction
 import io.github.avikulin.thud.service.RemoteControlBridge
@@ -57,16 +55,16 @@ class RemoteControlActivity : AppCompatActivity() {
     private lateinit var rvRemoteList: RecyclerView
     private lateinit var rvThudBindings: RecyclerView
     private lateinit var rvAndroidBindings: RecyclerView
-    private lateinit var etAlias: EditText
+    private lateinit var tvDeviceName: TextView
     private lateinit var btnDeleteRemote: Button
     private lateinit var btnToggleModeKey: Button
+    private lateinit var cbConsumeAllKeys: CheckBox
     private lateinit var bindingsHeader: View
     private lateinit var toggleModeRow: View
     private lateinit var columnsArea: View
     private lateinit var tvEmptyState: TextView
     private lateinit var tvNoSelection: TextView
     private lateinit var rightPane: View
-    private lateinit var accessibilityWarningBanner: View
 
     private val handler = Handler(Looper.getMainLooper())
     private var saveRunnable: Runnable? = null
@@ -81,20 +79,16 @@ class RemoteControlActivity : AppCompatActivity() {
         rvRemoteList = findViewById(R.id.rvRemoteList)
         rvThudBindings = findViewById(R.id.rvThudBindings)
         rvAndroidBindings = findViewById(R.id.rvAndroidBindings)
-        etAlias = findViewById(R.id.etAlias)
+        tvDeviceName = findViewById(R.id.tvDeviceName)
         btnDeleteRemote = findViewById(R.id.btnDeleteRemote)
         btnToggleModeKey = findViewById(R.id.btnToggleModeKey)
+        cbConsumeAllKeys = findViewById(R.id.cbConsumeAllKeys)
         bindingsHeader = findViewById(R.id.bindingsHeader)
         toggleModeRow = findViewById(R.id.toggleModeRow)
         columnsArea = findViewById(R.id.columnsArea)
         tvEmptyState = findViewById(R.id.tvEmptyState)
         tvNoSelection = findViewById(R.id.tvNoSelection)
         rightPane = findViewById(R.id.rightPane)
-        accessibilityWarningBanner = findViewById(R.id.accessibilityWarningBanner)
-
-        findViewById<Button>(R.id.btnEnableAccessibility).setOnClickListener {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-        }
 
         setupRemoteList()
         setupBindingAdapters()
@@ -108,7 +102,6 @@ class RemoteControlActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         HUDService.notifyActivityForeground(this)
-        updateAccessibilityWarning()
     }
 
     override fun onPause() {
@@ -123,21 +116,8 @@ class RemoteControlActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    private fun updateAccessibilityWarning() {
-        accessibilityWarningBanner.visibility =
-            if (isAccessibilityServiceEnabled()) View.GONE else View.VISIBLE
-    }
-
-    private fun isAccessibilityServiceEnabled(): Boolean {
-        val am = getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
-        val enabled = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
-        return enabled.any {
-            it.resolveInfo.serviceInfo.name == RemoteControlAccessibilityService::class.java.name
-        }
-    }
-
     private fun setupHeader() {
-        findViewById<ImageButton>(R.id.btnBack).setOnClickListener { finish() }
+        findViewById<Button>(R.id.btnClose).setOnClickListener { finish() }
 
         findViewById<Button>(R.id.btnAddRemote).setOnClickListener { showAddRemoteDialog() }
 
@@ -161,17 +141,12 @@ class RemoteControlActivity : AppCompatActivity() {
             }
         }
 
-        etAlias.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) {
-                if (selectedIndex in remoteConfigs.indices) {
-                    remoteConfigs[selectedIndex].alias = s?.toString() ?: ""
-                    remoteListAdapter.notifyItemChanged(selectedIndex)
-                    scheduleSave()
-                }
+        cbConsumeAllKeys.setOnCheckedChangeListener { _, isChecked ->
+            if (selectedIndex in remoteConfigs.indices) {
+                remoteConfigs[selectedIndex].consumeAllKeys = isChecked
+                scheduleSave()
             }
-        })
+        }
 
         btnToggleModeKey.setOnClickListener {
             showLearnDialogForToggleMode()
@@ -236,7 +211,8 @@ class RemoteControlActivity : AppCompatActivity() {
         tvNoSelection.visibility = View.GONE
 
         val config = remoteConfigs[selectedIndex]
-        etAlias.setText(config.alias)
+        tvDeviceName.text = config.alias.ifBlank { config.deviceName }
+        cbConsumeAllKeys.isChecked = config.consumeAllKeys
 
         // Toggle Mode key button
         val toggleBinding = config.bindings.find { it.action == RemoteAction.TOGGLE_MODE }
@@ -386,11 +362,17 @@ class RemoteControlActivity : AppCompatActivity() {
 
         dialog.show()
 
-        RemoteControlBridge.learnModeCallback = { keyCode, keyLabel, _ ->
-            handler.post {
-                detectedKeyCode = keyCode
-                detectedKeyLabel = keyLabel
-                dialog.setMessage(buildLearnMessage(currentKeyLabel, keyLabel))
+        val expectedDevice = if (selectedIndex in remoteConfigs.indices)
+            remoteConfigs[selectedIndex].deviceName else null
+
+        RemoteControlBridge.learnModeCallback = { keyCode, keyLabel, deviceName ->
+            // Only accept keys from the device being edited
+            if (expectedDevice != null && RemoteControlBridge.isDeviceMatch(deviceName, expectedDevice)) {
+                handler.post {
+                    detectedKeyCode = keyCode
+                    detectedKeyLabel = keyLabel
+                    dialog.setMessage(buildLearnMessage(currentKeyLabel, keyLabel))
+                }
             }
         }
 
@@ -479,30 +461,44 @@ class RemoteControlActivity : AppCompatActivity() {
 
     // ==================== Add Remote Dialog ====================
 
+    @android.annotation.SuppressLint("MissingPermission")
     private fun showAddRemoteDialog() {
-        val inputManager = getSystemService(Context.INPUT_SERVICE) as InputManager
-        val externalDevices = inputManager.inputDeviceIds.toList()
-            .mapNotNull { id -> InputDevice.getDevice(id) }
-            .filter { device ->
-                val sources = device.sources
-                val isKeyboard = (sources and InputDevice.SOURCE_KEYBOARD) != 0
-                val isExternal = !device.isVirtual && device.name.isNotBlank()
-                val alreadyConfigured = remoteConfigs.any { cfg -> cfg.deviceName == device.name }
-                isKeyboard && isExternal && !alreadyConfigured
-            }
+        // Use bonded Bluetooth devices instead of InputDevice list.
+        // InputDevice only shows currently-connected devices and includes internal
+        // hardware keyboards (treadmill buttons), which clutters the list.
+        // Bonded BT devices include paired remotes even when sleeping/disconnected.
+        val bluetoothAdapter = (getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+        val hasBtPermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.BLUETOOTH_CONNECT
+        ) == PackageManager.PERMISSION_GRANTED
 
-        if (externalDevices.isEmpty()) {
-            // No keyboard-type devices — go straight to auto-detect
+        val bondedDevices = if (bluetoothAdapter != null && hasBtPermission) {
+            bluetoothAdapter.bondedDevices
+                ?.filter { device ->
+                    val name = device.name
+                    if (name.isNullOrBlank()) return@filter false
+                    if (remoteConfigs.any { cfg -> cfg.deviceName == name }) return@filter false
+                    // Only show peripheral/input devices (keyboards, remotes, gamepads)
+                    val major = device.bluetoothClass?.majorDeviceClass
+                    major == BluetoothClass.Device.Major.PERIPHERAL
+                }
+                ?.sortedBy { it.name }
+                ?: emptyList()
+        } else {
+            emptyList()
+        }
+
+        if (bondedDevices.isEmpty()) {
             showAutoDetectDialog()
             return
         }
 
-        val deviceNames = externalDevices.map { device -> device.name }.toTypedArray()
+        val deviceNames = bondedDevices.map { it.name }.toTypedArray()
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.remote_add_title))
             .setItems(deviceNames) { _, which ->
-                val device = externalDevices[which]
-                addRemoteAndSelect(device.name, device.name)
+                val name = bondedDevices[which].name ?: return@setItems
+                addRemoteAndSelect(name, name)
             }
             .setNeutralButton(getString(R.string.remote_add_auto_detect)) { _, _ ->
                 showAutoDetectDialog()
@@ -605,7 +601,8 @@ class RemoteControlActivity : AppCompatActivity() {
                     ))
                 }
 
-                result.add(RemoteConfig(deviceName, alias, enabled, bindings, androidBindingsList))
+                val consumeAllKeys = remote.optBoolean("consumeAllKeys", false)
+                result.add(RemoteConfig(deviceName, alias, enabled, bindings, androidBindingsList, consumeAllKeys))
             }
 
             remoteConfigs = result
@@ -630,6 +627,7 @@ class RemoteControlActivity : AppCompatActivity() {
                 put("deviceName", config.deviceName)
                 put("alias", config.alias)
                 put("enabled", config.enabled)
+                put("consumeAllKeys", config.consumeAllKeys)
             }
             val bindingsArray = JSONArray()
             for (binding in config.bindings) {
@@ -670,9 +668,11 @@ class RemoteControlActivity : AppCompatActivity() {
         val thudResult = mutableMapOf<String, Map<Int, RemoteControlBridge.ResolvedBinding>>()
         val androidResult = mutableMapOf<String, Map<Int, AndroidAction>>()
         val deviceNames = mutableSetOf<String>()
+        val consumeAllNames = mutableSetOf<String>()
         for (config in remoteConfigs) {
             if (!config.enabled) continue
             deviceNames.add(config.deviceName)
+            if (config.consumeAllKeys) consumeAllNames.add(config.deviceName)
 
             val keyMap = mutableMapOf<Int, RemoteControlBridge.ResolvedBinding>()
             for (binding in config.bindings) {
@@ -695,6 +695,7 @@ class RemoteControlActivity : AppCompatActivity() {
         RemoteControlBridge.configuredDeviceNames = deviceNames
         RemoteControlBridge.bindings = thudResult
         RemoteControlBridge.androidBindings = androidResult
+        RemoteControlBridge.consumeAllDeviceNames = consumeAllNames
     }
 
     private fun scheduleSave() {

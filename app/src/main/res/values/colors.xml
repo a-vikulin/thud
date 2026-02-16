@@ -97,7 +97,6 @@
     <color name="step_rest">#8080A0</color>
     <color name="step_cooldown">#9370DB</color>
     <color name="hr_target_warning">#FF4444</color>
-    <color name="accessibility_warning_background">#663D1F00</color>
     <color name="progress_bar_background">#333355</color>
     <color name="progress_bar_fill">#00FF00</color>
     <color name="control_button_background">#44FFFFFF</color>
@@ -170,7 +169,21 @@
 
     <!-- ==================== Remote Control Button ==================== -->
 
-    <color name="remote_active">#44FFFFFF</color>
-    <color name="remote_inactive">#338888A8</color>
-    <color name="remote_blink">#6644FF44</color>
+    <!-- No permission state (dark red) -->
+    <color name="remote_no_permission">#44FF2222</color>
+    <color name="remote_no_permission_tint">#FFFF4444</color>
+
+    <!-- Mode 1: Take-over (dark green) -->
+    <color name="remote_mode1">#44228B22</color>
+    <color name="remote_mode1_blink">#6644FF44</color>
+    <color name="remote_mode1_tint">#FF44CC44</color>
+
+    <!-- Mode 2: Pass-through (dark blue) -->
+    <color name="remote_mode2">#442244AA</color>
+    <color name="remote_mode2_blink">#664488FF</color>
+    <color name="remote_mode2_tint">#FF4488FF</color>
+
+    <!-- Remote config column backgrounds (opaque, readable) -->
+    <color name="remote_mode1_column">#2A4A2A</color>
+    <color name="remote_mode2_column">#2A2A5A</color>
 </resources>

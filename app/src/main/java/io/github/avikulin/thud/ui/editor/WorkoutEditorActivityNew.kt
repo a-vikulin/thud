@@ -48,7 +48,7 @@ class WorkoutEditorActivityNew : AppCompatActivity() {
     private val viewModel: WorkoutEditorViewModel by viewModels()
 
     // Left pane views
-    private lateinit var btnBack: View
+    private lateinit var btnClose: Button
     private lateinit var etSearch: EditText
     private lateinit var rvWorkoutList: RecyclerView
     private lateinit var btnAddWorkout: Button
@@ -139,8 +139,7 @@ class WorkoutEditorActivityNew : AppCompatActivity() {
 
     private fun initViews() {
         // Left pane
-        btnBack = findViewById(R.id.btnBack)
-        findViewById<View>(R.id.tvBackLabel).setOnClickListener { navigateBack() }
+        btnClose = findViewById(R.id.btnClose)
         etSearch = findViewById(R.id.etSearch)
         rvWorkoutList = findViewById(R.id.rvWorkoutList)
         btnAddWorkout = findViewById(R.id.btnAddWorkout)
@@ -239,8 +238,8 @@ class WorkoutEditorActivityNew : AppCompatActivity() {
     }
 
     private fun setupListeners() {
-        // Back button
-        btnBack.setOnClickListener { navigateBack() }
+        // Close button
+        btnClose.setOnClickListener { finish() }
 
         // Search
         etSearch.addTextChangedListener {
@@ -457,15 +456,10 @@ class WorkoutEditorActivityNew : AppCompatActivity() {
         finish()
     }
 
-    private fun navigateBack() {
-        // Just finish - onPause will restore panels, onDestroy will clear saved state
-        finish()
-    }
-
     @Suppress("DEPRECATION")
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        navigateBack()
+        finish()
         super.onBackPressed()
     }
 

@@ -34,4 +34,30 @@ object RemoteControlBridge {
 
     /** Called when an android action fires (for HUD blink feedback only — execution is in AccessibilityService). */
     @Volatile var androidActionHandler: ((AndroidAction) -> Unit)? = null
+
+    /** Device names where ALL keys (even unbound) should be consumed, not passed to OS. */
+    @Volatile var consumeAllDeviceNames: Set<String> = emptySet()
+
+    /** Called when AccessibilityService connects (permission just granted). HUDService uses this to auto-return. */
+    @Volatile var onAccessibilityServiceConnected: (() -> Unit)? = null
+
+    /** Set by HUDService when user taps OK in the permission dialog. Cleared after grant is handled. */
+    @Volatile var awaitingAccessibilityGrant: Boolean = false
+
+    /**
+     * Check if an InputDevice name matches a configured device name.
+     * Android HID appends " Keyboard" / " Mouse" to the BT name,
+     * so we check exact match first, then prefix match.
+     */
+    fun isDeviceMatch(inputDeviceName: String, configuredName: String): Boolean {
+        return inputDeviceName == configuredName || inputDeviceName.startsWith(configuredName)
+    }
+
+    /**
+     * Resolve an InputDevice name to a configured device name, or null if no match.
+     */
+    fun resolveConfiguredDeviceName(inputDeviceName: String): String? {
+        if (inputDeviceName in configuredDeviceNames) return inputDeviceName
+        return configuredDeviceNames.firstOrNull { inputDeviceName.startsWith(it) }
+    }
 }

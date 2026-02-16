@@ -27,7 +27,7 @@ class RemoteControlManager(
 
     companion object {
         private const val TAG = "RemoteControlManager"
-        private const val DEFAULT_SPEED_INCREMENT = 0.5
+        private const val DEFAULT_SPEED_INCREMENT = 0.1
         private const val DEFAULT_INCLINE_INCREMENT = 0.5
     }
 
@@ -46,12 +46,21 @@ class RemoteControlManager(
     var remoteConfigs: MutableList<RemoteConfig> = mutableListOf()
         private set
 
+    /**
+     * Pending targets for speed/incline — used to accumulate rapid key presses
+     * without waiting for treadmill telemetry round-trip. Reset when state updates
+     * catch up (i.e., when not actively pressing keys).
+     */
+    private var pendingSpeedAdjusted: Double? = null
+    private var pendingInclineEffective: Double? = null
+
     data class RemoteConfig(
         var deviceName: String,
         var alias: String,
         var enabled: Boolean = true,
         var bindings: MutableList<ActionBinding> = mutableListOf(),
-        var androidBindings: MutableList<AndroidActionBinding> = mutableListOf()
+        var androidBindings: MutableList<AndroidActionBinding> = mutableListOf(),
+        var consumeAllKeys: Boolean = false
     )
 
     data class ActionBinding(
@@ -107,23 +116,34 @@ class RemoteControlManager(
     }
 
     private fun adjustSpeed(deltaKph: Double) {
-        val currentAdjusted = state.currentSpeedKph * state.paceCoefficient
+        val fromPending = pendingSpeedAdjusted != null
+        val currentAdjusted = pendingSpeedAdjusted
+            ?: (state.currentSpeedKph * state.paceCoefficient)
         val newAdjusted = (currentAdjusted + deltaKph)
             .coerceIn(state.minSpeedKph * state.paceCoefficient, state.maxSpeedKph * state.paceCoefficient)
+        pendingSpeedAdjusted = newAdjusted
+        Log.d(TAG, "adjustSpeed: delta=$deltaKph, from=${if (fromPending) "pending" else "state"}=$currentAdjusted, target=$newAdjusted")
         scope.launch(Dispatchers.IO) {
             telemetryManager.ensureTreadmillRunning()
             telemetryManager.setTreadmillSpeed(newAdjusted)
+            Log.d(TAG, "adjustSpeed: sent $newAdjusted, clearing pending")
+            pendingSpeedAdjusted = null
         }
     }
 
     private fun adjustIncline(deltaPct: Double) {
-        val currentEffective = state.currentInclinePercent
+        val fromPending = pendingInclineEffective != null
+        val currentEffective = pendingInclineEffective ?: state.currentInclinePercent
         val minEffective = state.minInclinePercent - state.inclineAdjustment
         val maxEffective = state.maxInclinePercent - state.inclineAdjustment
         val newEffective = (currentEffective + deltaPct).coerceIn(minEffective, maxEffective)
+        pendingInclineEffective = newEffective
+        Log.d(TAG, "adjustIncline: delta=$deltaPct, from=${if (fromPending) "pending" else "state"}=$currentEffective, target=$newEffective")
         scope.launch(Dispatchers.IO) {
             telemetryManager.ensureTreadmillRunning()
             telemetryManager.setTreadmillIncline(newEffective)
+            Log.d(TAG, "adjustIncline: sent $newEffective, clearing pending")
+            pendingInclineEffective = null
         }
     }
 
@@ -203,7 +223,8 @@ class RemoteControlManager(
                     ))
                 }
 
-                result.add(RemoteConfig(deviceName, alias, enabled, bindings, androidBindingsList))
+                val consumeAllKeys = remote.optBoolean("consumeAllKeys", false)
+                result.add(RemoteConfig(deviceName, alias, enabled, bindings, androidBindingsList, consumeAllKeys))
             }
 
             remoteConfigs = result
@@ -220,6 +241,7 @@ class RemoteControlManager(
                 put("deviceName", config.deviceName)
                 put("alias", config.alias)
                 put("enabled", config.enabled)
+                put("consumeAllKeys", config.consumeAllKeys)
             }
             val bindingsArray = JSONArray()
             for (binding in config.bindings) {
@@ -263,10 +285,12 @@ class RemoteControlManager(
         val thudResult = mutableMapOf<String, Map<Int, RemoteControlBridge.ResolvedBinding>>()
         val androidResult = mutableMapOf<String, Map<Int, AndroidAction>>()
         val deviceNames = mutableSetOf<String>()
+        val consumeAllNames = mutableSetOf<String>()
 
         for (config in remoteConfigs) {
             if (!config.enabled) continue
             deviceNames.add(config.deviceName)
+            if (config.consumeAllKeys) consumeAllNames.add(config.deviceName)
 
             val keyMap = mutableMapOf<Int, RemoteControlBridge.ResolvedBinding>()
             for (binding in config.bindings) {
@@ -290,6 +314,7 @@ class RemoteControlManager(
         RemoteControlBridge.configuredDeviceNames = deviceNames
         RemoteControlBridge.bindings = thudResult
         RemoteControlBridge.androidBindings = androidResult
+        RemoteControlBridge.consumeAllDeviceNames = consumeAllNames
     }
 
     fun addRemote(deviceName: String, alias: String = deviceName): RemoteConfig {
