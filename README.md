@@ -81,13 +81,11 @@ blown away by Claude's capabilities!
 - Remotes pair with Android as HID keyboards — no special hardware required
 - Configurable key bindings per remote with learn-mode key detection
 - Adjustable increment values for speed (0.1–2.0 kph) and incline (0.5–5.0%)
-- Long-press auto-repeat for continuous adjustments
 - **Two modes** with a toggle button on the remote:
   - **Mode 1 (Take-over):** Remote keys control tHUD (speed, incline, belt, workout steps)
   - **Mode 2 (Pass-through):** Remote keys trigger Android actions (media play/pause, next/prev track, volume, mute, Back/Home/Recent Apps)
 - Fallback: keys bound in only one mode work in both; keys bound in both modes follow mode priority
 - Same physical key can be assigned different actions per mode
-- Two-column configuration UI: tHUD actions (left) and Android actions (right) with universal Toggle Mode above
 - HUD button with mode indicator and blink feedback on key press
 - Requires enabling tHUD Accessibility Service in Android Settings
 
@@ -227,30 +225,6 @@ Verify that auto-adjustment parameters are sensible
 1. For a free run either use physical Start button or touch Pace HUD box and select desired pace/speed
 2. tHUD starts the run and sets incline to effective 0%
 
-### Setting Up a BLE Remote
-
-#### Choosing a Remote
-
-> **Warning:** Most cheap tick-tock scrollers and camera shutter remotes found on Amazon/AliExpress do **not** work as BLE keyboards. They typically use a proprietary Bluetooth profile or iOS-only media controls that Android cannot intercept as key events. tHUD requires a remote that pairs with Android as an HID keyboard device.
-
-**Recommended: [8BitDo Micro](https://www.8bitdo.com/micro/)** — a compact Bluetooth gamepad that works perfectly with tHUD. It pairs as an HID keyboard, has enough buttons for all essential actions across both modes, and is small enough to hold comfortably while running.
-
-![8BitDo Micro](screenshots/8BitDo-Micro.jpg)
-
-#### Connecting Your Remote
-
-1. **Pair the remote** with your treadmill via Android Settings → Bluetooth → Pair new device
-2. **Restore the virtual keyboard** (important!): When a Bluetooth HID device is paired, Android hides the on-screen keyboard system-wide. To fix this:
-   - Go to **Settings → System → Languages & input → Physical keyboard**
-   - Enable **"Show on-screen keyboard"**
-   - Without this, you won't be able to type in Netflix search, browser, or any other app
-3. **Enable the Accessibility Service**: Android Settings → Accessibility → tHUD Remote Control
-4. **Configure bindings in tHUD**: Tap the remote (gamepad) icon in the HUD to open the config activity
-5. Tap "+ Add" and select your remote from the list (or use Auto-detect)
-6. For each action, tap the key button and press the corresponding button on your remote
-7. Adjust increment values with the spinners for speed/incline actions
-8. Use the Toggle Mode action to switch between take-over and pass-through modes while running
-
 ### During a Run
 - Use physical Speed +/- buttons or a configured BLE remote to adjust speed, or use Pace box in the HUD to open popup menu with a list of paces
 - Use physical Incline +/- buttons or a configured BLE remote to adjust incline, or use Incline box in the HUD to open popup menu with a list of inclines
@@ -265,6 +239,29 @@ Verify that auto-adjustment parameters are sensible
 2. When paused, press the physical Stop button again to end the run
 3. FIT file exports automatically
 4. Find your file in Downloads/tHUD/
+
+### Setting Up a BLE Remote
+
+#### Choosing a Remote
+
+> **Warning:** Most cheap TikTok scrollers and camera shutter remotes found on Amazon/AliExpress do **not** work as BLE keyboards. They typically send swipe actions that tHUD cannot intercept as key events. tHUD requires a remote that pairs with Android as an HID keyboard device.
+
+**Recommended: [8BitDo Micro](https://www.8bitdo.com/micro/)** — a compact Bluetooth gamepad that works perfectly with tHUD. It pairs as an HID keyboard, has enough buttons for all essential actions across both modes, and is small enough to hold comfortably while running.
+
+![8BitDo Micro](screenshots/8BitDo-Micro.jpg)
+
+#### Connecting Your Remote
+
+1. **Pair the remote** with your treadmill via Android Settings → Bluetooth → Pair new device
+2. **Restore the virtual keyboard** (important!): When a Bluetooth HID device is paired, Android hides the on-screen keyboard system-wide. To fix this:
+   - Go to **Settings → System → Languages & input → Physical keyboard**
+   - Enable **"Show on-screen keyboard"**
+   - Without this, you won't be able to type in Netflix search, browser, or any other app
+3. **Enable the Accessibility Service**: Android Settings → Accessibility → tHUD
+4. **Configure bindings in tHUD**: Tap the remote (gamepad) icon in the HUD to open the config activity
+5. Tap "+ Add" and select your remote from the list (or use Auto-detect)
+6. For each action, tap the key button and press the corresponding button on your remote
+7. Adjust increment values with the spinners for speed/incline actions
 
 ## Privacy
 
