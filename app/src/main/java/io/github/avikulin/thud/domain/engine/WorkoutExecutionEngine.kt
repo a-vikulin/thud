@@ -403,18 +403,10 @@ class WorkoutExecutionEngine(
             return
         }
 
-        // If in auto-cooldown, exit cooldown mode and remove the cooldown step
+        // If in auto-cooldown, restart the cooldown step (no going back to main)
         if (inAutoCooldown) {
-            Log.d(TAG, "Exiting auto-cooldown, returning to last planned step")
-            inAutoCooldown = false
-            // Remove the added cooldown step from executionSteps
-            if (executionSteps.isNotEmpty() && executionSteps.last().stepId == -1L) {
-                executionSteps.removeAt(executionSteps.size - 1)
-            }
-            // Go to last planned step
-            if (executionSteps.isNotEmpty()) {
-                startStep(executionSteps.size - 1)
-            }
+            Log.d(TAG, "In auto-cooldown, restarting cooldown step")
+            startStep(currentStepIndex)
             return
         }
 
@@ -425,8 +417,22 @@ class WorkoutExecutionEngine(
             return
         }
 
+        val targetIndex = currentStepIndex - 1
+
+        // Phase boundary check: don't cross backward into a previous phase
+        if (isMainStep(currentStepIndex) && isWarmupStep(targetIndex)) {
+            Log.d(TAG, "At phase boundary (main→warmup), restarting first main step")
+            startStep(warmupStepCount)
+            return
+        }
+        if (isCooldownStep(currentStepIndex) && isMainStep(targetIndex)) {
+            Log.d(TAG, "At phase boundary (cooldown→main), restarting first cooldown step")
+            startStep(warmupStepCount + mainStepCount)
+            return
+        }
+
         Log.d(TAG, "Skipping to previous step")
-        startStep(currentStepIndex - 1)
+        startStep(targetIndex)
     }
 
     /**
