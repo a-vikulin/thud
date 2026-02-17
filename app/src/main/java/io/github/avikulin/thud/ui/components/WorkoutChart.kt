@@ -1624,7 +1624,7 @@ class WorkoutChart @JvmOverloads constructor(
     private fun drawPhaseBackgrounds(canvas: Canvas) {
         if (plannedSegments.isEmpty()) return
 
-        for (segment in plannedSegments) {
+        for ((index, segment) in plannedSegments.withIndex()) {
             val tintColor = when (segment.phase) {
                 WorkoutPhase.WARMUP -> phaseWarmupTintColor
                 WorkoutPhase.COOLDOWN -> phaseCooldownTintColor
@@ -1632,7 +1632,9 @@ class WorkoutChart @JvmOverloads constructor(
             }
             phaseBackgroundPaint.color = tintColor
             val x1 = timeToX(segment.startTimeMs).coerceIn(chartLeft, chartRight)
-            val x2 = timeToX(segment.endTimeMs).coerceIn(chartLeft, chartRight)
+            // Extend last segment to chartRight (matching x-axis line behavior)
+            val x2 = if (index == plannedSegments.lastIndex) chartRight
+                     else timeToX(segment.endTimeMs).coerceIn(chartLeft, chartRight)
             if (x2 > x1) {
                 canvas.drawRect(x1, chartTop, x2, chartBottom, phaseBackgroundPaint)
             }
