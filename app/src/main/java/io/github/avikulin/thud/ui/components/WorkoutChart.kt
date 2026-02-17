@@ -135,8 +135,18 @@ class WorkoutChart @JvmOverloads constructor(
     private var targetHrMinBpm = HR_DEFAULT_MIN_BPM
     private var targetHrMaxBpm = calculateInitialHrMax()
 
-    // Full scale mode flag (shows all data vs smart auto-fit)
-    private var isFullScaleMode = false
+    /** Chart vertical scaling mode. */
+    enum class ChartZoomMode {
+        /** Y-axis fits planned segments + last N minutes of data */
+        TIMEFRAME,
+        /** Y-axis fits only main phase planned segments + recent data */
+        MAIN_PHASE,
+        /** Y-axis fits ALL data for entire run */
+        FULL
+    }
+
+    private var zoomMode = ChartZoomMode.TIMEFRAME
+    private var zoomTimeframeMinutes = 3
 
     // Chart area bounds (excluding axis labels)
     private var chartLeft = 0f
@@ -529,10 +539,10 @@ class WorkoutChart @JvmOverloads constructor(
             val timeRangeChanged = checkAndExpandTimeRange(maxMs)
 
             // Calculate live scales based on mode (sets target values)
-            if (isFullScaleMode) {
-                calculateLiveFullScale()
-            } else {
-                calculateLiveSmartScale()
+            when (zoomMode) {
+                ChartZoomMode.TIMEFRAME -> calculateLiveSmartScale()
+                ChartZoomMode.MAIN_PHASE -> calculateLiveMainPhaseScale()
+                ChartZoomMode.FULL -> calculateLiveFullScale()
             }
 
             // Check if animated values differ from targets (animation needed)
@@ -701,18 +711,18 @@ class WorkoutChart @JvmOverloads constructor(
     }
 
     /**
-     * Calculate smart auto-fit scales for live chart.
-     * Shows: workout structure + last 3 minutes of live data + zone boundaries.
+     * Calculate auto-fit scales using the given segment filter for workout structure bounds.
+     * Shared by TIMEFRAME mode (all segments) and MAIN_PHASE mode (main-only segments).
      */
-    private fun calculateLiveSmartScale() {
-        // Get last 3 minutes of data
-        val threeMinMs = 180_000L
+    private fun calculateLiveScale(segmentFilter: (PlannedSegment) -> Boolean) {
+        val windowMs = zoomTimeframeMinutes * 60_000L
         val currentTimeMs = dataPoints.lastOrNull()?.elapsedMs ?: 0L
-        val recentData = dataPoints.filter { it.elapsedMs >= currentTimeMs - threeMinMs }
+        val recentData = dataPoints.filter { it.elapsedMs >= currentTimeMs - windowMs }
+        val segments = plannedSegments.filter(segmentFilter)
 
-        // Speed scale: workout structure + recent data
-        val workoutMinSpeed = plannedSegments.minOfOrNull { it.paceKph } ?: SPEED_INITIAL_MAX_KPH
-        val workoutMaxSpeed = plannedSegments.maxOfOrNull { it.paceKph } ?: SPEED_INITIAL_MAX_KPH
+        // Speed scale: filtered workout structure + recent data
+        val workoutMinSpeed = segments.minOfOrNull { it.paceKph } ?: SPEED_INITIAL_MAX_KPH
+        val workoutMaxSpeed = segments.maxOfOrNull { it.paceKph } ?: SPEED_INITIAL_MAX_KPH
         val recentMinSpeed = recentData.minOfOrNull { it.speedKph } ?: workoutMinSpeed
         val recentMaxSpeed = recentData.maxOfOrNull { it.speedKph } ?: workoutMaxSpeed
 
@@ -722,9 +732,9 @@ class WorkoutChart @JvmOverloads constructor(
             targetSpeedMaxKph = targetSpeedMinKph + 4.0
         }
 
-        // Incline scale: workout structure + recent data
-        val workoutMinIncline = plannedSegments.minOfOrNull { it.inclinePercent } ?: INCLINE_INITIAL_MIN_PERCENT
-        val workoutMaxIncline = plannedSegments.maxOfOrNull { it.inclinePercent } ?: INCLINE_INITIAL_MAX_PERCENT
+        // Incline scale: filtered workout structure + recent data
+        val workoutMinIncline = segments.minOfOrNull { it.inclinePercent } ?: INCLINE_INITIAL_MIN_PERCENT
+        val workoutMaxIncline = segments.maxOfOrNull { it.inclinePercent } ?: INCLINE_INITIAL_MAX_PERCENT
         val recentMinIncline = recentData.minOfOrNull { it.inclinePercent } ?: workoutMinIncline
         val recentMaxIncline = recentData.maxOfOrNull { it.inclinePercent } ?: workoutMaxIncline
 
@@ -734,12 +744,11 @@ class WorkoutChart @JvmOverloads constructor(
             targetInclineMaxPercent = targetInclineMinPercent + 3.0
         }
 
-        // HR scale: ALWAYS include zone boundaries + workout HR targets + recent HR data + recent Power data
-        // Power is mapped to HR scale via: normalizedBpm = (watts / ftpWatts) * lthrBpm
+        // HR scale: zone boundaries + filtered workout HR targets + recent HR/Power data
         val zoneMin = hrZone2Start.toDouble()
         val zoneMax = hrZone5Start.toDouble()
-        val workoutHrMin = plannedSegments.mapNotNull { it.getHrTargetMinBpm(lthrBpm) }.minOrNull()?.toDouble() ?: zoneMin
-        val workoutHrMax = plannedSegments.mapNotNull { it.getHrTargetMaxBpm(lthrBpm) }.maxOrNull()?.toDouble() ?: zoneMax
+        val workoutHrMin = segments.mapNotNull { it.getHrTargetMinBpm(lthrBpm) }.minOrNull()?.toDouble() ?: zoneMin
+        val workoutHrMax = segments.mapNotNull { it.getHrTargetMaxBpm(lthrBpm) }.maxOrNull()?.toDouble() ?: zoneMax
         val recentHrMin = recentData.minOfOrNull { it.heartRateBpm } ?: zoneMin
         val recentHrMax = recentData.maxOfOrNull { it.heartRateBpm } ?: zoneMax
 
@@ -758,6 +767,12 @@ class WorkoutChart @JvmOverloads constructor(
             targetHrMaxBpm = targetHrMinBpm + 40.0
         }
     }
+
+    /** TIMEFRAME mode: Y-axis fits all planned segments + last N minutes of data. */
+    private fun calculateLiveSmartScale() = calculateLiveScale { true }
+
+    /** MAIN_PHASE mode: Y-axis fits only main phase segments + last N minutes of data. */
+    private fun calculateLiveMainPhaseScale() = calculateLiveScale { it.phase == WorkoutPhase.MAIN }
 
     /**
      * Calculate full scale to show ALL data for the entire run.
@@ -868,20 +883,42 @@ class WorkoutChart @JvmOverloads constructor(
     }
 
     /**
-     * Set full scale mode (shows all data vs smart auto-fit).
-     * @param fullScale true for full scale, false for smart auto-fit
+     * Set chart vertical scaling mode.
      */
-    fun setFullScaleMode(fullScale: Boolean) {
-        isFullScaleMode = fullScale
-        // Recalculate scales based on new mode
+    fun setZoomMode(mode: ChartZoomMode) {
+        zoomMode = mode
         if (dataPoints.isNotEmpty()) {
-            if (isFullScaleMode) {
-                calculateLiveFullScale()
-            } else {
-                calculateLiveSmartScale()
+            when (zoomMode) {
+                ChartZoomMode.TIMEFRAME -> calculateLiveSmartScale()
+                ChartZoomMode.MAIN_PHASE -> calculateLiveMainPhaseScale()
+                ChartZoomMode.FULL -> calculateLiveFullScale()
             }
         }
         invalidate()
+    }
+
+    /**
+     * Cycle to the next zoom mode and return it.
+     */
+    fun cycleZoomMode(): ChartZoomMode {
+        val next = when (zoomMode) {
+            ChartZoomMode.TIMEFRAME -> ChartZoomMode.MAIN_PHASE
+            ChartZoomMode.MAIN_PHASE -> ChartZoomMode.FULL
+            ChartZoomMode.FULL -> ChartZoomMode.TIMEFRAME
+        }
+        setZoomMode(next)
+        return next
+    }
+
+    /**
+     * Set the timeframe window for TIMEFRAME zoom mode (minutes).
+     */
+    fun setZoomTimeframeMinutes(minutes: Int) {
+        zoomTimeframeMinutes = minutes.coerceIn(1, 60)
+        if (zoomMode == ChartZoomMode.TIMEFRAME && dataPoints.isNotEmpty()) {
+            calculateLiveSmartScale()
+            invalidate()
+        }
     }
 
     /**

@@ -2194,6 +2194,7 @@ class HUDService : Service(),
         chartManager.updateHRZones()
         chartManager.updatePowerZones()
         chartManager.updateThresholds()
+        chartManager.updateZoomTimeframe(state.chartZoomTimeframeMinutes)
         updateRecorderUserProfile()
 
         // Restart FTMS servers to apply new settings (device names, control permissions)

@@ -14,6 +14,9 @@
     <string name="settings_tab_auto_adjust">Auto-Adjust</string>
     <string name="settings_tab_fit_export">FIT Export</string>
     <string name="settings_tab_ftms">FTMS</string>
+    <string name="settings_tab_chart">Chart</string>
+    <string name="settings_chart_zoom_timeframe">Zoom window</string>
+    <string name="settings_chart_zoom_timeframe_suffix">\u0027</string>
 
     <!-- FIT Export Tab -->
     <string name="fit_export_description">Configure device identity. IMPORTANT: Serial must differ from your Garmin watch for Training Load sync. Manufacturer 1=Garmin (Strava), 89=Tacx (Stryd).</string>

@@ -35,7 +35,7 @@ class ChartManager(
         private const val PREF_SHOW_INCLINE = "chart_show_incline"
         private const val PREF_SHOW_HR = "chart_show_hr"
         private const val PREF_SHOW_POWER = "chart_show_power"
-        private const val PREF_SHOW_FULL_SCALE = "chart_show_full_scale"
+        private const val PREF_CHART_ZOOM_MODE = "chart_zoom_mode"
     }
 
     private val prefs: SharedPreferences = service.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -66,7 +66,7 @@ class ChartManager(
     private var showIncline = true
     private var showHr = true
     private var showPower = true
-    private var showFullScale = false
+    private var zoomMode = WorkoutChart.ChartZoomMode.TIMEFRAME
 
     // Cached toggle button colors (static + per-series)
     private val colorToggleActiveStroke = ContextCompat.getColor(service, R.color.chart_toggle_active_stroke)
@@ -187,11 +187,11 @@ class ChartManager(
         toggleContainer.addView(togglePowerBtn)
 
         // Full scale: vertical double-arrow (fit all data vs smart auto-fit)
-        toggleFullScaleBtn = createToggleButton(context, "⇕", R.color.chart_fit, R.color.chart_fit_dim, buttonHeight, showFullScale) {
-            showFullScale = !showFullScale
+        toggleFullScaleBtn = createToggleButton(context, zoomModeSymbol(zoomMode), R.color.chart_fit, R.color.chart_fit_dim, buttonHeight, zoomMode != WorkoutChart.ChartZoomMode.TIMEFRAME) {
+            zoomMode = chartView?.cycleZoomMode() ?: zoomMode
             saveVisibilityPreferences()
-            chartView?.setFullScaleMode(showFullScale)
-            updateToggleButtonState(toggleFullScaleBtn!!, showFullScale, R.color.chart_fit, R.color.chart_fit_dim)
+            toggleFullScaleBtn?.text = zoomModeSymbol(zoomMode)
+            updateToggleButtonState(toggleFullScaleBtn!!, zoomMode != WorkoutChart.ChartZoomMode.TIMEFRAME, R.color.chart_fit, R.color.chart_fit_dim)
         }
         toggleContainer.addView(toggleFullScaleBtn)
 
@@ -212,7 +212,8 @@ class ChartManager(
                 powerZone5Start = state.powerZone5Start
                 // hrMinBpm uses default (60 BPM) for live chart - needs wide range
             ))
-            setFullScaleMode(showFullScale)
+            setZoomMode(zoomMode)
+            setZoomTimeframeMinutes(state.chartZoomTimeframeMinutes)
         }.also { chartView = it }
 
         val chartParams = LinearLayout.LayoutParams(
@@ -299,7 +300,8 @@ class ChartManager(
             showInclineLine = showIncline
             showHrLine = showHr
             showPowerLine = showPower
-            setFullScaleMode(showFullScale)
+            setZoomMode(zoomMode)
+            setZoomTimeframeMinutes(state.chartZoomTimeframeMinutes)
             invalidate()
         }
     }
@@ -312,7 +314,8 @@ class ChartManager(
         showIncline = prefs.getBoolean(PREF_SHOW_INCLINE, true)
         showHr = prefs.getBoolean(PREF_SHOW_HR, true)
         showPower = prefs.getBoolean(PREF_SHOW_POWER, true)
-        showFullScale = prefs.getBoolean(PREF_SHOW_FULL_SCALE, false)
+        val zoomModeOrdinal = prefs.getInt(PREF_CHART_ZOOM_MODE, WorkoutChart.ChartZoomMode.TIMEFRAME.ordinal)
+        zoomMode = WorkoutChart.ChartZoomMode.entries.getOrElse(zoomModeOrdinal) { WorkoutChart.ChartZoomMode.TIMEFRAME }
     }
 
     /**
@@ -324,8 +327,21 @@ class ChartManager(
             .putBoolean(PREF_SHOW_INCLINE, showIncline)
             .putBoolean(PREF_SHOW_HR, showHr)
             .putBoolean(PREF_SHOW_POWER, showPower)
-            .putBoolean(PREF_SHOW_FULL_SCALE, showFullScale)
+            .putInt(PREF_CHART_ZOOM_MODE, zoomMode.ordinal)
             .apply()
+    }
+
+    private fun zoomModeSymbol(mode: WorkoutChart.ChartZoomMode): String = when (mode) {
+        WorkoutChart.ChartZoomMode.TIMEFRAME -> "≋"
+        WorkoutChart.ChartZoomMode.MAIN_PHASE -> "◆"
+        WorkoutChart.ChartZoomMode.FULL -> "⇕"
+    }
+
+    /**
+     * Update the zoom timeframe from settings.
+     */
+    fun updateZoomTimeframe(minutes: Int) {
+        chartView?.setZoomTimeframeMinutes(minutes)
     }
 
     /**

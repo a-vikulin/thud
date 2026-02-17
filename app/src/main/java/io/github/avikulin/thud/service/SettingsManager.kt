@@ -118,6 +118,9 @@ class SettingsManager(
         const val PREF_FTMS_BLE_DEVICE_NAME = "ftms_ble_device_name"
         const val PREF_FTMS_DIRCON_DEVICE_NAME = "ftms_dircon_device_name"
 
+        // Chart settings
+        const val PREF_CHART_ZOOM_TIMEFRAME_MINUTES = "chart_zoom_timeframe_minutes"
+
         // Remote control settings
         const val PREF_REMOTE_BINDINGS = "remote_bindings"
 
@@ -134,6 +137,9 @@ class SettingsManager(
         const val DEFAULT_USER_IS_MALE = true
         const val DEFAULT_USER_HR_REST = 60
         const val DEFAULT_USER_FTP_WATTS = 250 // Running FTP in watts
+
+        // Chart defaults
+        const val DEFAULT_CHART_ZOOM_TIMEFRAME_MINUTES = 3
 
         // Foot pod defaults
         const val DEFAULT_FOOT_POD_METRIC = "cadence"  // cadence, power, gct, vo, stryd_pace
@@ -278,6 +284,10 @@ class SettingsManager(
     private var editFitDeviceSerial: EditText? = null
     private var editFitSoftwareVersion: EditText? = null
 
+    // Chart tab fields
+    private var chartContent: View? = null
+    private var spinnerZoomTimeframe: TouchSpinner? = null
+
     // FTMS tab fields
     private var checkFtmsBleRead: CheckBox? = null
     private var checkFtmsBleControl: CheckBox? = null
@@ -357,6 +367,9 @@ class SettingsManager(
 
         // Garmin Connect upload
         state.garminAutoUploadEnabled = prefs.getBoolean(PREF_GARMIN_AUTO_UPLOAD, false)
+
+        // Chart settings
+        state.chartZoomTimeframeMinutes = prefs.getInt(PREF_CHART_ZOOM_TIMEFRAME_MINUTES, DEFAULT_CHART_ZOOM_TIMEFRAME_MINUTES)
 
         // FTMS Server settings (all disabled by default)
         state.ftmsBleReadEnabled = prefs.getBoolean(PREF_FTMS_BLE_READ_ENABLED, false)
@@ -456,7 +469,8 @@ class SettingsManager(
             service.getString(R.string.settings_tab_zones),
             service.getString(R.string.settings_tab_auto_adjust),
             service.getString(R.string.settings_tab_fit_export),
-            service.getString(R.string.settings_tab_ftms)
+            service.getString(R.string.settings_tab_ftms),
+            service.getString(R.string.settings_tab_chart)
         )
 
         tabNames.forEachIndexed { index, name ->
@@ -493,12 +507,14 @@ class SettingsManager(
         autoAdjustContent = createAutoAdjustContent()
         fitExportContent = createFitExportContent()
         ftmsContent = createFtmsContent()
+        chartContent = createChartContent()
 
         contentContainer.addView(dynamicsContent)
         contentContainer.addView(zonesContent)
         contentContainer.addView(autoAdjustContent)
         contentContainer.addView(fitExportContent)
         contentContainer.addView(ftmsContent)
+        contentContainer.addView(chartContent)
 
         container.addView(contentContainer)
 
@@ -562,6 +578,7 @@ class SettingsManager(
         autoAdjustContent?.visibility = if (index == 2) View.VISIBLE else View.GONE
         fitExportContent?.visibility = if (index == 3) View.VISIBLE else View.GONE
         ftmsContent?.visibility = if (index == 4) View.VISIBLE else View.GONE
+        chartContent?.visibility = if (index == 5) View.VISIBLE else View.GONE
     }
 
     /**
@@ -1339,6 +1356,57 @@ class SettingsManager(
     }
 
     /**
+     * Create the Chart tab content.
+     * Contains zoom timeframe spinner.
+     */
+    private fun createChartContent(): View {
+        val textColor = ContextCompat.getColor(service, R.color.text_primary)
+        val rowSpacing = service.resources.getDimensionPixelSize(R.dimen.settings_row_spacing)
+        val labelWidth = service.resources.getDimensionPixelSize(R.dimen.settings_label_width)
+        val spinnerWidth = service.resources.getDimensionPixelSize(R.dimen.settings_spinner_width)
+
+        fun createSettingsRow(labelText: String, control: View): LinearLayout {
+            return LinearLayout(service).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = rowSpacing
+                }
+
+                val label = TextView(service).apply {
+                    text = labelText
+                    setTextColor(textColor)
+                    layoutParams = LinearLayout.LayoutParams(labelWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
+                }
+                addView(label)
+                addView(control)
+            }
+        }
+
+        return LinearLayout(service).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+
+            spinnerZoomTimeframe = TouchSpinner(service).apply {
+                minValue = 1.0
+                maxValue = 60.0
+                step = 1.0
+                format = TouchSpinner.Format.INTEGER
+                suffix = service.getString(R.string.settings_chart_zoom_timeframe_suffix)
+                value = state.chartZoomTimeframeMinutes.toDouble()
+                layoutParams = LinearLayout.LayoutParams(spinnerWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
+            }
+            addView(createSettingsRow(
+                service.getString(R.string.settings_chart_zoom_timeframe),
+                spinnerZoomTimeframe!!
+            ))
+        }
+    }
+
+    /**
      * Create the FTMS tab content.
      * Contains checkboxes for BLE/DirCon read/control and device name fields.
      */
@@ -1614,6 +1682,9 @@ class SettingsManager(
         editFitDeviceSerial?.text?.toString()?.toLongOrNull()?.let { state.fitDeviceSerial = it }
         editFitSoftwareVersion?.text?.toString()?.toIntOrNull()?.let { state.fitSoftwareVersion = it }
 
+        // Save chart settings from spinner
+        spinnerZoomTimeframe?.let { state.chartZoomTimeframeMinutes = it.value.toInt() }
+
         // Save FTMS settings from checkboxes and text fields
         state.ftmsBleReadEnabled = checkFtmsBleRead?.isChecked ?: false
         state.ftmsBleControlEnabled = checkFtmsBleControl?.isChecked ?: false
@@ -1680,6 +1751,9 @@ class SettingsManager(
             // Garmin Connect upload
             putBoolean(PREF_GARMIN_AUTO_UPLOAD, state.garminAutoUploadEnabled)
 
+            // Chart settings
+            putInt(PREF_CHART_ZOOM_TIMEFRAME_MINUTES, state.chartZoomTimeframeMinutes)
+
             // FTMS Server settings
             putBoolean(PREF_FTMS_BLE_READ_ENABLED, state.ftmsBleReadEnabled)
             putBoolean(PREF_FTMS_BLE_CONTROL_ENABLED, state.ftmsBleControlEnabled)
@@ -1726,6 +1800,7 @@ class SettingsManager(
         autoAdjustContent = null
         fitExportContent = null
         ftmsContent = null
+        chartContent = null
         tabButtons.clear()
 
         // Clean up dynamics tab controls
@@ -1773,6 +1848,9 @@ class SettingsManager(
         editFitSoftwareVersion = null
         checkGarminAutoUpload = null
         btnGarminLogin = null
+
+        // Clean up Chart tab controls
+        spinnerZoomTimeframe = null
 
         // Clean up FTMS tab controls
         checkFtmsBleRead = null

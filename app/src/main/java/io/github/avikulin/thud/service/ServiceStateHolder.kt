@@ -143,6 +143,9 @@ class ServiceStateHolder {
     // ==================== Garmin Connect Upload ====================
     @Volatile var garminAutoUploadEnabled = false
 
+    // ==================== Chart Settings ====================
+    @Volatile var chartZoomTimeframeMinutes = 3  // Default 3 minutes for TIMEFRAME zoom mode
+
     // ==================== FTMS Server Settings ====================
     // Control BLE and DirCon (WiFi) FTMS server behavior
     @Volatile var ftmsBleReadEnabled = false           // BLE: broadcast treadmill data
