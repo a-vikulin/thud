@@ -150,13 +150,18 @@ class ChartManager(
         val availableHeight = chartHeight - (marginPerButton * 5)
         val buttonHeight = availableHeight / 5
 
-        // Speed: timer/gauge symbol
+        val baseTextSizePx = context.resources.getDimension(R.dimen.chart_toggle_button_text_size)
+        val largeTextSizePx = baseTextSizePx * 1.8f
+
+        // Speed: timer/gauge symbol (enlarged to match HR/incline visual size)
         toggleSpeedBtn = createToggleButton(context, "⏱", R.color.chart_speed, R.color.chart_speed_dim, buttonHeight, showSpeed) {
             showSpeed = !showSpeed
             saveVisibilityPreferences()
             applyVisibilityToChart()
             updateToggleButtonState(toggleSpeedBtn!!, showSpeed, R.color.chart_speed, R.color.chart_speed_dim)
         }
+        toggleSpeedBtn!!.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, largeTextSizePx)
+        toggleSpeedBtn!!.setPadding(0, 0, 0, (largeTextSizePx * 0.1f).toInt())
         toggleContainer.addView(toggleSpeedBtn)
 
         // Incline: mountain/slope symbol
@@ -177,22 +182,26 @@ class ChartManager(
         }
         toggleContainer.addView(toggleHrBtn)
 
-        // Power: lightning bolt symbol
+        // Power: lightning bolt symbol (enlarged to match HR/incline visual size)
         togglePowerBtn = createToggleButton(context, "ϟ", R.color.chart_power, R.color.chart_power_dim, buttonHeight, showPower) {
             showPower = !showPower
             saveVisibilityPreferences()
             applyVisibilityToChart()
             updateToggleButtonState(togglePowerBtn!!, showPower, R.color.chart_power, R.color.chart_power_dim)
         }
+        togglePowerBtn!!.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, largeTextSizePx)
+        togglePowerBtn!!.setPadding(0, 0, 0, (largeTextSizePx * 0.1f).toInt())
         toggleContainer.addView(togglePowerBtn)
 
-        // Full scale: vertical double-arrow (fit all data vs smart auto-fit)
-        toggleFullScaleBtn = createToggleButton(context, zoomModeSymbol(zoomMode), R.color.chart_fit, R.color.chart_fit_dim, buttonHeight, zoomMode != WorkoutChart.ChartZoomMode.TIMEFRAME) {
+        // Zoom mode: cycles TIMEFRAME(≋) → MAIN_PHASE(◆) → FULL(⇕), always chart_fit_dim background
+        toggleFullScaleBtn = createToggleButton(context, zoomModeSymbol(zoomMode), R.color.chart_fit, R.color.chart_fit_dim, buttonHeight, true) {
             zoomMode = chartView?.cycleZoomMode() ?: zoomMode
             saveVisibilityPreferences()
             toggleFullScaleBtn?.text = zoomModeSymbol(zoomMode)
-            updateToggleButtonState(toggleFullScaleBtn!!, zoomMode != WorkoutChart.ChartZoomMode.TIMEFRAME, R.color.chart_fit, R.color.chart_fit_dim)
+            toggleFullScaleBtn?.setPadding(0, 0, 0, zoomModeBottomPadding(zoomMode, largeTextSizePx))
         }
+        toggleFullScaleBtn!!.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, largeTextSizePx)
+        toggleFullScaleBtn!!.setPadding(0, 0, 0, zoomModeBottomPadding(zoomMode, largeTextSizePx))
         toggleContainer.addView(toggleFullScaleBtn)
 
         container.addView(toggleContainer)
@@ -335,6 +344,13 @@ class ChartManager(
         WorkoutChart.ChartZoomMode.TIMEFRAME -> "≋"
         WorkoutChart.ChartZoomMode.MAIN_PHASE -> "◆"
         WorkoutChart.ChartZoomMode.FULL -> "⇕"
+    }
+
+    /** Per-glyph bottom padding to vertically center each zoom symbol. */
+    private fun zoomModeBottomPadding(mode: WorkoutChart.ChartZoomMode, textSize: Float): Int = when (mode) {
+        WorkoutChart.ChartZoomMode.TIMEFRAME -> (textSize * 0.1f).toInt()
+        WorkoutChart.ChartZoomMode.MAIN_PHASE -> (textSize * 0.2f).toInt()
+        WorkoutChart.ChartZoomMode.FULL -> (textSize * 0.2f).toInt()
     }
 
     /**

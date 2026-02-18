@@ -1566,6 +1566,64 @@ class WorkoutChart @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Computes dynamic (startMs, endMs) for each planned segment based on actual execution.
+     * Past segments use actual step boundaries, current uses actual start time,
+     * future segments chain sequentially with adjusted durations.
+     */
+    private fun computeDynamicSegmentTimes(): List<Pair<Long, Long>> {
+        if (plannedSegments.isEmpty()) return emptyList()
+
+        val currentElapsedMs = if (currentWorkoutElapsedMs > 0) currentWorkoutElapsedMs
+                               else dataPoints.lastOrNull()?.elapsedMs ?: 0L
+
+        // Determine which actual boundaries are "past" vs "current"
+        val lastBoundary = actualStepBoundaries.lastOrNull()
+        val isLastBoundaryCurrent = if (lastBoundary == null) {
+            false
+        } else if (lastBoundary.stepIndex != currentStepIndex) {
+            false
+        } else {
+            val timeDiff = kotlin.math.abs(lastBoundary.startElapsedMs - currentStepActualStartMs)
+            timeDiff < 5000L
+        }
+
+        val pastBoundaries = if (isLastBoundaryCurrent) actualStepBoundaries.dropLast(1)
+                             else actualStepBoundaries
+        val pastBoundaryMap = pastBoundaries.associateBy { it.stepIndex }
+
+        // Compute current step's actual end
+        val currentSegment = plannedSegments.getOrNull(currentStepIndex)
+        val currentStepEnd = if (currentSegment != null) {
+            val (coeff, _) = getSegmentCoefficients(currentSegment, currentStepIndex)
+            val adjustedDuration = calculateAdjustedSegmentDurationMs(currentSegment, coeff)
+            maxOf(currentStepActualStartMs + adjustedDuration, currentElapsedMs)
+        } else currentElapsedMs
+
+        var futureStepStartMs = currentStepEnd
+
+        return plannedSegments.mapIndexed { index, segment ->
+            when {
+                index < currentStepIndex -> {
+                    val boundary = pastBoundaryMap[index]
+                    if (boundary != null) Pair(boundary.startElapsedMs, boundary.endElapsedMs)
+                    else Pair(segment.startTimeMs, segment.endTimeMs)
+                }
+                index == currentStepIndex -> {
+                    Pair(currentStepActualStartMs, currentStepEnd)
+                }
+                else -> {
+                    val (segSpeedCoeff, _) = getSegmentCoefficients(segment, index)
+                    val adjustedDuration = calculateAdjustedSegmentDurationMs(segment, segSpeedCoeff)
+                    val startMs = futureStepStartMs
+                    val endMs = startMs + adjustedDuration
+                    futureStepStartMs = endMs
+                    Pair(startMs, endMs)
+                }
+            }
+        }
+    }
+
     // ==================== Drawing ====================
 
     // Track if we were animating on previous frame (to detect animation completion)
@@ -1661,6 +1719,8 @@ class WorkoutChart @JvmOverloads constructor(
     private fun drawPhaseBackgrounds(canvas: Canvas) {
         if (plannedSegments.isEmpty()) return
 
+        val dynamicTimes = computeDynamicSegmentTimes()
+
         for ((index, segment) in plannedSegments.withIndex()) {
             val tintColor = when (segment.phase) {
                 WorkoutPhase.WARMUP -> phaseWarmupTintColor
@@ -1668,10 +1728,11 @@ class WorkoutChart @JvmOverloads constructor(
                 WorkoutPhase.MAIN -> continue
             }
             phaseBackgroundPaint.color = tintColor
-            val x1 = timeToX(segment.startTimeMs).coerceIn(chartLeft, chartRight)
+            val (startMs, endMs) = dynamicTimes[index]
+            val x1 = timeToX(startMs).coerceIn(chartLeft, chartRight)
             // Extend last segment to chartRight (matching x-axis line behavior)
             val x2 = if (index == plannedSegments.lastIndex) chartRight
-                     else timeToX(segment.endTimeMs).coerceIn(chartLeft, chartRight)
+                     else timeToX(endMs).coerceIn(chartLeft, chartRight)
             if (x2 > x1) {
                 canvas.drawRect(x1, chartTop, x2, chartBottom, phaseBackgroundPaint)
             }
@@ -1714,17 +1775,20 @@ class WorkoutChart @JvmOverloads constructor(
             return
         }
 
+        val dynamicTimes = computeDynamicSegmentTimes()
+
         // Draw X-axis as colored segments matching workout phases
         var lastPhase: WorkoutPhase? = null
         var phaseStartX = chartLeft
 
-        for (segment in plannedSegments) {
+        for ((index, segment) in plannedSegments.withIndex()) {
             if (lastPhase == null) {
                 lastPhase = segment.phase
             } else if (segment.phase != lastPhase) {
                 // Draw the completed phase segment
                 phaseXAxisPaint.color = phaseXAxisColor(lastPhase)
-                val endX = timeToX(segment.startTimeMs).coerceIn(chartLeft, chartRight)
+                val (startMs, _) = dynamicTimes[index]
+                val endX = timeToX(startMs).coerceIn(chartLeft, chartRight)
                 canvas.drawLine(phaseStartX, chartBottom, endX, chartBottom, phaseXAxisPaint)
                 phaseStartX = endX
                 lastPhase = segment.phase
