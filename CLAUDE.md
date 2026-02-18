@@ -65,6 +65,7 @@
 | Remote key events (tHUD) | `RemoteControlAccessibilityService` | `RemoteControlBridge` → `RemoteControlManager` |
 | Remote key events (Android) | `RemoteControlAccessibilityService` | Executed directly (AudioManager / performGlobalAction) |
 | Panel save/restore | `HUDService` static helpers | Any full-screen activity via `notifyActivity{Foreground,Background,Closed}` |
+| Chart zoom settings | `ServiceStateHolder` (SharedPrefs) | `ChartManager` → `WorkoutChart` (zoom mode persisted in ChartManager's own prefs) |
 
 ### ⚠️ SPEED - ABSOLUTE RULES ⚠️
 
@@ -150,7 +151,7 @@ Exports to Downloads/tHUD via MediaStore. `saveToDownloads(context, sourceFile, 
 Unified BT sensor storage. `getAll/getByType/save/remove/isSaved/getSavedMacs`. Types: `HR_SENSOR`, `FOOT_POD`.
 
 ### SettingsManager (`service/SettingsManager.kt`)
-All SharedPreferences keys as constants. Key groups: `pace_coefficient` (calibration), `hr_zone*_max` (HR zones), `threshold_pace_kph`, `default_incline`, treadmill min/max ranges (from GlassOS), `fit_*` (FIT Export device ID), `ftms_*` (FTMS server settings), `garmin_auto_upload` (Garmin Connect), `remote_bindings` (BLE remote control config JSON).
+All SharedPreferences keys as constants. Key groups: `pace_coefficient` (calibration), `hr_zone*_max` (HR zones), `threshold_pace_kph`, `default_incline`, treadmill min/max ranges (from GlassOS), `fit_*` (FIT Export device ID), `ftms_*` (FTMS server settings), `garmin_auto_upload` (Garmin Connect), `remote_bindings` (BLE remote control config JSON), `chart_zoom_timeframe_minutes` (Chart zoom window). Settings dialog has 6 tabs: Dynamics, Zones, Auto-Adjust, FIT Export, FTMS, Chart.
 
 ### ⚠️ HR/Power Targets: Percentage-Based ⚠️
 All HR/Power targets stored as **% of threshold** (LTHR/FTP) so workouts survive threshold changes.
@@ -189,7 +190,9 @@ System workouts identified by `systemWorkoutType` column (`"WARMUP"`/`"COOLDOWN"
 
 **Coefficient reset** at phase boundaries (warmup→main, main→cooldown) prevents cross-phase contamination.
 
-**Editor:** Sentinel rows with checkbox + summary. System workouts always visible regardless of search filter. Preview chart shows main only; live chart shows full stitched outline.
+**Prev button is phase-limited:** Once in main phase, Prev cannot go back to warmup. Once in cooldown, Prev cannot go back to main. At a phase boundary, Prev restarts the first step of the current phase. Auto-cooldown also restarts in place.
+
+**Editor:** Sentinel rows with checkbox + summary. System workouts always visible regardless of search filter. Preview chart shows main only; live chart shows full stitched outline. Editor auto-selects the most recently used/edited regular workout on open (skips system workouts).
 
 ---
 
@@ -336,6 +339,7 @@ app/src/main/java/io/github/avikulin/thud/
 | **AutoAdjustMode** | NONE, HR, POWER |
 | **EarlyEndCondition** | NONE, HR_RANGE |
 | **AdjustmentScope** | ALL_STEPS, ONE_STEP |
+| **ChartZoomMode** | TIMEFRAME, MAIN_PHASE, FULL *(in `WorkoutChart`)* |
 | **RemoteAction** | SPEED_UP, SPEED_DOWN, INCLINE_UP, INCLINE_DOWN, BELT_START_PAUSE, BELT_STOP, NEXT_STEP, PREV_STEP, TOGGLE_MODE |
 | **AndroidAction** | MEDIA_PLAY_PAUSE, MEDIA_NEXT, MEDIA_PREVIOUS, VOLUME_UP, VOLUME_DOWN, MUTE, BACK, HOME, RECENT_APPS |
 

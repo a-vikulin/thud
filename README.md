@@ -47,7 +47,7 @@ blown away by Claude's capabilities!
 - HR and Power lines are color coded with zone color
 - Colored horizontal zone border lines for reference 
 - Visual workout steps structure with speed&incline targets and HR/Power target ranges
-- Toggle button between Y-axis auto-zoom to the last 3 minutes window or full data scale
+- Three Y-axis zoom modes cycled via toggle button: Timeframe (≋, configurable 1–60 min window), Main Phase (◆, fits main workout only), Full (⇕, all data)
 
 ### Structured Workouts
 ![ss-5.png](screenshots/ss-5.png)

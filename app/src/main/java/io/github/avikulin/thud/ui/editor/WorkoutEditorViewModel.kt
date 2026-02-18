@@ -155,9 +155,10 @@ class WorkoutEditorViewModel(application: Application) : AndroidViewModel(applic
             repository.allWorkouts.collect { workouts ->
                 _allWorkouts.value = workouts
 
-                // Auto-select first workout if none selected
+                // Auto-select most recently used/edited regular workout if none selected
                 if (_selectedWorkoutId.value == 0L && workouts.isNotEmpty()) {
-                    selectWorkout(workouts.first().id)
+                    val firstRegular = workouts.firstOrNull { !it.isSystemWorkout }
+                    selectWorkout((firstRegular ?: workouts.first()).id)
                 }
             }
         }
