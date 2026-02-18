@@ -35,6 +35,11 @@ class WorkoutRecorder {
     private val pauseEvents: MutableList<PauseEvent> =
         Collections.synchronizedList(mutableListOf())
 
+    // HR sensor registry: index-ordered list of (MAC, name) for compact per-data-point storage.
+    // Index assigned on first encounter via resolveOrRegister(); stable for the duration of the run.
+    private val hrSensors: MutableList<Pair<String, String>> = mutableListOf()
+    private val hrSensorMacToIndex: MutableMap<String, Int> = mutableMapOf()
+
     // Recording state
     private var _isRecording = false
     val isRecording: Boolean get() = _isRecording
@@ -102,7 +107,9 @@ class WorkoutRecorder {
         rawPowerWatts: Double = 0.0,
         inclinePowerWatts: Double = 0.0,
         stepIndex: Int = -1,
-        stepName: String = ""
+        stepName: String = "",
+        connectedHrSensors: Map<String, Pair<String, Int>> = emptyMap(),
+        primaryHrMac: String = ""
     ) {
         if (!_isRecording && !forceRecord) return
 
@@ -163,6 +170,15 @@ class WorkoutRecorder {
 
         lastRecordTimeMs = now
 
+        // Auto-register new sensors and convert MAC→BPM to index→BPM
+        val indexedHr = mutableMapOf<Int, Int>()
+        for ((mac, pair) in connectedHrSensors) {
+            val (name, bpm) = pair
+            val idx = resolveOrRegister(mac, name)
+            indexedHr[idx] = bpm
+        }
+        val primaryIdx = hrSensorMacToIndex[primaryHrMac] ?: -1
+
         // Create data point
         val dataPoint = WorkoutDataPoint(
             timestampMs = now,
@@ -178,7 +194,9 @@ class WorkoutRecorder {
             inclinePowerWatts = inclinePowerWatts,
             cadenceSpm = cadenceSpm,
             stepIndex = stepIndex,
-            stepName = stepName
+            stepName = stepName,
+            allHrSensors = indexedHr,
+            primaryHrIndex = primaryIdx
         )
         workoutData.add(dataPoint)
 
@@ -205,7 +223,9 @@ class WorkoutRecorder {
         rawPowerWatts: Double = 0.0,
         inclinePowerWatts: Double = 0.0,
         stepIndex: Int = -1,
-        stepName: String = ""
+        stepName: String = "",
+        connectedHrSensors: Map<String, Pair<String, Int>> = emptyMap(),
+        primaryHrMac: String = ""
     ): Boolean {
         if (!_isRecording) return false
 
@@ -222,7 +242,9 @@ class WorkoutRecorder {
                 rawPowerWatts = rawPowerWatts,
                 inclinePowerWatts = inclinePowerWatts,
                 stepIndex = stepIndex,
-                stepName = stepName
+                stepName = stepName,
+                connectedHrSensors = connectedHrSensors,
+                primaryHrMac = primaryHrMac
             )
             return true
         }
@@ -275,6 +297,8 @@ class WorkoutRecorder {
      */
     fun startRecording() {
         workoutData.clear()
+        hrSensors.clear()
+        hrSensorMacToIndex.clear()
         _calculatedDistanceKm = 0.0
         _calculatedElevationGainM = 0.0
         _calculatedCaloriesKcal = 0.0
@@ -341,6 +365,24 @@ class WorkoutRecorder {
     }
 
     /**
+     * Resolve an HR sensor MAC to its stable index, registering it if first seen.
+     * This is the only path to assign sensor indices — called lazily from recordDataPoint().
+     */
+    private fun resolveOrRegister(mac: String, name: String): Int {
+        hrSensorMacToIndex[mac]?.let { return it }
+        val index = hrSensors.size
+        hrSensors.add(Pair(mac, name))
+        hrSensorMacToIndex[mac] = index
+        Log.d(TAG, "Auto-registered HR sensor: $name ($mac) → index $index")
+        return index
+    }
+
+    /**
+     * Get the index-ordered sensor registry (MAC, name) for FIT export.
+     */
+    fun getHrSensors(): List<Pair<String, String>> = hrSensors.toList()
+
+    /**
      * Get the number of recorded data points.
      */
     fun getDataPointCount(): Int {
@@ -355,6 +397,8 @@ class WorkoutRecorder {
     fun clearData() {
         workoutData.clear()
         pauseEvents.clear()
+        hrSensors.clear()
+        hrSensorMacToIndex.clear()
         _calculatedDistanceKm = 0.0
         _calculatedElevationGainM = 0.0
         _calculatedCaloriesKcal = 0.0
@@ -399,7 +443,8 @@ class WorkoutRecorder {
                     calculatedElevationGainM = _calculatedElevationGainM,
                     calculatedCaloriesKcal = _calculatedCaloriesKcal,
                     dataPoints = workoutData.toList(),
-                    pauseEvents = pauseEvents.toList()
+                    pauseEvents = pauseEvents.toList(),
+                    hrSensors = hrSensors.toList()
                 )
             }
         }
@@ -423,6 +468,10 @@ class WorkoutRecorder {
                 _calculatedDistanceKm = state.calculatedDistanceKm
                 _calculatedElevationGainM = state.calculatedElevationGainM
                 _calculatedCaloriesKcal = state.calculatedCaloriesKcal
+                hrSensors.clear()
+                hrSensorMacToIndex.clear()
+                hrSensors.addAll(state.hrSensors)
+                state.hrSensors.forEachIndexed { i, (mac, _) -> hrSensorMacToIndex[mac] = i }
                 // Set lastRecordedElapsedSeconds based on restored data
                 lastRecordedElapsedSeconds = if (state.dataPoints.isNotEmpty()) {
                     (state.dataPoints.last().elapsedMs / 1000).toInt()

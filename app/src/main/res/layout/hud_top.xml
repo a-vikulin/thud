@@ -197,10 +197,11 @@
                 style="@style/HudText.Value" />
 
             <TextView
+                android:id="@+id/tvHrSubtitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:visibility="invisible"
-                android:text="@string/unit_km"
+                android:visibility="gone"
+                android:text=""
                 style="@style/HudText.Unit" />
         </LinearLayout>
 

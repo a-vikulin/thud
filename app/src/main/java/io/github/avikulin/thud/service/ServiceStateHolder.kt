@@ -1,6 +1,7 @@
 package io.github.avikulin.thud.service
 
 import com.ifit.glassos.workout.WorkoutState
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -30,7 +31,12 @@ class ServiceStateHolder {
     @Volatile var strydConnected = false
 
     // ==================== HR Sensor State ====================
-    @Volatile var hrSensorConnected = false
+    @Volatile var hrSensorConnected = false   // true if at least one HR sensor is connected
+
+    // Multi-sensor support: MAC → (deviceName, currentBpm)
+    val connectedHrSensors: ConcurrentHashMap<String, Pair<String, Int>> = ConcurrentHashMap()
+    @Volatile var savedPrimaryHrMac: String = ""   // user's explicit choice (MAC or "AVERAGE"), persisted
+    @Volatile var activePrimaryHrMac: String = ""  // currently active primary (may differ during fallback)
 
     // ==================== Settings State ====================
     // Pace adjustment coefficient (actual pace = treadmill pace * coefficient)

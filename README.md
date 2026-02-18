@@ -33,7 +33,7 @@ blown away by Claude's capabilities!
 ### Real-Time HUD Display
 - Fully replaces built-in iFit app (Workout Player) for treadmill control 
 - Current pace and speed
-- Heart rate with zone coloring
+- Heart rate with zone coloring (supports multiple simultaneous HR sensors)
 - Running power with zone coloring (with Stryd)
 - Distance and elapsed time
 - Elevation gain
@@ -99,8 +99,10 @@ blown away by Claude's capabilities!
 ### FIT File Export
 - Automatic export when run ends
 - Full Garmin Connect compatibility
-- Lap data for structured workouts
+- Lap data for structured workouts with average grade per lap
+- Per-record incline/grade data
 - Power and cadence from Stryd
+- Multi-HR sensor data preserved as developer fields (per-sensor BPM traces)
 - TSS (Training Stress Score) calculation with 3-tier fallback: Power → HR → Pace
 - Files saved to Downloads/tHUD/
 - Settings for device parameters in FIT Export tab
@@ -203,6 +205,7 @@ Verify that auto-adjustment parameters are sensible
 1. Tap the Bluetooth icon in the HUD
 2. Scan and select your device
 3. Device will auto-connect on future sessions
+4. Multiple HR sensors can be connected simultaneously — tap the HR box to switch between sensors or use the average of all
 
 ### Creating Workouts
 1. Tap the "#" workout icon to open the editor

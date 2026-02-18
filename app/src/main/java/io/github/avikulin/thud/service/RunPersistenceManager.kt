@@ -29,7 +29,8 @@ data class RecorderState(
     val calculatedElevationGainM: Double,
     val calculatedCaloriesKcal: Double,
     val dataPoints: List<WorkoutDataPoint>,
-    val pauseEvents: List<PauseEvent>
+    val pauseEvents: List<PauseEvent>,
+    val hrSensors: List<Pair<String, String>> = emptyList()  // index-ordered (MAC, name)
 )
 
 /**
@@ -227,6 +228,13 @@ class RunPersistenceManager(private val context: Context) {
             put("cal", state.calculatedCaloriesKcal)
             put("dp", serializeDataPoints(state.dataPoints))
             put("pe", serializePauseEvents(state.pauseEvents))
+            if (state.hrSensors.isNotEmpty()) {
+                put("hrs", JSONArray().apply {
+                    state.hrSensors.forEach { (mac, name) ->
+                        put(JSONArray().apply { put(mac); put(name) })
+                    }
+                })
+            }
         }
     }
 
@@ -248,6 +256,10 @@ class RunPersistenceManager(private val context: Context) {
                     put("cd", dp.cadenceSpm)
                     put("si", dp.stepIndex)
                     put("sn", dp.stepName)
+                    val ahsObj = org.json.JSONObject()
+                    dp.allHrSensors.forEach { (idx, bpm) -> ahsObj.put(idx.toString(), bpm) }
+                    put("ahs", ahsObj)
+                    put("phi", dp.primaryHrIndex)
                 })
             }
         }
@@ -312,7 +324,14 @@ class RunPersistenceManager(private val context: Context) {
             calculatedElevationGainM = json.getDouble("elev"),
             calculatedCaloriesKcal = json.getDouble("cal"),
             dataPoints = deserializeDataPoints(json.getJSONArray("dp")),
-            pauseEvents = deserializePauseEvents(json.getJSONArray("pe"))
+            pauseEvents = deserializePauseEvents(json.getJSONArray("pe")),
+            hrSensors = run {
+                val arr = json.optJSONArray("hrs") ?: return@run emptyList()
+                (0 until arr.length()).map { i ->
+                    val pair = arr.getJSONArray(i)
+                    Pair(pair.getString(0), pair.getString(1))
+                }
+            }
         )
     }
 
@@ -333,7 +352,12 @@ class RunPersistenceManager(private val context: Context) {
                 inclinePowerWatts = dp.optDouble("ip", 0.0),
                 cadenceSpm = dp.optInt("cd", 0),
                 stepIndex = dp.optInt("si", -1),
-                stepName = dp.optString("sn", "")
+                stepName = dp.optString("sn", ""),
+                allHrSensors = run {
+                    val obj = dp.optJSONObject("ahs") ?: return@run emptyMap()
+                    obj.keys().asSequence().associate { it.toInt() to obj.getInt(it) }
+                },
+                primaryHrIndex = dp.optInt("phi", -1)
             )
         }
     }

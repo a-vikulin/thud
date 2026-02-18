@@ -2,6 +2,8 @@ package io.github.avikulin.thud.service
 
 import android.app.Service
 import android.graphics.Typeface
+import android.os.Handler
+import android.os.Looper
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.RelativeSizeSpan
@@ -14,7 +16,9 @@ import android.widget.GridLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
+import android.widget.LinearLayout
 import io.github.avikulin.thud.R
+import io.github.avikulin.thud.util.HeartRateZones
 import io.github.avikulin.thud.util.PaceConverter
 import com.ifit.glassos.workout.WorkoutState
 import kotlinx.coroutines.CoroutineScope
@@ -44,13 +48,16 @@ class PopupManager(
     private val isWorkoutLoadedAndIdle: () -> Boolean = { false },
     private val onPaceSelectedWithWorkoutLoaded: (adjustedKph: Double) -> Unit = {},
     private val isStructuredWorkoutPaused: () -> Boolean = { false },
-    private val onResumeWorkoutAtStepPace: () -> Unit = {}
+    private val onResumeWorkoutAtStepPace: () -> Unit = {},
+    private val onPrimaryHrSelected: (value: String) -> Unit = {}
 ) {
     companion object {
         private const val TAG = "PopupManager"
         private const val INCLINE_GRID_COLUMNS = 6
         private val CONDENSED_TYPEFACE = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
     }
+
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     // Cached colors — shared by pace and incline popups
     private val popupBgColor = ContextCompat.getColor(service, R.color.popup_background)
@@ -61,12 +68,21 @@ class PopupManager(
 
     private var pacePopupView: View? = null
     private var inclinePopupView: View? = null
+    private var hrSensorPopupView: View? = null
+
+    // Zone colors cached for HR sensor popup (same as HUDDisplayManager)
+    private val zoneColors = IntArray(6) { zone ->
+        ContextCompat.getColor(service, HeartRateZones.getZoneColorResId(zone))
+    }
 
     val isPacePopupVisible: Boolean
         get() = pacePopupView != null
 
     val isInclinePopupVisible: Boolean
         get() = inclinePopupView != null
+
+    val isHrSensorPopupVisible: Boolean
+        get() = hrSensorPopupView != null
 
     // ==================== Pace Popup ====================
 
@@ -408,12 +424,201 @@ class PopupManager(
         }
     }
 
+    // ==================== HR Sensor Popup ====================
+
+    // Value TextViews for live refresh (keyed by MAC or "AVERAGE")
+    private val hrSensorValueViews = mutableMapOf<String, TextView>()
+
+    fun toggleHrSensorPopup(hrBoxBounds: IntArray? = null) {
+        if (hrSensorPopupView != null) closeHrSensorPopup() else showHrSensorPopup(hrBoxBounds)
+    }
+
+    fun closeHrSensorPopup() {
+        hrSensorPopupView?.let {
+            try { windowManager.removeView(it) } catch (_: Exception) {}
+        }
+        hrSensorPopupView = null
+        hrSensorValueViews.clear()
+    }
+
+    fun showHrSensorPopup(hrBoxBounds: IntArray? = null) {
+        if (hrSensorPopupView != null) {
+            removeMetricSelector()
+            return
+        }
+
+        val resources = service.resources
+        val boxPadding = resources.getDimensionPixelSize(R.dimen.box_padding)
+        val itemMargin = resources.getDimensionPixelSize(R.dimen.box_margin)
+        val labelTextSize = resources.getDimension(R.dimen.text_label) / resources.displayMetrics.density
+        val valueTextSize = resources.getDimension(R.dimen.text_value) / resources.displayMetrics.density
+        val unitTextSize = resources.getDimension(R.dimen.text_unit) / resources.displayMetrics.density
+
+        val boxX = hrBoxBounds?.get(0) ?: 0
+        val boxY = hrBoxBounds?.get(1) ?: 0
+        val boxWidth = hrBoxBounds?.get(2) ?: WindowManager.LayoutParams.WRAP_CONTENT
+        val boxHeight = hrBoxBounds?.get(3) ?: 0
+
+        hrSensorValueViews.clear()
+
+        val container = LinearLayout(service).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(ContextCompat.getColor(service, R.color.hud_background))
+            setPadding(itemMargin, itemMargin, itemMargin, itemMargin)
+        }
+
+        // Average row
+        val nonZeroBpms = state.connectedHrSensors.values.map { it.second }.filter { it > 0 }
+        val avgBpm = if (nonZeroBpms.isEmpty()) 0 else nonZeroBpms.average().toInt()
+        val isAvgActive = state.activePrimaryHrMac == SettingsManager.HR_PRIMARY_AVERAGE
+        container.addView(buildHrSensorItem(
+            key = SettingsManager.HR_PRIMARY_AVERAGE,
+            label = service.getString(R.string.label_average_hr),
+            bpm = avgBpm,
+            isActive = isAvgActive,
+            boxPadding = boxPadding,
+            itemMargin = itemMargin,
+            labelTextSize = labelTextSize,
+            valueTextSize = valueTextSize,
+            unitTextSize = unitTextSize,
+            onClick = { onPrimaryHrSelected(SettingsManager.HR_PRIMARY_AVERAGE) }
+        ))
+
+        // Per-sensor rows
+        for ((mac, pair) in state.connectedHrSensors) {
+            val (name, bpm) = pair
+            val isActive = mac == state.activePrimaryHrMac
+            container.addView(buildHrSensorItem(
+                key = mac,
+                label = name.uppercase(),
+                bpm = bpm,
+                isActive = isActive,
+                boxPadding = boxPadding,
+                itemMargin = itemMargin,
+                labelTextSize = labelTextSize,
+                valueTextSize = valueTextSize,
+                unitTextSize = unitTextSize,
+                onClick = { onPrimaryHrSelected(mac) }
+            ))
+        }
+
+        hrSensorPopupView = container
+
+        val params = OverlayHelper.createOverlayParams(boxWidth, focusable = true)
+        params.gravity = Gravity.TOP or Gravity.START
+        params.x = boxX
+        params.y = boxY + boxHeight
+        windowManager.addView(hrSensorPopupView, params)
+    }
+
+    /**
+     * Build a single HR sensor item styled like HUD boxes, zone-colored by BPM.
+     */
+    private fun buildHrSensorItem(
+        key: String,
+        label: String,
+        bpm: Int,
+        isActive: Boolean,
+        boxPadding: Int,
+        itemMargin: Int,
+        labelTextSize: Float,
+        valueTextSize: Float,
+        unitTextSize: Float,
+        onClick: () -> Unit
+    ): LinearLayout {
+        val zone = HeartRateZones.getZone(
+            bpm.toDouble(), state.hrZone2Start, state.hrZone3Start, state.hrZone4Start, state.hrZone5Start
+        )
+        val bgColor = zoneColors[if (zone == 0) 1 else zone]
+        val displayLabel = if (isActive) "✓ $label" else label
+
+        return LinearLayout(service).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(bgColor)
+            setPadding(boxPadding * 4, boxPadding * 2, boxPadding * 4, boxPadding * 2)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = itemMargin }
+
+            val textOnZone = ContextCompat.getColor(service, R.color.text_on_zone)
+
+            // Label
+            addView(TextView(service).apply {
+                text = displayLabel
+                setTextColor(textOnZone)
+                textSize = labelTextSize
+                gravity = Gravity.CENTER
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+
+            // Value (large, bold)
+            val valueView = TextView(service).apply {
+                text = if (bpm > 0) "$bpm" else "--"
+                setTextColor(ContextCompat.getColor(service, R.color.text_primary))
+                textSize = valueTextSize * 0.7f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                gravity = Gravity.CENTER
+            }
+            addView(valueView)
+            hrSensorValueViews[key] = valueView
+
+            // Unit
+            addView(TextView(service).apply {
+                text = "bpm"
+                setTextColor(textOnZone)
+                textSize = unitTextSize
+                gravity = Gravity.CENTER
+            })
+
+            setOnClickListener { onClick() }
+        }
+    }
+
+    /**
+     * Rebuild popup contents in-place when a sensor's BPM changes.
+     * Safe to call from non-main threads (posts to mainHandler).
+     */
+    fun updateHrSensorPopupIfVisible() {
+        if (hrSensorPopupView == null) return
+        mainHandler.post {
+            // Update average
+            val nonZeroBpms = state.connectedHrSensors.values.map { it.second }.filter { it > 0 }
+            val avgBpm = if (nonZeroBpms.isEmpty()) 0 else nonZeroBpms.average().toInt()
+            hrSensorValueViews[SettingsManager.HR_PRIMARY_AVERAGE]?.text = if (avgBpm > 0) "$avgBpm" else "--"
+            updateItemZoneColor(SettingsManager.HR_PRIMARY_AVERAGE, avgBpm)
+
+            // Update per-sensor values
+            for ((mac, pair) in state.connectedHrSensors) {
+                hrSensorValueViews[mac]?.text = if (pair.second > 0) "${pair.second}" else "--"
+                updateItemZoneColor(mac, pair.second)
+            }
+        }
+    }
+
+    /** Update the background zone color of a sensor item by its key. */
+    private fun updateItemZoneColor(key: String, bpm: Int) {
+        val valueView = hrSensorValueViews[key] ?: return
+        val itemContainer = valueView.parent as? LinearLayout ?: return
+        val zone = HeartRateZones.getZone(
+            bpm.toDouble(), state.hrZone2Start, state.hrZone3Start, state.hrZone4Start, state.hrZone5Start
+        )
+        itemContainer.setBackgroundColor(zoneColors[if (zone == 0) 1 else zone])
+    }
+
+    private fun removeMetricSelector() {
+        closeHrSensorPopup()
+    }
+
     /**
      * Close all popups.
      */
     fun closeAllPopups() {
         closePacePopup()
         closeInclinePopup()
+        closeHrSensorPopup()
     }
 
     // ==================== Treadmill Control Helpers ====================
@@ -492,6 +697,15 @@ class PopupManager(
                 windowManager.removeView(it)
             } catch (e: Exception) {
                 Log.e(TAG, "Error removing incline popup: ${e.message}")
+            }
+        }
+
+        hrSensorPopupView?.let {
+            hrSensorPopupView = null
+            try {
+                windowManager.removeView(it)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removing HR sensor popup: ${e.message}")
             }
         }
     }

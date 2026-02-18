@@ -66,6 +66,8 @@
 | Remote key events (Android) | `RemoteControlAccessibilityService` | Executed directly (AudioManager / performGlobalAction) |
 | Panel save/restore | `HUDService` static helpers | Any full-screen activity via `notifyActivity{Foreground,Background,Closed}` |
 | Chart zoom settings | `ServiceStateHolder` (SharedPrefs) | `ChartManager` → `WorkoutChart` (zoom mode persisted in ChartManager's own prefs) |
+| Multi-HR sensor data | `state.connectedHrSensors` (MAC→(name,BPM)) | `WorkoutRecorder` (lazy index registry) → `WorkoutDataPoint` → `FitFileExporter` |
+| Primary HR selection | `state.activePrimaryHrMac` | `HUDService` → `WorkoutRecorder` → `WorkoutDataPoint.primaryHrIndex` |
 
 ### ⚠️ SPEED - ABSOLUTE RULES ⚠️
 
@@ -215,7 +217,7 @@ HUDService (Orchestrator)
 ├── TelemetryManager        → GlassOS gRPC connection + subscriptions
 ├── WorkoutEngineManager    → Workout lifecycle (load, start, stop)
 ├── SettingsManager         → SharedPreferences + settings dialog
-├── HrSensorManager         → HR sensor BLE connection
+├── HrSensorManager         → HR sensor BLE connection (multi-sensor)
 ├── StrydManager            → Stryd foot pod BLE connection
 ├── RunPersistenceManager   → Crash recovery (periodic + on-pause saves)
 ├── FitFileExporter         → FIT file generation for Garmin Connect
@@ -404,6 +406,23 @@ Stryd PowerCenter acceptance requires developer fields mimicking the Stryd Conne
 **CRITICAL:** `DeveloperDataIdMesg.setApplicationId(int, Byte)` corrupts bytes > 127 (signed Byte → 0xFF). Use `setFieldValue(ApplicationIdFieldNum, index, byteValue.toInt() and 0xFF)` instead.
 
 **Do NOT use manufacturer=95 (Stryd)** — rejected everywhere. Keep `product=4565` (Forerunner 970) for device icon.
+
+### Multi-HR Sensor Developer Fields in FIT
+
+When multiple HR sensors are connected, each gets a `DeveloperDataIdMesg` with a **UUID v3** ApplicationId derived from `"tHUD-HR:<MAC>"`. This produces valid 16-byte UUIDs that Garmin Connect accepts (raw MAC bytes as ApplicationId are rejected). Each sensor's BPM is written as a developer field on every record.
+
+**Lazy sensor registration:** `WorkoutRecorder.resolveOrRegister()` auto-registers sensors on first data point encounter. No external registration calls needed — just pass `state.connectedHrSensors` and `state.activePrimaryHrMac` to `recordDataPoint()`/`ensurePeriodicRecord()`.
+
+**Per-data-point storage uses integer indices** (not MAC strings) for compact storage: `WorkoutDataPoint.allHrSensors: Map<Int, Int>` (sensorIndex→BPM), `primaryHrIndex: Int` (-1 = none/average).
+
+### FIT Grade/Incline Fields
+
+FIT export writes incline data at three levels:
+- **Per-record:** `record.setGrade(%)` — every data point
+- **Per-lap:** `lap.setAvgGrade(%)` — average incline for that lap
+- **Per-session:** `session.setAvgGrade(%)` — average incline for entire run
+
+Note: `maxGrade` does NOT exist on `LapMesg`/`SessionMesg` in the FIT SDK — only `avgGrade` and `totalAscent`.
 
 ### ⚠️ Garmin Connect Upload — API Endpoints ⚠️
 **FIT upload:** `POST connectapi.garmin.com/upload-service/upload/.fit` — OAuth2 Bearer, multipart field `userfile`.

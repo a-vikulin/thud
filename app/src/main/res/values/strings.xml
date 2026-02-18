@@ -103,6 +103,7 @@
     <string name="label_distance">DIST</string>
     <string name="label_climb">CLIMB</string>
     <string name="label_heart_rate">HEART RATE</string>
+    <string name="label_average_hr">AVERAGE HR</string>
     <string name="label_connecting">Connecting…</string>
     <string name="label_tss">TSS</string>
     <string name="default_tss">--</string>

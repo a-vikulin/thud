@@ -16,7 +16,7 @@ room = "2.8.4"
 lifecycleRuntime = "2.8.7"
 activityKtx = "1.9.3"
 fragmentKtx = "1.8.5"
-garminFit = "21.158.0"
+garminFit = "21.194.0"
 securityCrypto = "1.1.0-alpha06"
 
 [libraries]

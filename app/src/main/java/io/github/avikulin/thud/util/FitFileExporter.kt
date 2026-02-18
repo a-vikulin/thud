@@ -33,6 +33,16 @@ class FitFileExporter(private val context: Context) {
     )
 
     /**
+     * Holds developer field definitions for a single HR BLE sensor.
+     * Each connected sensor gets its own devDataIndex (Stryd occupies 0, HR sensors start at 1).
+     */
+    private data class HrSensorDevField(
+        val devDataIdMesg: DeveloperDataIdMesg,
+        val recordFieldDesc: FieldDescriptionMesg,
+        val devDataIndex: Short
+    )
+
+    /**
      * Holds Stryd developer field definitions for attaching power data as developer fields.
      * These mimic the Stryd Connect IQ app's field format so Stryd PowerCenter recognizes them.
      */
@@ -105,7 +115,8 @@ class FitFileExporter(private val context: Context) {
         fitManufacturer: Int = DEFAULT_MANUFACTURER,
         fitProductId: Int = DEFAULT_PRODUCT_ID,
         fitDeviceSerial: Long = DEFAULT_DEVICE_SERIAL,
-        fitSoftwareVersion: Int = DEFAULT_SOFTWARE_VERSION
+        fitSoftwareVersion: Int = DEFAULT_SOFTWARE_VERSION,
+        hrSensors: List<Pair<String, String>> = emptyList()
     ): FitExportResult? {
         if (workoutData.isEmpty()) {
             Log.w(TAG, "No workout data to export")
@@ -118,7 +129,8 @@ class FitFileExporter(private val context: Context) {
                 filename, workoutData, workoutName, startTimeMs,
                 userHrRest, userLthr, userFtpWatts, thresholdPaceKph, pauseEvents,
                 executionSteps, originalSteps,
-                fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion
+                fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion,
+                hrSensors
             )
             Log.i(TAG, "FIT file exported: ${result.displayPath}")
             result
@@ -159,13 +171,14 @@ class FitFileExporter(private val context: Context) {
         fitManufacturer: Int,
         fitProductId: Int,
         fitDeviceSerial: Long,
-        fitSoftwareVersion: Int
+        fitSoftwareVersion: Int,
+        hrSensors: List<Pair<String, String>> = emptyList()
     ): FitExportResult {
         // Create temp file for FIT SDK (it requires a File, not OutputStream)
         val tempFile = FileExportHelper.getTempFile(context, filename)
         try {
             // Write FIT file to temp location
-            writeFitFile(tempFile, workoutData, workoutName, startTimeMs, userHrRest, userLthr, userFtpWatts, thresholdPaceKph, pauseEvents, executionSteps, originalSteps, fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion)
+            writeFitFile(tempFile, workoutData, workoutName, startTimeMs, userHrRest, userLthr, userFtpWatts, thresholdPaceKph, pauseEvents, executionSteps, originalSteps, fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion, hrSensors)
 
             // Read bytes before saving to MediaStore (for Garmin Connect upload)
             val fitData = tempFile.readBytes()
@@ -207,7 +220,8 @@ class FitFileExporter(private val context: Context) {
         fitManufacturer: Int,
         fitProductId: Int,
         fitDeviceSerial: Long,
-        fitSoftwareVersion: Int
+        fitSoftwareVersion: Int,
+        hrSensors: List<Pair<String, String>> = emptyList()
     ) {
         val encoder = FileEncoder(file, Fit.ProtocolVersion.V2_0)
 
@@ -253,6 +267,10 @@ class FitFileExporter(private val context: Context) {
             writeStrydDeveloperFieldDefinitions(encoder, userFtpWatts)
         } else null
 
+        // 3c. HR sensor developer fields (one per registered sensor)
+        val hrDevFields = writeHrDeveloperFieldDefinitions(encoder, hrSensors)
+            .takeIf { it.isNotEmpty() }
+
         // 4. Sport message (required for proper workout recognition)
         writeSportMessage(encoder)
 
@@ -275,7 +293,7 @@ class FitFileExporter(private val context: Context) {
         writeTimerEvent(encoder, startTimeMs, isStart = true)
 
         // 6. Record messages interleaved with pause/resume events (in timestamp order)
-        writeRecordsWithEvents(encoder, workoutData, pauseEvents, strydDevFields)
+        writeRecordsWithEvents(encoder, workoutData, pauseEvents, strydDevFields, hrDevFields, hrSensors)
 
         // 7. Timer STOP event at workout end (skip if already paused to avoid duplicate STOP_ALL)
         val endedWhilePaused = pauseEvents.isNotEmpty() &&
@@ -311,6 +329,7 @@ class FitFileExporter(private val context: Context) {
             maxCadence = maxCadence,
             totalCalories = totalCalories,
             numLaps = numLaps,
+            avgGrade = agg.avgIncline,
             avgInclinePower = avgInclinePower,
             avgRawPower = avgRawPower,
             strydDevFields = strydDevFields
@@ -363,14 +382,16 @@ class FitFileExporter(private val context: Context) {
         encoder: FileEncoder,
         workoutData: List<WorkoutDataPoint>,
         pauseEvents: List<PauseEvent>,
-        strydDevFields: StrydDevFields? = null
+        strydDevFields: StrydDevFields? = null,
+        hrDevFields: Map<Int, HrSensorDevField>? = null,
+        hrSensors: List<Pair<String, String>> = emptyList()
     ) {
-        // Create a combined list of timestamped items
         data class TimestampedItem(
             val timestampMs: Long,
             val isRecord: Boolean,
             val dataPoint: WorkoutDataPoint? = null,
-            val pauseEvent: PauseEvent? = null
+            val pauseEvent: PauseEvent? = null,
+            val sensorChangeIndex: Int = -1
         )
 
         val items = mutableListOf<TimestampedItem>()
@@ -385,20 +406,46 @@ class FitFileExporter(private val context: Context) {
             items.add(TimestampedItem(pe.timestampMs, isRecord = false, pauseEvent = pe))
         }
 
+        // Add sensor-change DeviceInfo events for primary HR transitions (skip -1 = none/average)
+        if (hrDevFields != null) {
+            var prevIndex = -1
+            for (dp in workoutData) {
+                val idx = dp.primaryHrIndex
+                if (idx != prevIndex && idx >= 0 && hrDevFields.containsKey(idx)) {
+                    items.add(TimestampedItem(
+                        timestampMs = dp.timestampMs,
+                        isRecord = false,
+                        sensorChangeIndex = idx
+                    ))
+                }
+                prevIndex = idx
+            }
+        }
+
         // Sort by timestamp
         items.sortBy { it.timestampMs }
 
         // Write in order
         for (item in items) {
-            if (item.isRecord) {
-                writeRecordMessage(encoder, item.dataPoint!!, strydDevFields)
-            } else {
-                val pe = item.pauseEvent!!
-                val eventMesg = EventMesg()
-                eventMesg.setTimestamp(DateTime(toFitTimestamp(pe.timestampMs)))
-                eventMesg.setEvent(Event.TIMER)
-                eventMesg.setEventType(if (pe.isPause) EventType.STOP_ALL else EventType.START)
-                encoder.write(eventMesg)
+            when {
+                item.sensorChangeIndex >= 0 -> {
+                    val devField = hrDevFields!![item.sensorChangeIndex]!!
+                    val mac = hrSensors[item.sensorChangeIndex].first
+                    writeHrSensorDeviceInfoMessage(
+                        encoder, item.timestampMs, mac, devField.devDataIndex
+                    )
+                }
+                item.isRecord -> {
+                    writeRecordMessage(encoder, item.dataPoint!!, strydDevFields, hrDevFields)
+                }
+                else -> {
+                    val pe = item.pauseEvent!!
+                    val eventMesg = EventMesg()
+                    eventMesg.setTimestamp(DateTime(toFitTimestamp(pe.timestampMs)))
+                    eventMesg.setEvent(Event.TIMER)
+                    eventMesg.setEventType(if (pe.isPause) EventType.STOP_ALL else EventType.START)
+                    encoder.write(eventMesg)
+                }
             }
         }
 
@@ -625,6 +672,7 @@ class FitFileExporter(private val context: Context) {
             maxCadence = maxCadence,
             totalCalories = lapCalories,
             lapTrigger = lapTrigger,
+            avgGrade = agg.avgIncline,
             avgInclinePower = avgInclinePower,
             avgRawPower = avgRawPower,
             wktStepIndex = wktStepIndex,
@@ -751,10 +799,90 @@ class FitFileExporter(private val context: Context) {
         return StrydDevFields(devDataId, recordPowerDesc, lapPowerDesc, sessionCpDesc, userFtpWatts)
     }
 
+    /**
+     * Write developer field definitions for every HR BLE sensor that reported at least one
+     * non-zero reading. Each sensor gets its own DeveloperDataIdMesg (devDataIndex starting at 1,
+     * since Stryd occupies 0) and a single FieldDescriptionMesg (fieldDefNum=0, units="bpm").
+     * The MAC address is used as the field name for identification in analysis tools.
+     * Returns MAC → HrSensorDevField map; empty if no multi-sensor HR data present.
+     */
+    private fun writeHrDeveloperFieldDefinitions(
+        encoder: FileEncoder,
+        hrSensors: List<Pair<String, String>>
+    ): Map<Int, HrSensorDevField> {
+        if (hrSensors.isEmpty()) return emptyMap()
+
+        val result = mutableMapOf<Int, HrSensorDevField>()
+
+        for ((index, pair) in hrSensors.withIndex()) {
+            val (mac, name) = pair
+            // Stryd occupies devDataIndex 0; HR sensors start at 1
+            val devDataIndex = (STRYD_DEV_DATA_INDEX + 1 + index).toShort()
+
+            // Generate a deterministic 16-byte UUID from the MAC address.
+            // UUID v3 (MD5-based) ensures a valid UUID that's stable across exports.
+            val uuid = UUID.nameUUIDFromBytes("tHUD-HR:$mac".toByteArray())
+            val uuidBytes = ByteArray(16)
+            val msb = uuid.mostSignificantBits
+            val lsb = uuid.leastSignificantBits
+            for (i in 0..7) { uuidBytes[i] = (msb shr (56 - i * 8)).toByte() }
+            for (i in 0..7) { uuidBytes[8 + i] = (lsb shr (56 - i * 8)).toByte() }
+
+            val devDataId = DeveloperDataIdMesg()
+            for (i in uuidBytes.indices) {
+                devDataId.setFieldValue(
+                    DeveloperDataIdMesg.ApplicationIdFieldNum, i, uuidBytes[i].toInt() and 0xFF
+                )
+            }
+            devDataId.setDeveloperDataIndex(devDataIndex)
+            devDataId.setApplicationVersion(1L)
+            encoder.write(devDataId)
+
+            // Single field per sensor: HR value in bpm, no native field override
+            val fieldDesc = FieldDescriptionMesg()
+            fieldDesc.setDeveloperDataIndex(devDataIndex)
+            fieldDesc.setFieldDefinitionNumber(0.toShort())
+            fieldDesc.setFitBaseTypeId(FitBaseType.UINT8)
+            fieldDesc.setFieldName(0, name.ifEmpty { mac })
+            fieldDesc.setUnits(0, "bpm")
+            encoder.write(fieldDesc)
+
+            result[index] = HrSensorDevField(devDataId, fieldDesc, devDataIndex)
+        }
+
+        Log.d(TAG, "Wrote HR developer field definitions for ${result.size} sensors")
+        return result
+    }
+
+    /**
+     * Write a DeviceInfoMesg at the moment when a BLE HR sensor became the active primary.
+     * Only written for actual BLE devices (not for AVERAGE mode transitions).
+     */
+    private fun writeHrSensorDeviceInfoMessage(
+        encoder: FileEncoder,
+        timestampMs: Long,
+        mac: String,
+        deviceIndex: Short
+    ) {
+        val info = DeviceInfoMesg()
+        info.setTimestamp(DateTime(toFitTimestamp(timestampMs)))
+        info.setDeviceIndex(deviceIndex)
+        info.setManufacturer(Manufacturer.INVALID)
+        // Derive a serial from the last 4 MAC bytes for stable identification
+        val macParts = mac.split(":")
+        val serial = if (macParts.size == 6) {
+            macParts.takeLast(4).joinToString("").toLongOrNull(16) ?: 0L
+        } else 0L
+        info.setSerialNumber(serial)
+        info.setSourceType(SourceType.BLUETOOTH_LOW_ENERGY)
+        encoder.write(info)
+    }
+
     private fun writeRecordMessage(
         encoder: FileEncoder,
         dataPoint: WorkoutDataPoint,
-        strydDevFields: StrydDevFields? = null
+        strydDevFields: StrydDevFields? = null,
+        hrDevFields: Map<Int, HrSensorDevField>? = null
     ) {
         val record = RecordMesg()
         record.setTimestamp(DateTime(toFitTimestamp(dataPoint.timestampMs)))
@@ -798,6 +926,15 @@ class FitFileExporter(private val context: Context) {
             record.addDeveloperField(devField)
         }
 
+        // HR sensor developer fields: one per sensor with a non-zero reading at this data point
+        hrDevFields?.forEach { (sensorIndex, devField) ->
+            val bpm = dataPoint.allHrSensors[sensorIndex] ?: return@forEach
+            if (bpm <= 0) return@forEach
+            val field = DeveloperField(devField.recordFieldDesc, devField.devDataIdMesg)
+            field.setValue(bpm)
+            record.addDeveloperField(field)
+        }
+
         encoder.write(record)
     }
 
@@ -819,6 +956,7 @@ class FitFileExporter(private val context: Context) {
         maxCadence: Int = 0,
         totalCalories: Double = 0.0,
         lapTrigger: LapTrigger = LapTrigger.SESSION_END,
+        avgGrade: Double = 0.0,
         avgInclinePower: Double = 0.0,
         avgRawPower: Double = 0.0,
         wktStepIndex: Int? = null,
@@ -834,6 +972,7 @@ class FitFileExporter(private val context: Context) {
         lap.setTotalTimerTime((totalTimerMs / 1000.0).toFloat())
         lap.setTotalDistance(totalDistanceM.toFloat())
         lap.setTotalAscent(totalAscent.toInt())
+        lap.setAvgGrade(avgGrade.toFloat())
 
         if (avgHeartRate > 0) {
             lap.setAvgHeartRate(avgHeartRate.toInt().toShort())
@@ -907,6 +1046,7 @@ class FitFileExporter(private val context: Context) {
         maxCadence: Int = 0,
         totalCalories: Double = 0.0,
         numLaps: Int = 1,
+        avgGrade: Double = 0.0,
         avgInclinePower: Double = 0.0,
         avgRawPower: Double = 0.0,
         strydDevFields: StrydDevFields? = null
@@ -918,6 +1058,7 @@ class FitFileExporter(private val context: Context) {
         session.setTotalTimerTime((totalTimerMs / 1000.0).toFloat())
         session.setTotalDistance(totalDistanceM.toFloat())
         session.setTotalAscent(totalAscent.toInt())
+        session.setAvgGrade(avgGrade.toFloat())
 
         if (avgHeartRate > 0) {
             session.setAvgHeartRate(avgHeartRate.toInt().toShort())

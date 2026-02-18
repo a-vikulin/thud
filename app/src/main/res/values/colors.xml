@@ -20,6 +20,7 @@
     <color name="text_primary">#FFFFFF</color>
     <color name="text_label">#AAAAC8</color>
     <color name="text_label_dim">#8888A8</color>
+    <color name="text_on_zone">#CCFFFFFF</color>
 
     <!-- Box backgrounds -->
     <color name="box_interactive">#44FFFFFF</color>

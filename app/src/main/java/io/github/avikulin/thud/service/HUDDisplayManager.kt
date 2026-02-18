@@ -63,6 +63,7 @@ class HUDDisplayManager(
     private var tvDistance: TextView? = null
     private var tvHeartRate: TextView? = null
     private var tvHrLabel: TextView? = null
+    private var tvHrSubtitle: TextView? = null
     private var tvClimb: TextView? = null
     private var paceBox: View? = null
     private var inclineBox: View? = null
@@ -166,6 +167,7 @@ class HUDDisplayManager(
             tvDistance = topView?.findViewById(R.id.tvDistance)
             tvHeartRate = topView?.findViewById(R.id.tvHeartRate)
             tvHrLabel = topView?.findViewById(R.id.tvHrLabel)
+            tvHrSubtitle = topView?.findViewById(R.id.tvHrSubtitle)
             tvClimb = topView?.findViewById(R.id.tvClimb)
 
             // Initialize touchable boxes
@@ -245,6 +247,7 @@ class HUDDisplayManager(
             tvDistance = null
             tvHeartRate = null
             tvHrLabel = null
+            tvHrSubtitle = null
             tvClimb = null
             paceBox = null
             inclineBox = null
@@ -370,6 +373,17 @@ class HUDDisplayManager(
     fun updateHrSensorStatus(connected: Boolean) {
         mainHandler.post {
             tvHrLabel?.setTextColor(if (connected) colorTextPrimary else colorTextLabelDim)
+        }
+    }
+
+    /**
+     * Update the HR box subtitle showing the active primary sensor's short name (or "Avg").
+     * Hidden when empty (0 or 1 sensors — no need to disambiguate).
+     */
+    fun updateHrSubtitle(shortName: String) {
+        mainHandler.post {
+            tvHrSubtitle?.text = shortName
+            tvHrSubtitle?.visibility = if (shortName.isEmpty()) View.GONE else View.VISIBLE
         }
     }
 
@@ -602,6 +616,22 @@ class HUDDisplayManager(
     }
 
     /**
+     * Keep the screen on while the belt is running. Prevents BLE sensor drops from screen timeout.
+     */
+    fun setKeepScreenOn(keepOn: Boolean) {
+        val view = topView ?: return
+        mainHandler.post {
+            val params = view.layoutParams as WindowManager.LayoutParams
+            if (keepOn) {
+                params.flags = params.flags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            } else {
+                params.flags = params.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON.inv()
+            }
+            try { windowManager.updateViewLayout(view, params) } catch (_: Exception) {}
+        }
+    }
+
+    /**
      * Clean up resources.
      */
     fun cleanup() {
@@ -619,13 +649,22 @@ class HUDDisplayManager(
     }
 
     /**
-     * Get the foot pod box's screen position and dimensions.
-     * Returns (x, y, width, height) or null if not visible.
+     * Get overlay-relative bounds for a HUD box.
+     * getLocationOnScreen() returns absolute screen coords (includes status bar),
+     * but overlay LayoutParams.y is relative to the overlay coordinate system
+     * (starts below status bar). Subtract HUD root's screen y to correct.
      */
-    fun getFootPodBoxBounds(): IntArray? {
-        val box = footPodBox ?: return null
-        val location = IntArray(2)
-        box.getLocationOnScreen(location)
-        return intArrayOf(location[0], location[1], box.width, box.height)
+    private fun getBoxBounds(box: View?): IntArray? {
+        val b = box ?: return null
+        val root = topView ?: return null
+        val boxLoc = IntArray(2)
+        val rootLoc = IntArray(2)
+        b.getLocationOnScreen(boxLoc)
+        root.getLocationOnScreen(rootLoc)
+        return intArrayOf(boxLoc[0], boxLoc[1] - rootLoc[1], b.width, b.height)
     }
+
+    fun getFootPodBoxBounds(): IntArray? = getBoxBounds(footPodBox)
+
+    fun getHrBoxBounds(): IntArray? = getBoxBounds(hrBox)
 }

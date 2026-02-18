@@ -49,7 +49,9 @@ import io.github.avikulin.thud.service.StrydManager
 import io.github.avikulin.thud.service.RunPersistenceManager
 import io.github.avikulin.thud.service.RemoteControlBridge
 import io.github.avikulin.thud.service.RemoteControlManager
+import io.github.avikulin.thud.service.SavedBluetoothDevices
 import io.github.avikulin.thud.service.ScreenshotManager
+import io.github.avikulin.thud.service.SensorDeviceType
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
@@ -174,7 +176,8 @@ class HUDService : Service(),
         val pauseEvents: List<io.github.avikulin.thud.service.PauseEvent>,
         val executionSteps: List<ExecutionStep>?,  // null for free runs (flattened for runtime)
         val originalSteps: List<io.github.avikulin.thud.data.entity.WorkoutStep>?,  // null for free runs (hierarchical for FIT)
-        val userSettings: UserExportSettings
+        val userSettings: UserExportSettings,
+        val hrSensors: List<Pair<String, String>> = emptyList()  // index-ordered (MAC, name) for FIT field labels
     )
 
     // Coroutine scope for background work
@@ -249,7 +252,7 @@ class HUDService : Service(),
             when (intent?.action) {
                 Intent.ACTION_SCREEN_OFF -> {
                     Log.d(TAG, "Screen off - disconnecting BLE sensors to save battery")
-                    hrSensorManager.disconnect()
+                    hrSensorManager.disconnectAll()
                     strydManager.disconnect()
                 }
                 Intent.ACTION_SCREEN_ON -> {
@@ -352,6 +355,10 @@ class HUDService : Service(),
             onResumeWorkoutAtStepPace = {
                 // Resume workout with treadmill control and step targets
                 workoutEngineManager.resumeWorkoutWithTargets()
+            },
+            onPrimaryHrSelected = { value ->
+                setPrimaryHrSensor(value)
+                popupManager.closeHrSensorPopup()
             }
         )
 
@@ -657,6 +664,7 @@ class HUDService : Service(),
             pauseEvents = pauseEvents.toList(),
             executionSteps = executionSteps?.toList(),
             originalSteps = originalSteps?.toList(),
+            hrSensors = workoutRecorder.getHrSensors(),
             userSettings = UserExportSettings(
                 hrRest = state.userHrRest,
                 lthrBpm = state.userLthrBpm,
@@ -721,7 +729,8 @@ class HUDService : Service(),
                 fitManufacturer = snapshot.userSettings.fitManufacturer,
                 fitProductId = snapshot.userSettings.fitProductId,
                 fitDeviceSerial = snapshot.userSettings.fitDeviceSerial,
-                fitSoftwareVersion = snapshot.userSettings.fitSoftwareVersion
+                fitSoftwareVersion = snapshot.userSettings.fitSoftwareVersion,
+                hrSensors = snapshot.hrSensors
             )
 
             if (fitResult != null) {
@@ -1930,7 +1939,9 @@ class HUDService : Service(),
             rawPowerWatts = state.currentRawPowerWatts,
             inclinePowerWatts = state.currentPowerWatts - state.currentRawPowerWatts,
             stepIndex = stepIndex,
-            stepName = stepName
+            stepName = stepName,
+            connectedHrSensors = state.connectedHrSensors,
+            primaryHrMac = state.activePrimaryHrMac
         )
 
         // Update sensor connection status displays
@@ -2000,6 +2011,9 @@ class HUDService : Service(),
                 handleTreadmillStopped(previousState)
             }
         }
+
+        // Keep screen on while belt is running — prevents BLE sensor drops from screen timeout
+        hudDisplayManager.setKeepScreenOn(workoutState == WorkoutState.WORKOUT_STATE_RUNNING)
     }
 
     /**
@@ -2175,7 +2189,9 @@ class HUDService : Service(),
             rawPowerWatts = state.currentRawPowerWatts,
             inclinePowerWatts = state.currentPowerWatts - state.currentRawPowerWatts,
             stepIndex = stepIndex,
-            stepName = stepName
+            stepName = stepName,
+            connectedHrSensors = state.connectedHrSensors,
+            primaryHrMac = state.activePrimaryHrMac
         )
 
         // Update engine with calculated distance (from adjusted speed, not raw treadmill)
@@ -2289,13 +2305,24 @@ class HUDService : Service(),
     }
 
     override fun onHrBoxClicked() {
-        // Open unified Bluetooth sensors dialog
+        val wasHrPopupOpen = popupManager.isHrSensorPopupVisible
         popupManager.closeAllPopups()
         settingsManager.removeDialog()
         hrSensorManager.removeDialog()
         strydManager.removeDialog()
         strydManager.removeMetricSelector()
-        bluetoothSensorDialogManager.toggleDialog()
+        if (wasHrPopupOpen) {
+            // Was already open — just close it (selection unchanged)
+            return
+        }
+        if (state.connectedHrSensors.size >= 2) {
+            // Multiple sensors → show sensor selector popup
+            bluetoothSensorDialogManager.removeDialog()
+            popupManager.showHrSensorPopup(hudDisplayManager.getHrBoxBounds())
+        } else {
+            // 0-1 sensors → show full BT dialog (existing behavior)
+            bluetoothSensorDialogManager.toggleDialog()
+        }
     }
 
     override fun onFootPodBoxClicked() {
@@ -2522,25 +2549,91 @@ class HUDService : Service(),
 
     // ==================== HrSensorManager.Listener ====================
 
-    override fun onHrSensorConnected(deviceName: String) {
-        Log.d(TAG, "HR sensor connected: $deviceName")
+    override fun onHrSensorConnected(mac: String, deviceName: String) {
+        Log.d(TAG, "HR sensor connected: $deviceName ($mac)")
+        state.connectedHrSensors[mac] = Pair(deviceName, 0)
+        state.hrSensorConnected = true
+        when {
+            state.savedPrimaryHrMac == SettingsManager.HR_PRIMARY_AVERAGE -> {
+                state.activePrimaryHrMac = SettingsManager.HR_PRIMARY_AVERAGE
+            }
+            mac == state.savedPrimaryHrMac -> state.activePrimaryHrMac = mac
+            state.activePrimaryHrMac.isEmpty() -> state.activePrimaryHrMac = mac
+        }
         hudDisplayManager.updateHrSensorStatus(true)
+        hudDisplayManager.updateHrSubtitle(activeHrSubtitleLabel())
         bluetoothSensorDialogManager.updateStatus()
     }
 
-    override fun onHrSensorDisconnected() {
-        Log.d(TAG, "HR sensor disconnected")
-        hudDisplayManager.updateHrSensorStatus(false)
+    override fun onHrSensorDisconnected(mac: String, deviceName: String) {
+        Log.d(TAG, "HR sensor disconnected: $deviceName ($mac)")
+        state.connectedHrSensors.remove(mac)
+        state.hrSensorConnected = state.connectedHrSensors.isNotEmpty()
+        when {
+            state.activePrimaryHrMac == SettingsManager.HR_PRIMARY_AVERAGE -> {
+                state.currentHeartRateBpm = computeAverageHrBpm()
+                hudDisplayManager.updateHeartRate(state.currentHeartRateBpm)
+            }
+            mac == state.activePrimaryHrMac -> {
+                val prefs = getSharedPreferences(SettingsManager.PREFS_NAME, MODE_PRIVATE)
+                val nextMac = SavedBluetoothDevices.getByType(prefs, SensorDeviceType.HR_SENSOR)
+                    .map { it.mac }
+                    .firstOrNull { state.connectedHrSensors.containsKey(it) }
+                state.activePrimaryHrMac = nextMac ?: ""
+                state.currentHeartRateBpm = nextMac?.let { state.connectedHrSensors[it]?.second?.toDouble() } ?: 0.0
+                hudDisplayManager.updateHeartRate(state.currentHeartRateBpm)
+            }
+        }
+        hudDisplayManager.updateHrSensorStatus(state.hrSensorConnected)
+        hudDisplayManager.updateHrSubtitle(activeHrSubtitleLabel())
         bluetoothSensorDialogManager.updateStatus()
     }
 
-    override fun onHeartRateUpdate(bpm: Int) {
-        // State is already updated by HrSensorManager, but we need to:
-        // 1. Update the HUD display
-        hudDisplayManager.updateHeartRate(bpm.toDouble())
-        // 2. Feed HR updates to workout engine for HR-based adjustments
-        workoutEngineManager.onHeartRateUpdate(bpm.toDouble())
+    override fun onHeartRateUpdate(mac: String, deviceName: String, bpm: Int) {
+        val name = state.connectedHrSensors[mac]?.first ?: deviceName
+        state.connectedHrSensors[mac] = Pair(name, bpm)
+
+        val effectiveBpm: Double = when {
+            state.activePrimaryHrMac == SettingsManager.HR_PRIMARY_AVERAGE -> computeAverageHrBpm()
+            mac == state.activePrimaryHrMac -> bpm.toDouble()
+            else -> {
+                // Secondary sensor — still update popup if visible, but don't update engine/display
+                popupManager.updateHrSensorPopupIfVisible()
+                return
+            }
+        }
+
+        state.currentHeartRateBpm = effectiveBpm
+        hudDisplayManager.updateHeartRate(effectiveBpm)
+        workoutEngineManager.onHeartRateUpdate(effectiveBpm)
+        popupManager.updateHrSensorPopupIfVisible()
     }
+
+    /** Set the active primary HR sensor (MAC or HR_PRIMARY_AVERAGE). Persists the choice. */
+    fun setPrimaryHrSensor(value: String) {
+        state.activePrimaryHrMac = value
+        settingsManager.savePrimaryHrMac(value)
+        val bpm = when (value) {
+            SettingsManager.HR_PRIMARY_AVERAGE -> computeAverageHrBpm()
+            else -> state.connectedHrSensors[value]?.second?.toDouble() ?: 0.0
+        }
+        state.currentHeartRateBpm = bpm
+        hudDisplayManager.updateHeartRate(bpm)
+        hudDisplayManager.updateHrSubtitle(activeHrSubtitleLabel())
+    }
+
+    private fun computeAverageHrBpm(): Double {
+        val nonZero = state.connectedHrSensors.values.map { it.second }.filter { it > 0 }
+        return if (nonZero.isEmpty()) 0.0 else nonZero.average()
+    }
+
+    private fun activeHrSubtitleLabel(): String = when (state.activePrimaryHrMac) {
+        SettingsManager.HR_PRIMARY_AVERAGE -> "Avg"
+        "" -> ""
+        else -> getShortName(state.connectedHrSensors[state.activePrimaryHrMac]?.first)
+    }
+
+    private fun getShortName(name: String?): String = name?.take(12) ?: ""
 
     // ==================== Public API (for WorkoutRecorder delegation) ====================
 

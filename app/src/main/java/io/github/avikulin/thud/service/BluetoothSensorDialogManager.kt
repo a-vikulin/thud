@@ -245,9 +245,7 @@ class BluetoothSensorDialogManager(
         val savedDevices = SavedBluetoothDevices.getAll(prefs)
 
         // Clear reconnecting state for connected devices
-        if (hrSensorManager.isConnected) {
-            hrSensorManager.getConnectedDeviceMac()?.let { reconnectingMacs.remove(it) }
-        }
+        hrSensorManager.getConnectedMacs().forEach { reconnectingMacs.remove(it) }
         if (state.strydConnected) {
             strydManager.getConnectedDeviceMac()?.let { reconnectingMacs.remove(it) }
         }
@@ -265,8 +263,7 @@ class BluetoothSensorDialogManager(
         // Sort: connected devices first, then disconnected
         val sortedDevices = savedDevices.sortedByDescending { device ->
             when (device.type) {
-                SensorDeviceType.HR_SENSOR -> hrSensorManager.isConnected &&
-                    hrSensorManager.getConnectedDeviceName() == device.name
+                SensorDeviceType.HR_SENSOR -> hrSensorManager.isConnected(device.mac)
                 SensorDeviceType.FOOT_POD -> state.strydConnected &&
                     strydManager.getConnectedDeviceName() == device.name
             }
@@ -278,7 +275,7 @@ class BluetoothSensorDialogManager(
         }
 
         // Show reconnect all button if no devices are connected but we have saved devices
-        val anyConnected = hrSensorManager.isConnected || state.strydConnected
+        val anyConnected = hrSensorManager.isAnyConnected || state.strydConnected
         if (!anyConnected && savedDevices.isNotEmpty()) {
             val reconnectBtn = createButton(service.getString(R.string.btn_reconnect_all)) {
                 // Mark all devices as reconnecting
@@ -304,8 +301,7 @@ class BluetoothSensorDialogManager(
 
         // Check if this device is currently connected
         val isConnected = when (device.type) {
-            SensorDeviceType.HR_SENSOR -> hrSensorManager.isConnected &&
-                hrSensorManager.getConnectedDeviceName() == device.name
+            SensorDeviceType.HR_SENSOR -> hrSensorManager.isConnected(device.mac)
             SensorDeviceType.FOOT_POD -> state.strydConnected &&
                 strydManager.getConnectedDeviceName() == device.name
         }
@@ -352,7 +348,7 @@ class BluetoothSensorDialogManager(
                 if (isConnected) {
                     val detailText = TextView(service).apply {
                         val lastDataTime = when (device.type) {
-                            SensorDeviceType.HR_SENSOR -> formatLastDataTime(hrSensorManager.lastDataTimestampMs)
+                            SensorDeviceType.HR_SENSOR -> formatLastDataTime(hrSensorManager.getLastDataTimestamp(device.mac))
                             SensorDeviceType.FOOT_POD -> formatLastDataTime(strydManager.lastDataTimestampMs)
                         }
                         val currentValue = when (device.type) {
@@ -360,7 +356,7 @@ class BluetoothSensorDialogManager(
                             SensorDeviceType.FOOT_POD -> "${strydManager.getCurrentPower()} W"
                         }
                         val batteryLevel = when (device.type) {
-                            SensorDeviceType.HR_SENSOR -> formatBatteryLevel(hrSensorManager.batteryLevelPercent)
+                            SensorDeviceType.HR_SENSOR -> formatBatteryLevel(hrSensorManager.getBatteryLevel(device.mac))
                             SensorDeviceType.FOOT_POD -> formatBatteryLevel(strydManager.batteryLevelPercent)
                         }
                         val batteryPart = if (batteryLevel != null) " | $batteryLevel" else ""
@@ -378,7 +374,7 @@ class BluetoothSensorDialogManager(
                 // Disconnect button
                 val disconnectBtn = createButton(service.getString(R.string.btn_disconnect)) {
                     when (device.type) {
-                        SensorDeviceType.HR_SENSOR -> hrSensorManager.disconnect()
+                        SensorDeviceType.HR_SENSOR -> hrSensorManager.disconnect(device.mac)
                         SensorDeviceType.FOOT_POD -> strydManager.disconnect()
                     }
                     updateStatus()
@@ -396,10 +392,9 @@ class BluetoothSensorDialogManager(
                     // Mark this device as reconnecting
                     reconnectingMacs.add(device.mac)
 
-                    // Disconnect (cancels any pending connection) and connect to new device
+                    // connectToDevice closes/reopens this MAC's connection internally
                     when (device.type) {
                         SensorDeviceType.HR_SENSOR -> {
-                            hrSensorManager.disconnect()
                             hrSensorManager.connectToDeviceByMac(device.mac)
                         }
                         SensorDeviceType.FOOT_POD -> {

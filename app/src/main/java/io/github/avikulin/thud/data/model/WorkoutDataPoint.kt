@@ -19,5 +19,8 @@ data class WorkoutDataPoint(
     val cadenceSpm: Int = 0,
     // Workout step tracking for FIT lap export
     val stepIndex: Int = -1,
-    val stepName: String = ""
+    val stepName: String = "",
+    // Multi-sensor HR: full snapshot of all sensors at this moment (index from WorkoutRecorder registry)
+    val allHrSensors: Map<Int, Int> = emptyMap(),  // sensorIndex → bpm
+    val primaryHrIndex: Int = -1                    // active primary sensor index (-1 = none/average)
 )

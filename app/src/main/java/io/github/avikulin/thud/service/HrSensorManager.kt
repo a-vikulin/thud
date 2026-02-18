@@ -21,10 +21,12 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import io.github.avikulin.thud.R
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Manages Bluetooth LE connection to heart rate sensors.
- * Handles scanning, connection, characteristic subscriptions, and data parsing.
+ * Manages Bluetooth LE connections to heart rate sensors.
+ * Supports simultaneous connections to multiple HR sensors.
+ * HUDService (via listener) decides which sensor's value drives the HUD and engine.
  */
 class HrSensorManager(
     private val service: Service,
@@ -34,6 +36,8 @@ class HrSensorManager(
     companion object {
         private const val TAG = "HrSensorManager"
         private const val SCAN_TIMEOUT_MS = 30000L
+        private const val MAX_RECONNECT_ATTEMPTS = 3
+        private val RECONNECT_DELAYS = longArrayOf(5000, 10000, 20000)
 
         // BLE Service UUID - Heart Rate Service
         val HEART_RATE_SERVICE: UUID = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
@@ -48,32 +52,36 @@ class HrSensorManager(
     }
 
     /**
-     * Callback interface for HR sensor events.
+     * Callback interface for HR sensor events. All callbacks identify the sensor by MAC.
+     * HUDService is responsible for routing the data to state and engine.
      */
     interface Listener {
-        fun onHrSensorConnected(deviceName: String)
-        fun onHrSensorDisconnected()
-        fun onHeartRateUpdate(bpm: Int)
+        fun onHrSensorConnected(mac: String, deviceName: String)
+        fun onHrSensorDisconnected(mac: String, deviceName: String)
+        fun onHeartRateUpdate(mac: String, deviceName: String, bpm: Int)
     }
 
     var listener: Listener? = null
 
+    // Per-MAC connection state
+    private data class HrConnection(
+        val device: BluetoothDevice,
+        val gatt: BluetoothGatt,
+        var batteryLevel: Int = -1,
+        var lastDataMs: Long = 0L
+    )
+    private val connections = ConcurrentHashMap<String, HrConnection>()
+    private val intentionalDisconnects = ConcurrentHashMap.newKeySet<String>()
+    private val reconnectAttempts = ConcurrentHashMap<String, Int>()
+    private val reconnectRunnables = ConcurrentHashMap<String, Runnable?>()
+
     // BLE components
     private var bluetoothAdapter: BluetoothAdapter? = null
     private var bluetoothLeScanner: BluetoothLeScanner? = null
-    private var bluetoothGatt: BluetoothGatt? = null
     private var scanning = false
-    private var connectedDevice: BluetoothDevice? = null
 
-    // Handler for scan timeout
+    // Handler for scan timeout and reconnect scheduling
     private val handler = Handler(Looper.getMainLooper())
-
-    // Auto-reconnect on unexpected disconnect
-    private var intentionalDisconnect = false
-    private var reconnectAttempt = 0
-    private val MAX_RECONNECT_ATTEMPTS = 3
-    private val RECONNECT_DELAYS = longArrayOf(5000, 10000, 20000)
-    private var reconnectRunnable: Runnable? = null
 
     // Scan timeout tracking
     private var scanTimeoutRunnable: Runnable? = null
@@ -82,30 +90,30 @@ class HrSensorManager(
     private val discoveredDevices = mutableListOf<BluetoothDevice>()
     private val discoveredMacs = mutableSetOf<String>()
 
-    // Dialog views
+    // Dialog views (for the internal scan/connect dialog — used by HrSensorManager directly)
     private var dialogView: LinearLayout? = null
     private var deviceListContainer: LinearLayout? = null
     private var statusText: TextView? = null
     private var scanProgressBar: ProgressBar? = null
 
-    val isConnected: Boolean
-        get() = state.hrSensorConnected
+    // Public API
+
+    val isAnyConnected: Boolean get() = connections.isNotEmpty()
+
+    /** Returns true if the given MAC is currently connected. */
+    fun isConnected(mac: String): Boolean = connections.containsKey(mac)
+
+    /** Returns battery level [0-100] for the given MAC, or -1 if not available. */
+    fun getBatteryLevel(mac: String): Int = connections[mac]?.batteryLevel ?: -1
+
+    /** Returns timestamp (ms) of last HR data from the given MAC, or 0 if none. */
+    fun getLastDataTimestamp(mac: String): Long = connections[mac]?.lastDataMs ?: 0L
+
+    /** Returns current set of connected MACs. */
+    fun getConnectedMacs(): Set<String> = connections.keys.toSet()
 
     val isDialogVisible: Boolean
         get() = dialogView != null
-
-    // Timestamp of last HR data received (for connection diagnostics)
-    @Volatile
-    var lastDataTimestampMs: Long = 0L
-        private set
-
-    // Battery level (0-100, or -1 if not available)
-    @Volatile
-    var batteryLevelPercent: Int = -1
-        private set
-
-    // Flag to track if we're waiting for initial battery read during connection
-    private var pendingInitialBatteryRead = false
 
     /**
      * Initialize Bluetooth adapter.
@@ -131,12 +139,12 @@ class HrSensorManager(
             ContextCompat.checkSelfPermission(service, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
             ContextCompat.checkSelfPermission(service, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
         } else {
-            true // Older Android versions don't need runtime permissions for BLE
+            true
         }
     }
 
     /**
-     * Auto-connect to saved HR sensors, trying each until one connects.
+     * Auto-connect to ALL saved HR sensors simultaneously.
      */
     fun autoConnect() {
         if (!hasPermissions()) {
@@ -152,7 +160,6 @@ class HrSensorManager(
             return
         }
 
-        // Try each saved device in order (most recently used first)
         for (saved in savedDevices) {
             Log.d(TAG, "Attempting auto-connect to HR sensor ${saved.name} (${saved.mac})")
             try {
@@ -160,11 +167,9 @@ class HrSensorManager(
                 val device = bluetoothAdapter?.getRemoteDevice(saved.mac)
                 if (device != null) {
                     connectToDevice(device)
-                    return // Only try to connect to one device at a time
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Auto-connect to ${saved.mac} failed: ${e.message}")
-                // Continue to next device
             }
         }
     }
@@ -185,28 +190,17 @@ class HrSensorManager(
 
         createDialog()
 
-        // If already connected, show connected state; otherwise start scanning
-        if (state.hrSensorConnected && connectedDevice != null) {
+        if (connections.isNotEmpty()) {
             showConnectedState()
         } else {
             startScan()
         }
     }
 
-    /**
-     * Toggle dialog visibility.
-     */
     fun toggleDialog() {
-        if (dialogView != null) {
-            removeDialog()
-        } else {
-            showDialog()
-        }
+        if (dialogView != null) removeDialog() else showDialog()
     }
 
-    /**
-     * Remove dialog from screen.
-     */
     fun removeDialog() {
         stopScan()
         dialogView?.let {
@@ -222,9 +216,6 @@ class HrSensorManager(
         scanProgressBar = null
     }
 
-    /**
-     * Create the dialog UI.
-     */
     @SuppressLint("MissingPermission")
     private fun createDialog() {
         val resources = service.resources
@@ -239,7 +230,6 @@ class HrSensorManager(
             setPadding(dialogPaddingH, dialogPaddingV, dialogPaddingH, dialogPaddingV)
         }
 
-        // Title row with close button
         val titleRow = LinearLayout(service).apply {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(
@@ -265,7 +255,6 @@ class HrSensorManager(
         titleRow.addView(closeButton)
         container.addView(titleRow)
 
-        // Status text
         statusText = TextView(service).apply {
             text = service.getString(R.string.hr_dialog_scanning)
             setTextColor(ContextCompat.getColor(service, R.color.text_secondary))
@@ -276,7 +265,6 @@ class HrSensorManager(
         }
         container.addView(statusText)
 
-        // Scan progress bar
         scanProgressBar = ProgressBar(service, null, android.R.attr.progressBarStyleHorizontal).apply {
             isIndeterminate = true
             layoutParams = LinearLayout.LayoutParams(
@@ -286,7 +274,6 @@ class HrSensorManager(
         }
         container.addView(scanProgressBar)
 
-        // Device list container
         deviceListContainer = LinearLayout(service).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(
@@ -296,14 +283,13 @@ class HrSensorManager(
         }
         container.addView(deviceListContainer)
 
-        // Disconnect button (hidden initially)
         val disconnectButton = Button(service).apply {
             text = service.getString(R.string.btn_disconnect)
             setTextColor(ContextCompat.getColor(service, R.color.text_primary))
             backgroundTintList = ContextCompat.getColorStateList(service, R.color.button_secondary)
             visibility = View.GONE
             tag = "disconnectButton"
-            setOnClickListener { disconnect() }
+            setOnClickListener { disconnectAll() }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -311,16 +297,12 @@ class HrSensorManager(
         }
         container.addView(disconnectButton)
 
-        // Show dialog
         val dialogWidth = OverlayHelper.calculateWidth(state.screenWidth, dialogWidthFraction)
         val dialogParams = OverlayHelper.createOverlayParams(dialogWidth)
         windowManager.addView(container, dialogParams)
         dialogView = container
     }
 
-    /**
-     * Start BLE scan for HR sensors.
-     */
     @SuppressLint("MissingPermission")
     private fun startScan() {
         if (scanning || bluetoothLeScanner == null) return
@@ -332,7 +314,6 @@ class HrSensorManager(
         statusText?.text = service.getString(R.string.hr_dialog_scanning)
         scanProgressBar?.visibility = View.VISIBLE
 
-        // Scan filter for Heart Rate Service
         val scanFilter = ScanFilter.Builder()
             .setServiceUuid(ParcelUuid(HEART_RATE_SERVICE))
             .build()
@@ -344,7 +325,6 @@ class HrSensorManager(
         scanning = true
         bluetoothLeScanner?.startScan(listOf(scanFilter), scanSettings, scanCallback)
 
-        // Stop scan after timeout
         val timeout = Runnable {
             stopScan()
             if (discoveredDevices.isEmpty()) {
@@ -357,9 +337,6 @@ class HrSensorManager(
         Log.d(TAG, "Started HR sensor scan")
     }
 
-    /**
-     * Stop BLE scan.
-     */
     @SuppressLint("MissingPermission")
     private fun stopScan() {
         if (!scanning) return
@@ -378,22 +355,17 @@ class HrSensorManager(
         Log.d(TAG, "Stopped HR sensor scan")
     }
 
-    /**
-     * Scan callback for discovered devices.
-     */
     private val scanCallback = object : ScanCallback() {
         @SuppressLint("MissingPermission")
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val device = result.device
             val deviceName = device.name ?: "Unknown HR Sensor"
 
-            // Avoid duplicates (O(1) HashSet check instead of O(n) linear scan)
             if (!discoveredMacs.add(device.address)) return
 
             discoveredDevices.add(device)
             Log.d(TAG, "Discovered HR sensor: $deviceName (${device.address})")
 
-            // Update UI
             handler.post {
                 statusText?.text = service.getString(R.string.hr_dialog_found_devices, discoveredDevices.size)
                 val deviceRow = createDeviceRow(device, deviceName)
@@ -411,9 +383,6 @@ class HrSensorManager(
         }
     }
 
-    /**
-     * Create a device row for the dialog.
-     */
     @SuppressLint("MissingPermission")
     private fun createDeviceRow(device: BluetoothDevice, deviceName: String): LinearLayout {
         val resources = service.resources
@@ -449,89 +418,82 @@ class HrSensorManager(
     }
 
     /**
-     * Connect to an HR sensor device.
+     * Connect to an HR sensor device. Closes any existing connection for the same MAC first.
+     * Does NOT disconnect other MACs.
      */
     @SuppressLint("MissingPermission")
     fun connectToDevice(device: BluetoothDevice) {
-        Log.d(TAG, "Connecting to ${device.name} (${device.address})")
+        val mac = device.address
+        Log.d(TAG, "Connecting to ${device.name} ($mac)")
 
         statusText?.text = service.getString(R.string.hr_device_connecting)
 
-        // Disconnect existing connection
-        bluetoothGatt?.close()
+        // Close existing connection for this MAC only
+        connections[mac]?.gatt?.close()
 
-        connectedDevice = device
-        bluetoothGatt = device.connectGatt(service, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+        val callback = HrGattCallback(mac)
+        val gatt = device.connectGatt(service, false, callback, BluetoothDevice.TRANSPORT_LE)
+        // Store a temporary slot; HrGattCallback will update it once connected
+        connections[mac] = HrConnection(device, gatt)
     }
 
     /**
-     * Disconnect from current device.
+     * Disconnect a specific MAC only.
      */
     @SuppressLint("MissingPermission")
-    fun disconnect() {
-        Log.d(TAG, "Disconnecting from HR sensor")
+    fun disconnect(mac: String) {
+        Log.d(TAG, "Disconnecting HR sensor $mac")
+        intentionalDisconnects.add(mac)
+        cancelPendingReconnect(mac)
 
-        intentionalDisconnect = true
-        cancelPendingReconnect()
+        val conn = connections.remove(mac)
+        conn?.gatt?.disconnect()
+        conn?.gatt?.close()
+    }
 
-        bluetoothGatt?.disconnect()
-        bluetoothGatt?.close()
-        bluetoothGatt = null
-        connectedDevice = null
+    /**
+     * Disconnect all connected HR sensors.
+     */
+    fun disconnectAll() {
+        Log.d(TAG, "Disconnecting all HR sensors")
+        connections.keys.toList().forEach { disconnect(it) }
+    }
 
-        state.hrSensorConnected = false
-        state.currentHeartRateBpm = 0.0
-        batteryLevelPercent = -1
+    private fun showConnectedState() {
+        val count = connections.size
+        statusText?.text = service.getString(R.string.hr_device_connected_to, "$count device(s)")
+        scanProgressBar?.visibility = View.GONE
+        deviceListContainer?.removeAllViews()
+        dialogView?.findViewWithTag<Button>("disconnectButton")?.visibility = View.VISIBLE
+    }
 
-        listener?.onHrSensorDisconnected()
-
-        // Update dialog if visible
-        if (dialogView != null) {
-            updateDialogForDisconnected()
+    private fun updateDialogForDisconnected() {
+        if (connections.isEmpty()) {
+            statusText?.text = service.getString(R.string.hr_device_disconnected)
+            dialogView?.findViewWithTag<Button>("disconnectButton")?.visibility = View.GONE
+            handler.postDelayed({ startScan() }, 500)
         }
     }
 
     /**
-     * Show connected state in dialog.
+     * Per-MAC GATT callback. MAC is captured at construction so all callbacks are self-identifying.
      */
-    @SuppressLint("MissingPermission")
-    private fun showConnectedState() {
-        val deviceName = connectedDevice?.name ?: "HR Sensor"
-        statusText?.text = service.getString(R.string.hr_device_connected_to, deviceName)
-        scanProgressBar?.visibility = View.GONE
-        deviceListContainer?.removeAllViews()
+    private inner class HrGattCallback(val mac: String) : BluetoothGattCallback() {
+        private var pendingInitialBatteryRead = false
 
-        // Show disconnect button
-        dialogView?.findViewWithTag<Button>("disconnectButton")?.visibility = View.VISIBLE
-    }
-
-    /**
-     * Update dialog when disconnected.
-     */
-    private fun updateDialogForDisconnected() {
-        statusText?.text = service.getString(R.string.hr_device_disconnected)
-        dialogView?.findViewWithTag<Button>("disconnectButton")?.visibility = View.GONE
-
-        // Restart scan
-        handler.postDelayed({ startScan() }, 500)
-    }
-
-    /**
-     * GATT callback for connection and data events.
-     */
-    private val gattCallback = object : BluetoothGattCallback() {
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-            Log.d(TAG, "onConnectionStateChange: status=$status, newState=$newState")
+            Log.d(TAG, "[$mac] onConnectionStateChange: status=$status, newState=$newState")
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
-                    Log.d(TAG, "Connected to GATT server")
-                    reconnectAttempt = 0
-                    // Save device to unified list for auto-connect
+                    Log.d(TAG, "[$mac] Connected to GATT server")
+                    reconnectAttempts[mac] = 0
+                    intentionalDisconnects.remove(mac)
+
                     val deviceName = gatt.device.name ?: "HR Sensor"
                     val prefs = service.getSharedPreferences(SettingsManager.PREFS_NAME, Context.MODE_PRIVATE)
                     SavedBluetoothDevices.save(prefs, SavedBluetoothDevice(
-                        mac = gatt.device.address,
+                        mac = mac,
                         name = deviceName,
                         type = SensorDeviceType.HR_SENSOR
                     ))
@@ -539,22 +501,20 @@ class HrSensorManager(
                     gatt.discoverServices()
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
-                    Log.d(TAG, "Disconnected from GATT server")
-                    val wasIntentional = intentionalDisconnect
-                    intentionalDisconnect = false
+                    Log.d(TAG, "[$mac] Disconnected from GATT server")
+                    val wasIntentional = intentionalDisconnects.remove(mac)
+                    val deviceName = connections[mac]?.device?.name ?: "HR Sensor"
+                    connections.remove(mac)
+
                     handler.post {
-                        state.hrSensorConnected = false
-                        state.currentHeartRateBpm = 0.0
-                        batteryLevelPercent = -1
-                        listener?.onHrSensorDisconnected()
+                        listener?.onHrSensorDisconnected(mac, deviceName)
 
                         if (dialogView != null) {
                             updateDialogForDisconnected()
                         }
 
-                        // Auto-reconnect on unexpected disconnect while service is alive
                         if (!wasIntentional && state.isRunning) {
-                            scheduleReconnect()
+                            scheduleReconnect(mac)
                         }
                     }
                 }
@@ -564,31 +524,28 @@ class HrSensorManager(
         @SuppressLint("MissingPermission")
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
-                Log.e(TAG, "Service discovery failed: $status")
+                Log.e(TAG, "[$mac] Service discovery failed: $status")
                 return
             }
 
-            Log.d(TAG, "Services discovered")
+            Log.d(TAG, "[$mac] Services discovered")
 
-            // Find Heart Rate Measurement characteristic
             val hrService = gatt.getService(HEART_RATE_SERVICE)
             if (hrService == null) {
-                Log.e(TAG, "Heart Rate Service not found")
+                Log.e(TAG, "[$mac] Heart Rate Service not found")
                 return
             }
 
             val hrMeasurement = hrService.getCharacteristic(HEART_RATE_MEASUREMENT)
             if (hrMeasurement == null) {
-                Log.e(TAG, "Heart Rate Measurement characteristic not found")
+                Log.e(TAG, "[$mac] Heart Rate Measurement characteristic not found")
                 return
             }
 
-            // Subscribe to HR notifications
             gatt.setCharacteristicNotification(hrMeasurement, true)
 
             val descriptor = hrMeasurement.getDescriptor(CCC_DESCRIPTOR)
             if (descriptor != null) {
-                // Check if we need to use INDICATE instead of NOTIFY
                 val props = hrMeasurement.properties
                 val useIndicate = (props and BluetoothGattCharacteristic.PROPERTY_INDICATE) != 0 &&
                                   (props and BluetoothGattCharacteristic.PROPERTY_NOTIFY) == 0
@@ -601,72 +558,72 @@ class HrSensorManager(
                 }
                 @Suppress("DEPRECATION")
                 gatt.writeDescriptor(descriptor)
-                Log.d(TAG, "Subscribing to Heart Rate Measurement")
+                Log.d(TAG, "[$mac] Subscribing to Heart Rate Measurement")
             } else {
-                Log.e(TAG, "CCC descriptor not found")
+                Log.e(TAG, "[$mac] CCC descriptor not found")
             }
         }
 
         @SuppressLint("MissingPermission")
         override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                Log.d(TAG, "HR subscription successful")
+                Log.d(TAG, "[$mac] HR subscription successful")
 
-                // Try to read battery level
                 val batteryService = gatt.getService(BATTERY_SERVICE)
                 val batteryChar = batteryService?.getCharacteristic(BATTERY_LEVEL)
                 if (batteryChar != null) {
-                    Log.d(TAG, "Reading battery level")
+                    Log.d(TAG, "[$mac] Reading battery level")
                     pendingInitialBatteryRead = true
                     gatt.readCharacteristic(batteryChar)
                 } else {
-                    Log.d(TAG, "Battery service not available")
-                    // Still mark as connected even without battery
-                    notifyConnected()
+                    Log.d(TAG, "[$mac] Battery service not available")
+                    notifyConnected(gatt)
                 }
             } else {
-                Log.e(TAG, "HR subscription failed: $status")
+                Log.e(TAG, "[$mac] HR subscription failed: $status")
             }
         }
 
-        // Legacy callback for Android 12 and below
         @Deprecated("Deprecated in API 33")
         override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == BATTERY_LEVEL) {
                 @Suppress("DEPRECATION")
                 val data = characteristic.value
                 if (data != null && data.isNotEmpty()) {
-                    batteryLevelPercent = data[0].toInt() and 0xFF
-                    Log.d(TAG, "Battery level: $batteryLevelPercent%")
+                    val level = data[0].toInt() and 0xFF
+                    connections[mac]?.batteryLevel = level
+                    Log.d(TAG, "[$mac] Battery level: $level%")
                 }
             }
-            // Mark as connected after initial battery read (or failure)
             if (pendingInitialBatteryRead) {
                 pendingInitialBatteryRead = false
-                notifyConnected()
+                notifyConnected(gatt)
             }
         }
 
-        // New callback for Android 13+ (API 33)
         override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == BATTERY_LEVEL) {
                 if (value.isNotEmpty()) {
-                    batteryLevelPercent = value[0].toInt() and 0xFF
-                    Log.d(TAG, "Battery level: $batteryLevelPercent%")
+                    val level = value[0].toInt() and 0xFF
+                    connections[mac]?.batteryLevel = level
+                    Log.d(TAG, "[$mac] Battery level: $level%")
                 }
             }
-            // Mark as connected after initial battery read (or failure)
             if (pendingInitialBatteryRead) {
                 pendingInitialBatteryRead = false
-                notifyConnected()
+                notifyConnected(gatt)
             }
         }
 
-        private fun notifyConnected() {
+        private fun notifyConnected(gatt: BluetoothGatt) {
             handler.post {
-                state.hrSensorConnected = true
-                val deviceName = connectedDevice?.name ?: "HR Sensor"
-                listener?.onHrSensorConnected(deviceName)
+                val deviceName = gatt.device.name ?: "HR Sensor"
+                // Update the connection slot with the authoritative gatt reference
+                val conn = connections[mac]
+                if (conn != null) {
+                    connections[mac] = conn.copy(gatt = gatt)
+                }
+                listener?.onHrSensorConnected(mac, deviceName)
 
                 if (dialogView != null) {
                     showConnectedState()
@@ -674,117 +631,92 @@ class HrSensorManager(
             }
         }
 
-        // Legacy callback for Android 12 and below
         @Deprecated("Deprecated in API 33")
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
             @Suppress("DEPRECATION")
             val data = characteristic.value
             if (data == null || data.isEmpty()) return
-
             if (characteristic.uuid == HEART_RATE_MEASUREMENT) {
-                parseHeartRateMeasurement(data)
+                parseHeartRateMeasurement(data, gatt.device.name ?: "HR Sensor")
             }
         }
 
-        // New callback for Android 13+ (API 33)
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
             if (characteristic.uuid == HEART_RATE_MEASUREMENT) {
-                parseHeartRateMeasurement(value)
+                parseHeartRateMeasurement(value, gatt.device.name ?: "HR Sensor")
             }
         }
+
+        private fun parseHeartRateMeasurement(data: ByteArray, deviceName: String) {
+            if (data.isEmpty()) return
+
+            val flags = data[0].toInt() and 0xFF
+            val is16Bit = (flags and 0x01) != 0
+
+            val heartRate = if (is16Bit && data.size >= 3) {
+                ((data[2].toInt() and 0xFF) shl 8) or (data[1].toInt() and 0xFF)
+            } else if (data.size >= 2) {
+                data[1].toInt() and 0xFF
+            } else {
+                return
+            }
+
+            if (heartRate == 0) return
+
+            connections[mac]?.lastDataMs = System.currentTimeMillis()
+            listener?.onHeartRateUpdate(mac, deviceName, heartRate)
+        }
     }
 
     /**
-     * Parse Heart Rate Measurement characteristic (0x2A37).
-     *
-     * Format:
-     * - Byte 0: Flags
-     *   - Bit 0: HR Value Format (0 = UINT8, 1 = UINT16)
-     *   - Bit 1-2: Sensor Contact Status
-     *   - Bit 3: Energy Expended Present
-     *   - Bit 4: RR-Interval Present
-     * - Byte 1 (or 1-2): Heart Rate Value
+     * Schedule a reconnect for a specific MAC with exponential backoff.
      */
-    private fun parseHeartRateMeasurement(data: ByteArray) {
-        if (data.isEmpty()) return
-
-        val flags = data[0].toInt() and 0xFF
-        val is16Bit = (flags and 0x01) != 0
-
-        val heartRate = if (is16Bit && data.size >= 3) {
-            // 16-bit HR value (little-endian)
-            ((data[2].toInt() and 0xFF) shl 8) or (data[1].toInt() and 0xFF)
-        } else if (data.size >= 2) {
-            // 8-bit HR value
-            data[1].toInt() and 0xFF
-        } else {
+    private fun scheduleReconnect(mac: String) {
+        val attempt = reconnectAttempts.getOrDefault(mac, 0)
+        if (attempt >= MAX_RECONNECT_ATTEMPTS) {
+            Log.w(TAG, "[$mac] Max reconnect attempts reached, giving up")
+            reconnectAttempts.remove(mac)
             return
         }
-
-        // Some optical sensors report 0 HR when no contact - filter these
-        if (heartRate == 0) return
-
-        // Update timestamp for connection diagnostics
-        lastDataTimestampMs = System.currentTimeMillis()
-
-        state.currentHeartRateBpm = heartRate.toDouble()
-        listener?.onHeartRateUpdate(heartRate)
-    }
-
-    /**
-     * Schedule a reconnect attempt with exponential backoff.
-     * Attempts to reconnect to the last saved HR sensor.
-     */
-    private fun scheduleReconnect() {
-        if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
-            Log.w(TAG, "Max reconnect attempts ($MAX_RECONNECT_ATTEMPTS) reached, giving up")
-            reconnectAttempt = 0
-            return
-        }
-        val delay = RECONNECT_DELAYS[reconnectAttempt]
-        Log.d(TAG, "Scheduling HR reconnect attempt ${reconnectAttempt + 1}/$MAX_RECONNECT_ATTEMPTS in ${delay}ms")
-        reconnectAttempt++
+        val delay = RECONNECT_DELAYS[attempt]
+        Log.d(TAG, "[$mac] Scheduling reconnect attempt ${attempt + 1}/$MAX_RECONNECT_ATTEMPTS in ${delay}ms")
+        reconnectAttempts[mac] = attempt + 1
         val runnable = Runnable {
-            if (!state.isRunning) return@Runnable
-            Log.d(TAG, "Attempting HR auto-reconnect")
-            autoConnect()
+            if (!state.isRunning || intentionalDisconnects.contains(mac)) return@Runnable
+            Log.d(TAG, "[$mac] Attempting auto-reconnect")
+            connectToDeviceByMac(mac)
         }
-        reconnectRunnable = runnable
+        reconnectRunnables[mac] = runnable
         handler.postDelayed(runnable, delay)
     }
 
-    /**
-     * Cancel any pending reconnect attempt.
-     */
-    private fun cancelPendingReconnect() {
-        reconnectRunnable?.let { handler.removeCallbacks(it) }
-        reconnectRunnable = null
-        reconnectAttempt = 0
+    private fun cancelPendingReconnect(mac: String) {
+        reconnectRunnables.remove(mac)?.let { handler.removeCallbacks(it) }
+        reconnectAttempts.remove(mac)
     }
 
     /**
-     * Clean up resources.
+     * Clean up all connections and resources.
      */
     @SuppressLint("MissingPermission")
     fun cleanup() {
-        cancelPendingReconnect()
+        reconnectRunnables.values.forEach { it?.let { r -> handler.removeCallbacks(r) } }
+        reconnectRunnables.clear()
+        reconnectAttempts.clear()
         stopScan()
         removeDialog()
-        bluetoothGatt?.close()
-        bluetoothGatt = null
-        connectedDevice = null
+        connections.values.forEach { it.gatt.close() }
+        connections.clear()
     }
 
     /**
-     * Forget a specific device by MAC and disconnect if it's currently connected.
+     * Forget a specific device by MAC and disconnect if currently connected.
      */
     fun forgetDevice(mac: String) {
         val prefs = service.getSharedPreferences(SettingsManager.PREFS_NAME, Context.MODE_PRIVATE)
 
-        // If this is the currently connected device, disconnect first
-        if (connectedDevice?.address == mac) {
-            disconnect()
-            lastDataTimestampMs = 0L
+        if (connections.containsKey(mac)) {
+            disconnect(mac)
         }
 
         SavedBluetoothDevices.remove(prefs, mac)
@@ -792,21 +724,20 @@ class HrSensorManager(
     }
 
     /**
-     * Forget all saved HR devices and disconnect if connected.
+     * Forget all saved HR devices and disconnect all.
      */
     fun forgetAllDevices() {
-        disconnect()
-        lastDataTimestampMs = 0L
+        disconnectAll()
         val prefs = service.getSharedPreferences(SettingsManager.PREFS_NAME, Context.MODE_PRIVATE)
         SavedBluetoothDevices.removeByType(prefs, SensorDeviceType.HR_SENSOR)
         Log.d(TAG, "All HR devices forgotten")
     }
 
     /**
-     * Reconnect to saved devices.
+     * Disconnect all then reconnect all saved sensors.
      */
     fun reconnect() {
-        disconnect()
+        disconnectAll()
         autoConnect()
     }
 
@@ -819,33 +750,10 @@ class HrSensorManager(
     }
 
     /**
-     * Get the name of the first saved device, if any (for backwards compatibility).
+     * Get the current heart rate reading (from state — managed by HUDService).
      */
-    fun getSavedDeviceName(): String? {
-        return getSavedDevices().firstOrNull()?.name
-    }
-
-    /**
-     * Get the MAC address of the first saved device, if any (for backwards compatibility).
-     */
-    fun getSavedDeviceMac(): String? {
-        return getSavedDevices().firstOrNull()?.mac
-    }
-
-    /**
-     * Get the name of the currently connected device.
-     */
-    @SuppressLint("MissingPermission")
-    fun getConnectedDeviceName(): String? {
-        return if (state.hrSensorConnected) connectedDevice?.name else null
-    }
-
-    /**
-     * Get the MAC address of the currently connected device.
-     */
-    @SuppressLint("MissingPermission")
-    fun getConnectedDeviceMac(): String? {
-        return if (state.hrSensorConnected) connectedDevice?.address else null
+    fun getCurrentHeartRate(): Int {
+        return state.currentHeartRateBpm.toInt()
     }
 
     /**
@@ -865,26 +773,23 @@ class HrSensorManager(
     }
 
     /**
-     * Get the current heart rate reading.
+     * Request a fresh battery level reading from the given connected device.
      */
-    fun getCurrentHeartRate(): Int {
-        return state.currentHeartRateBpm.toInt()
+    @SuppressLint("MissingPermission")
+    fun refreshBatteryLevel(mac: String) {
+        val conn = connections[mac] ?: return
+        val batteryService = conn.gatt.getService(BATTERY_SERVICE)
+        val batteryChar = batteryService?.getCharacteristic(BATTERY_LEVEL)
+        if (batteryChar != null) {
+            conn.gatt.readCharacteristic(batteryChar)
+            Log.d(TAG, "[$mac] Requested battery level refresh")
+        }
     }
 
     /**
-     * Request a fresh battery level reading from the connected device.
-     * Does nothing if not connected.
+     * Refresh battery for all connected sensors.
      */
-    @SuppressLint("MissingPermission")
     fun refreshBatteryLevel() {
-        val gatt = bluetoothGatt ?: return
-        if (!state.hrSensorConnected) return
-
-        val batteryService = gatt.getService(BATTERY_SERVICE)
-        val batteryChar = batteryService?.getCharacteristic(BATTERY_LEVEL)
-        if (batteryChar != null) {
-            gatt.readCharacteristic(batteryChar)
-            Log.d(TAG, "Requested battery level refresh")
-        }
+        connections.keys.toList().forEach { refreshBatteryLevel(it) }
     }
 }

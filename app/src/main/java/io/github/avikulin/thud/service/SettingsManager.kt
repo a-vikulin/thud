@@ -124,6 +124,10 @@ class SettingsManager(
         // Remote control settings
         const val PREF_REMOTE_BINDINGS = "remote_bindings"
 
+        // Multi-sensor HR: primary sensor MAC or sentinel
+        const val PREF_PRIMARY_HR_MAC = "primary_hr_mac"
+        const val HR_PRIMARY_AVERAGE = "AVERAGE"  // sentinel: compute mean of all connected sensors
+
         // Defaults
         const val DEFAULT_PACE_COEFFICIENT = 1.0
         const val DEFAULT_INCLINE_ADJUSTMENT = 1.0  // 1% treadmill = flat outdoor
@@ -379,7 +383,18 @@ class SettingsManager(
         state.ftmsBleDeviceName = prefs.getString(PREF_FTMS_BLE_DEVICE_NAME, "") ?: ""
         state.ftmsDirConDeviceName = prefs.getString(PREF_FTMS_DIRCON_DEVICE_NAME, "") ?: ""
 
+        // Multi-sensor HR primary selection
+        state.savedPrimaryHrMac = prefs.getString(PREF_PRIMARY_HR_MAC, HR_PRIMARY_AVERAGE) ?: HR_PRIMARY_AVERAGE
+
         Log.d(TAG, "Settings loaded: LTHR=${state.userLthrBpm}, FTP=${state.userFtpWatts}")
+    }
+
+    /**
+     * Persist the user's primary HR sensor choice (MAC or HR_PRIMARY_AVERAGE sentinel).
+     */
+    fun savePrimaryHrMac(value: String) {
+        prefs.edit { putString(PREF_PRIMARY_HR_MAC, value) }
+        state.savedPrimaryHrMac = value
     }
 
     /**
