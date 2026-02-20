@@ -68,6 +68,9 @@ class ChartManager(
     private var showPower = true
     private var zoomMode = WorkoutChart.ChartZoomMode.TIMEFRAME
 
+    // For detecting phase transitions (MAIN→COOLDOWN auto-switches zoom from MAIN_PHASE)
+    private var lastStepIndex = -1
+
     // Cached toggle button colors (static + per-series)
     private val colorToggleActiveStroke = ContextCompat.getColor(service, R.color.chart_toggle_active_stroke)
     private val colorToggleInactiveText = ContextCompat.getColor(service, R.color.chart_toggle_inactive_text)
@@ -470,6 +473,7 @@ class ChartManager(
      */
     fun clearPlannedSegments() {
         chartUpdateHandler.post {
+            lastStepIndex = -1
             chartView?.clearPlannedSegments()
         }
     }
@@ -496,7 +500,26 @@ class ChartManager(
         perStepCoefficients: Map<String, Pair<Double, Double>>? = null
     ) {
         chartUpdateHandler.post {
-            chartView?.setAdjustmentCoefficients(currentStepIndex, speedCoeff, inclineCoeff, stepElapsedMs, workoutElapsedMs, perStepCoefficients)
+            val chart = chartView ?: return@post
+
+            // Auto-switch from MAIN_PHASE to TIMEFRAME when entering cooldown
+            if (zoomMode == WorkoutChart.ChartZoomMode.MAIN_PHASE && currentStepIndex != lastStepIndex) {
+                val prevPhase = chart.getStepPhase(lastStepIndex)
+                val newPhase = chart.getStepPhase(currentStepIndex)
+                if (prevPhase == WorkoutChart.WorkoutPhase.MAIN && newPhase == WorkoutChart.WorkoutPhase.COOLDOWN) {
+                    zoomMode = WorkoutChart.ChartZoomMode.TIMEFRAME
+                    chart.setZoomMode(zoomMode)
+                    saveVisibilityPreferences()
+                    toggleFullScaleBtn?.let { btn ->
+                        btn.text = zoomModeSymbol(zoomMode)
+                        btn.setPadding(0, 0, 0, zoomModeBottomPadding(zoomMode, btn.textSize))
+                    }
+                    Log.d(TAG, "Auto-switched zoom from MAIN_PHASE to TIMEFRAME on cooldown entry")
+                }
+            }
+            lastStepIndex = currentStepIndex
+
+            chart.setAdjustmentCoefficients(currentStepIndex, speedCoeff, inclineCoeff, stepElapsedMs, workoutElapsedMs, perStepCoefficients)
         }
     }
 

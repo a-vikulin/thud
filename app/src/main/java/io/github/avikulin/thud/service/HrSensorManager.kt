@@ -71,6 +71,8 @@ class HrSensorManager(
         var lastDataMs: Long = 0L
     )
     private val connections = ConcurrentHashMap<String, HrConnection>()
+    // GATT objects awaiting STATE_CONNECTED callback — NOT yet "connected" for isConnected() purposes
+    private val pendingGatts = ConcurrentHashMap<String, Pair<BluetoothDevice, BluetoothGatt>>()
     private val intentionalDisconnects = ConcurrentHashMap.newKeySet<String>()
     private val reconnectAttempts = ConcurrentHashMap<String, Int>()
     private val reconnectRunnables = ConcurrentHashMap<String, Runnable?>()
@@ -428,13 +430,14 @@ class HrSensorManager(
 
         statusText?.text = service.getString(R.string.hr_device_connecting)
 
-        // Close existing connection for this MAC only
-        connections[mac]?.gatt?.close()
+        // Close any existing connection or pending attempt for this MAC
+        connections.remove(mac)?.gatt?.close()
+        pendingGatts.remove(mac)?.second?.close()
 
         val callback = HrGattCallback(mac)
         val gatt = device.connectGatt(service, false, callback, BluetoothDevice.TRANSPORT_LE)
-        // Store a temporary slot; HrGattCallback will update it once connected
-        connections[mac] = HrConnection(device, gatt)
+        // Store as pending — only moved to connections when STATE_CONNECTED callback fires
+        pendingGatts[mac] = Pair(device, gatt)
     }
 
     /**
@@ -449,6 +452,10 @@ class HrSensorManager(
         val conn = connections.remove(mac)
         conn?.gatt?.disconnect()
         conn?.gatt?.close()
+
+        val pending = pendingGatts.remove(mac)
+        pending?.second?.disconnect()
+        pending?.second?.close()
     }
 
     /**
@@ -456,7 +463,8 @@ class HrSensorManager(
      */
     fun disconnectAll() {
         Log.d(TAG, "Disconnecting all HR sensors")
-        connections.keys.toList().forEach { disconnect(it) }
+        val allMacs = (connections.keys + pendingGatts.keys).toSet()
+        allMacs.forEach { disconnect(it) }
     }
 
     private fun showConnectedState() {
@@ -490,6 +498,11 @@ class HrSensorManager(
                     reconnectAttempts[mac] = 0
                     intentionalDisconnects.remove(mac)
 
+                    // Promote from pending to connected — isConnected() now returns true
+                    val pending = pendingGatts.remove(mac)
+                    val device = pending?.first ?: gatt.device
+                    connections[mac] = HrConnection(device, gatt)
+
                     val deviceName = gatt.device.name ?: "HR Sensor"
                     val prefs = service.getSharedPreferences(SettingsManager.PREFS_NAME, Context.MODE_PRIVATE)
                     SavedBluetoothDevices.save(prefs, SavedBluetoothDevice(
@@ -503,8 +516,11 @@ class HrSensorManager(
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     Log.d(TAG, "[$mac] Disconnected from GATT server")
                     val wasIntentional = intentionalDisconnects.remove(mac)
-                    val deviceName = connections[mac]?.device?.name ?: "HR Sensor"
+                    val deviceName = connections[mac]?.device?.name
+                        ?: pendingGatts[mac]?.first?.name
+                        ?: "HR Sensor"
                     connections.remove(mac)
+                    pendingGatts.remove(mac)?.second?.close()
 
                     handler.post {
                         listener?.onHrSensorDisconnected(mac, deviceName)
@@ -707,6 +723,8 @@ class HrSensorManager(
         removeDialog()
         connections.values.forEach { it.gatt.close() }
         connections.clear()
+        pendingGatts.values.forEach { it.second.close() }
+        pendingGatts.clear()
     }
 
     /**
@@ -715,7 +733,7 @@ class HrSensorManager(
     fun forgetDevice(mac: String) {
         val prefs = service.getSharedPreferences(SettingsManager.PREFS_NAME, Context.MODE_PRIVATE)
 
-        if (connections.containsKey(mac)) {
+        if (connections.containsKey(mac) || pendingGatts.containsKey(mac)) {
             disconnect(mac)
         }
 

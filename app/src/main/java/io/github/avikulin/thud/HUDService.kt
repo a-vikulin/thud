@@ -1056,6 +1056,9 @@ class HUDService : Service(),
 
     private fun showHud() {
         hudDisplayManager.showHud()
+        // Restore HR subtitle in case sensors connected before the HUD was inflated
+        hudDisplayManager.updateHrSubtitle(activeHrSubtitleLabel())
+        hudDisplayManager.updateHrSensorStatus(state.hrSensorConnected)
         updateNotification()
 
         // Restore previously visible panels

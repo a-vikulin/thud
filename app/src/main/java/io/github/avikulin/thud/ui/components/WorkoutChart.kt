@@ -713,11 +713,22 @@ class WorkoutChart @JvmOverloads constructor(
     /**
      * Calculate auto-fit scales using the given segment filter for workout structure bounds.
      * Shared by TIMEFRAME mode (all segments) and MAIN_PHASE mode (main-only segments).
+     *
+     * @param segmentFilter Which planned segments to include in scale calculation
+     * @param dataFilter Optional filter for data points. When null, uses the last N-minute window
+     *                   (TIMEFRAME mode). When provided, replaces the time window (MAIN_PHASE mode).
      */
-    private fun calculateLiveScale(segmentFilter: (PlannedSegment) -> Boolean) {
-        val windowMs = zoomTimeframeMinutes * 60_000L
-        val currentTimeMs = dataPoints.lastOrNull()?.elapsedMs ?: 0L
-        val recentData = dataPoints.filter { it.elapsedMs >= currentTimeMs - windowMs }
+    private fun calculateLiveScale(
+        segmentFilter: (PlannedSegment) -> Boolean,
+        dataFilter: ((WorkoutDataPoint) -> Boolean)? = null
+    ) {
+        val recentData = if (dataFilter != null) {
+            dataPoints.filter(dataFilter)
+        } else {
+            val windowMs = zoomTimeframeMinutes * 60_000L
+            val currentTimeMs = dataPoints.lastOrNull()?.elapsedMs ?: 0L
+            dataPoints.filter { it.elapsedMs >= currentTimeMs - windowMs }
+        }
         val segments = plannedSegments.filter(segmentFilter)
 
         // Speed scale: filtered workout structure + recent data
@@ -744,18 +755,27 @@ class WorkoutChart @JvmOverloads constructor(
             targetInclineMaxPercent = targetInclineMinPercent + 3.0
         }
 
-        // HR scale: zone boundaries + filtered workout HR targets + recent HR/Power data
+        // HR scale: zone boundaries always anchor (drawn as background regardless of toggles)
         val zoneMin = hrZone2Start.toDouble()
         val zoneMax = hrZone5Start.toDouble()
-        val workoutHrMin = segments.mapNotNull { it.getHrTargetMinBpm(lthrBpm) }.minOrNull()?.toDouble() ?: zoneMin
-        val workoutHrMax = segments.mapNotNull { it.getHrTargetMaxBpm(lthrBpm) }.maxOrNull()?.toDouble() ?: zoneMax
-        val recentHrMin = recentData.minOfOrNull { it.heartRateBpm } ?: zoneMin
-        val recentHrMax = recentData.maxOfOrNull { it.heartRateBpm } ?: zoneMax
 
-        // Include power data (converted to normalized BPM) - filter out zero values
-        val recentPowerData = recentData.filter { it.powerWatts > 0 }
-        val recentPowerMinBpm = recentPowerData.minOfOrNull { (it.powerWatts / ftpWatts.toDouble()) * lthrBpm } ?: zoneMin
-        val recentPowerMaxBpm = recentPowerData.maxOfOrNull { (it.powerWatts / ftpWatts.toDouble()) * lthrBpm } ?: zoneMax
+        // Workout HR targets and recent HR data — only expand scale when HR line visible
+        val workoutHrMin = if (showHrLine) segments.mapNotNull { it.getHrTargetMinBpm(lthrBpm) }.minOrNull()?.toDouble() ?: zoneMin else zoneMin
+        val workoutHrMax = if (showHrLine) segments.mapNotNull { it.getHrTargetMaxBpm(lthrBpm) }.maxOrNull()?.toDouble() ?: zoneMax else zoneMax
+        val recentHrMin = if (showHrLine) recentData.minOfOrNull { it.heartRateBpm } ?: zoneMin else zoneMin
+        val recentHrMax = if (showHrLine) recentData.maxOfOrNull { it.heartRateBpm } ?: zoneMax else zoneMax
+
+        // Power data (converted to normalized BPM) — only expand scale when Power line visible
+        val recentPowerMinBpm: Double
+        val recentPowerMaxBpm: Double
+        if (showPowerLine) {
+            val recentPowerData = recentData.filter { it.powerWatts > 0 }
+            recentPowerMinBpm = recentPowerData.minOfOrNull { (it.powerWatts / ftpWatts.toDouble()) * lthrBpm } ?: zoneMin
+            recentPowerMaxBpm = recentPowerData.maxOfOrNull { (it.powerWatts / ftpWatts.toDouble()) * lthrBpm } ?: zoneMax
+        } else {
+            recentPowerMinBpm = zoneMin
+            recentPowerMaxBpm = zoneMax
+        }
 
         val dataMin = minOf(zoneMin, workoutHrMin, recentHrMin, recentPowerMinBpm)
         val dataMax = maxOf(zoneMax, workoutHrMax, recentHrMax, recentPowerMaxBpm)
@@ -769,10 +789,31 @@ class WorkoutChart @JvmOverloads constructor(
     }
 
     /** TIMEFRAME mode: Y-axis fits all planned segments + last N minutes of data. */
-    private fun calculateLiveSmartScale() = calculateLiveScale { true }
+    private fun calculateLiveSmartScale() = calculateLiveScale(segmentFilter = { true })
 
-    /** MAIN_PHASE mode: Y-axis fits only main phase segments + last N minutes of data. */
-    private fun calculateLiveMainPhaseScale() = calculateLiveScale { it.phase == WorkoutPhase.MAIN }
+    /** MAIN_PHASE mode: Y-axis fits only main phase segments + main phase data only. */
+    private fun calculateLiveMainPhaseScale() {
+        // Derive main phase time range from dynamic segment times
+        val dynamicTimes = computeDynamicSegmentTimes()
+        var mainStartMs = Long.MAX_VALUE
+        var mainEndMs = 0L
+        for ((index, segment) in plannedSegments.withIndex()) {
+            if (segment.phase == WorkoutPhase.MAIN) {
+                val (startMs, endMs) = dynamicTimes[index]
+                if (startMs < mainStartMs) mainStartMs = startMs
+                if (endMs > mainEndMs) mainEndMs = endMs
+            }
+        }
+        if (mainStartMs == Long.MAX_VALUE) {
+            // No main phase segments — fall back to TIMEFRAME
+            calculateLiveSmartScale()
+            return
+        }
+        calculateLiveScale(
+            segmentFilter = { it.phase == WorkoutPhase.MAIN },
+            dataFilter = { it.elapsedMs in mainStartMs..mainEndMs }
+        )
+    }
 
     /**
      * Calculate full scale to show ALL data for the entire run.
@@ -807,17 +848,28 @@ class WorkoutChart @JvmOverloads constructor(
             targetInclineMaxPercent = targetInclineMinPercent + 3.0
         }
 
-        // HR: all data + zone boundaries + power data (converted to normalized BPM)
-        val hrDataMin = dataPoints.minOf { it.heartRateBpm }
-        val hrDataMax = dataPoints.maxOf { it.heartRateBpm }
+        // HR scale: zone boundaries always anchor (drawn as background regardless of toggles)
+        val zoneMin = hrZone2Start.toDouble()
+        val zoneMax = hrZone5Start.toDouble()
 
-        // Include power data (converted to normalized BPM) - filter out zero values
-        val powerData = dataPoints.filter { it.powerWatts > 0 }
-        val powerMinBpm = powerData.minOfOrNull { (it.powerWatts / ftpWatts.toDouble()) * lthrBpm } ?: hrDataMin
-        val powerMaxBpm = powerData.maxOfOrNull { (it.powerWatts / ftpWatts.toDouble()) * lthrBpm } ?: hrDataMax
+        // HR data — only expand scale when HR line visible
+        val hrDataMin = if (showHrLine) dataPoints.minOf { it.heartRateBpm } else zoneMin
+        val hrDataMax = if (showHrLine) dataPoints.maxOf { it.heartRateBpm } else zoneMax
 
-        val hrMin = minOf(hrZone2Start.toDouble(), hrDataMin, powerMinBpm)
-        val hrMax = maxOf(hrZone5Start.toDouble(), hrDataMax, powerMaxBpm)
+        // Power data (converted to normalized BPM) — only expand scale when Power line visible
+        val powerMinBpm: Double
+        val powerMaxBpm: Double
+        if (showPowerLine) {
+            val powerData = dataPoints.filter { it.powerWatts > 0 }
+            powerMinBpm = powerData.minOfOrNull { (it.powerWatts / ftpWatts.toDouble()) * lthrBpm } ?: hrDataMin
+            powerMaxBpm = powerData.maxOfOrNull { (it.powerWatts / ftpWatts.toDouble()) * lthrBpm } ?: hrDataMax
+        } else {
+            powerMinBpm = hrDataMin
+            powerMaxBpm = hrDataMax
+        }
+
+        val hrMin = minOf(zoneMin, hrDataMin, powerMinBpm)
+        val hrMax = maxOf(zoneMax, hrDataMax, powerMaxBpm)
         val margin = (hrMax - hrMin) * 0.05
         targetHrMinBpm = floor((hrMin - margin) / 10.0) * 10.0
         targetHrMaxBpm = ceil((hrMax + margin) / 10.0) * 10.0
@@ -896,6 +948,9 @@ class WorkoutChart @JvmOverloads constructor(
         }
         invalidate()
     }
+
+    /** Get the workout phase of the given step index, or null if no segments loaded. */
+    fun getStepPhase(stepIndex: Int): WorkoutPhase? = plannedSegments.getOrNull(stepIndex)?.phase
 
     /**
      * Cycle to the next zoom mode and return it.
@@ -2141,8 +2196,8 @@ class WorkoutChart @JvmOverloads constructor(
         val topY = hrToY(hrMaxExclusive.toDouble())
         val bottomY = hrToY(hrMin.toDouble())
 
-        // Get zone color with 40% opacity for fill
-        hrTargetRectPaint.color = (hrZoneColors[zone] and 0x00FFFFFF) or 0x66000000
+        // Get zone color with ~27% opacity for fill
+        hrTargetRectPaint.color = (hrZoneColors[zone] and 0x00FFFFFF) or 0x44000000
 
         canvas.drawRect(startX, topY, endX, bottomY, hrTargetRectPaint)
     }
@@ -2303,8 +2358,8 @@ class WorkoutChart @JvmOverloads constructor(
         bottomY: Float,
         zone: Int
     ) {
-        // Get zone color with 40% opacity for fill (same as HR)
-        powerTargetRectPaint.color = (powerZoneColors[zone] and 0x00FFFFFF) or 0x66000000
+        // Get zone color with ~27% opacity for fill (same as HR)
+        powerTargetRectPaint.color = (powerZoneColors[zone] and 0x00FFFFFF) or 0x44000000
 
         // Draw filled background
         canvas.drawRect(startX, topY, endX, bottomY, powerTargetRectPaint)

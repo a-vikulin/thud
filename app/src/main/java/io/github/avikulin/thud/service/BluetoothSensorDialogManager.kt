@@ -352,7 +352,7 @@ class BluetoothSensorDialogManager(
                             SensorDeviceType.FOOT_POD -> formatLastDataTime(strydManager.lastDataTimestampMs)
                         }
                         val currentValue = when (device.type) {
-                            SensorDeviceType.HR_SENSOR -> "${hrSensorManager.getCurrentHeartRate()} bpm"
+                            SensorDeviceType.HR_SENSOR -> "${state.connectedHrSensors[device.mac]?.second ?: 0} bpm"
                             SensorDeviceType.FOOT_POD -> "${strydManager.getCurrentPower()} W"
                         }
                         val batteryLevel = when (device.type) {
