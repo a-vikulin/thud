@@ -377,7 +377,7 @@ class HUDDisplayManager(
     }
 
     /**
-     * Update the HR box subtitle showing the active primary sensor's short name (or "Avg").
+     * Update the HR box subtitle showing the active primary sensor's short name (or "AVERAGE").
      * Hidden when empty (0 or 1 sensors — no need to disambiguate).
      */
     fun updateHrSubtitle(shortName: String) {

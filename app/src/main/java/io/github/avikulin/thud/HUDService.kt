@@ -2628,7 +2628,7 @@ class HUDService : Service(),
     }
 
     private fun activeHrSubtitleLabel(): String = when (state.activePrimaryHrMac) {
-        SettingsManager.HR_PRIMARY_AVERAGE -> "Avg"
+        SettingsManager.HR_PRIMARY_AVERAGE -> getString(R.string.label_average_hr)
         "" -> ""
         else -> getShortName(state.connectedHrSensors[state.activePrimaryHrMac]?.first)
     }
