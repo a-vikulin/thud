@@ -1679,15 +1679,15 @@ class WorkoutChart @JvmOverloads constructor(
             canvas.save()
             canvas.clipRect(chartLeft, chartTop, chartRight, chartBottom)
 
-            if (showInclineLine) {
-                canvas.drawPath(inclinePath, inclinePaint)
-            }
-            // Draw Power, then Speed, then HR (HR on top)
+            // Draw Power, then Incline, then Speed, then HR (HR on top)
             if (showPowerLine) {
                 for (segment in powerSegments) {
                     powerPaint.color = segment.dimmedColor
                     canvas.drawLine(segment.startX, segment.startY, segment.endX, segment.endY, powerPaint)
                 }
+            }
+            if (showInclineLine) {
+                canvas.drawPath(inclinePath, inclinePaint)
             }
             if (showSpeedLine) {
                 canvas.drawPath(speedPath, speedPaint)

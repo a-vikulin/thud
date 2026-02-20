@@ -67,6 +67,65 @@
                 style="@style/HudText.Unit" />
         </LinearLayout>
 
+        <!-- Heart Rate Box -->
+        <LinearLayout
+            android:id="@+id/hrBox"
+            style="@style/HudBox.HeartRate"
+            android:layout_marginStart="@dimen/box_margin"
+            android:layout_marginEnd="@dimen/box_margin">
+
+            <TextView
+                android:id="@+id/tvHrLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_heart_rate"
+                style="@style/HudText.Label.Dim" />
+
+            <TextView
+                android:id="@+id/tvHeartRate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/default_heart_rate"
+                style="@style/HudText.Value" />
+
+            <TextView
+                android:id="@+id/tvHrSubtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:visibility="gone"
+                android:text=""
+                style="@style/HudText.Unit" />
+        </LinearLayout>
+
+        <!-- Foot Pod Box (touchable) -->
+        <LinearLayout
+            android:id="@+id/footPodBox"
+            style="@style/HudBox.Interactive"
+            android:layout_marginStart="@dimen/box_margin"
+            android:layout_marginEnd="@dimen/box_margin">
+
+            <TextView
+                android:id="@+id/tvFootPodLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_foot_pod"
+                style="@style/HudText.Label.Dim" />
+
+            <TextView
+                android:id="@+id/tvFootPodValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/foot_pod_not_connected"
+                style="@style/HudText.Value" />
+
+            <TextView
+                android:id="@+id/tvFootPodUnit"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""
+                style="@style/HudText.Unit" />
+        </LinearLayout>
+
         <!-- Timer Box -->
         <LinearLayout
             style="@style/HudBox.Data"
@@ -172,65 +231,6 @@
                 android:layout_height="wrap_content"
                 android:visibility="invisible"
                 android:text="@string/unit_km"
-                style="@style/HudText.Unit" />
-        </LinearLayout>
-
-        <!-- Heart Rate Box -->
-        <LinearLayout
-            android:id="@+id/hrBox"
-            style="@style/HudBox.HeartRate"
-            android:layout_marginStart="@dimen/box_margin"
-            android:layout_marginEnd="@dimen/box_margin">
-
-            <TextView
-                android:id="@+id/tvHrLabel"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/label_heart_rate"
-                style="@style/HudText.Label.Dim" />
-
-            <TextView
-                android:id="@+id/tvHeartRate"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/default_heart_rate"
-                style="@style/HudText.Value" />
-
-            <TextView
-                android:id="@+id/tvHrSubtitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:visibility="gone"
-                android:text=""
-                style="@style/HudText.Unit" />
-        </LinearLayout>
-
-        <!-- Foot Pod Box (touchable) -->
-        <LinearLayout
-            android:id="@+id/footPodBox"
-            style="@style/HudBox.Interactive"
-            android:layout_marginStart="@dimen/box_margin"
-            android:layout_marginEnd="@dimen/box_margin">
-
-            <TextView
-                android:id="@+id/tvFootPodLabel"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/label_foot_pod"
-                style="@style/HudText.Label.Dim" />
-
-            <TextView
-                android:id="@+id/tvFootPodValue"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/foot_pod_not_connected"
-                style="@style/HudText.Value" />
-
-            <TextView
-                android:id="@+id/tvFootPodUnit"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text=""
                 style="@style/HudText.Unit" />
         </LinearLayout>
 

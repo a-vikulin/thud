@@ -384,6 +384,7 @@ class HUDDisplayManager(
         mainHandler.post {
             tvHrSubtitle?.text = shortName
             tvHrSubtitle?.visibility = if (shortName.isEmpty()) View.GONE else View.VISIBLE
+            tvHrSubtitle?.setTextColor(colorTextPrimary)
         }
     }
 
