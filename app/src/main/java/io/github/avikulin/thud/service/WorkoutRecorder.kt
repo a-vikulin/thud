@@ -275,11 +275,13 @@ class WorkoutRecorder {
      * @param newTreadmillElapsedSeconds The new treadmill elapsed time (usually 0 after restart)
      */
     fun handleGlassOsRestart(newTreadmillElapsedSeconds: Int) {
-        if (workoutData.isEmpty()) return
-
-        // Calculate offset so new data continues from last recorded elapsed
-        val lastElapsedMs = workoutData.lastOrNull()?.elapsedMs ?: 0L
-        val lastElapsedSeconds = (lastElapsedMs / 1000).toInt()
+        // Synchronized to prevent TOCTOU race: lastOrNull() is not atomic on synchronizedList
+        // (isEmpty + get are two separate locks; a concurrent clear() between them would crash)
+        val lastElapsedSeconds = synchronized(workoutData) {
+            if (workoutData.isEmpty()) return
+            val lastElapsedMs = workoutData.last().elapsedMs
+            (lastElapsedMs / 1000).toInt()
+        }
 
         // Adjust the start reference: when treadmill shows newTreadmillElapsedSeconds,
         // our elapsed should be lastElapsedSeconds
