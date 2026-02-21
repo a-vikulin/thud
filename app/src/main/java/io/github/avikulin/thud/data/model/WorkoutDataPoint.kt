@@ -22,5 +22,7 @@ data class WorkoutDataPoint(
     val stepName: String = "",
     // Multi-sensor HR: full snapshot of all sensors at this moment (index from WorkoutRecorder registry)
     val allHrSensors: Map<Int, Int> = emptyMap(),  // sensorIndex → bpm
-    val primaryHrIndex: Int = -1                    // active primary sensor index (-1 = none/average)
+    val primaryHrIndex: Int = -1,                   // active primary sensor index (-1 = none/average)
+    // Per-sensor DFA alpha1: latest value for each RR-capable sensor (carry-forward between ~5s computations)
+    val dfaAlpha1BySensor: Map<Int, Double> = emptyMap()  // sensorIndex → alpha1 (-1.0 = no data)
 )

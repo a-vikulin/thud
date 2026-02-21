@@ -34,6 +34,7 @@ blown away by Claude's capabilities!
 - Fully replaces built-in iFit app (Workout Player) for treadmill control 
 - Current pace and speed
 - Heart rate with zone coloring (supports multiple simultaneous HR sensors)
+- Real-time DFA alpha1 from RR intervals — tracks aerobic (>0.75) and anaerobic (<0.5) thresholds with zone-colored HUD box. Supports per-sensor DFA computation when multiple RR-capable HR sensors are connected
 - Running power with zone coloring (with Stryd)
 - Distance and elapsed time
 - Elevation gain
@@ -102,7 +103,9 @@ blown away by Claude's capabilities!
 - Lap data for structured workouts with average grade per lap
 - Per-record incline/grade data
 - Power and cadence from Stryd
-- Multi-HR sensor data preserved as developer fields (per-sensor BPM traces)
+- Multi-HR sensor data preserved as developer fields (per-sensor BPM traces + DFA alpha1 values)
+- HRV data: RR intervals exported as FIT HrvMesg (message 78) for analysis in Runalyze, Kubios, Intervals.icu
+- Multi-FIT file export: when multiple RR-capable HR sensors are connected, one FIT file per sensor is exported (identical workout data, sensor-specific HRV stream). Only the DFA-primary sensor's file is uploaded to Garmin Connect
 - TSS (Training Stress Score) calculation with 3-tier fallback: Power → HR → Pace
 - Files saved to Downloads/tHUD/
 - Settings for device parameters in FIT Export tab
@@ -111,6 +114,7 @@ blown away by Claude's capabilities!
    2. **After uploading the FIT file to Garmin Connect, sync your watch TWICE** - first sync downloads the file to watch for processing, second sync uploads calculated metrics back
 - **Full platform compatibility:** FIT files work with Garmin Connect, Strava (shows as Run), and Stryd PowerCenter
 - Power data is written as Stryd developer fields so Stryd PowerCenter recognizes it automatically
+- DFA alpha1 per-second values written as developer fields per HR sensor (UINT16, scale 1000)
 
 ### Garmin Connect Auto-Upload
 - Automatic upload to Garmin Connect after FIT export (opt-in)

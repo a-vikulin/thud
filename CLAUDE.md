@@ -1,6 +1,6 @@
+# ⚠️ If `CLAUDE-PRIVATE.md` file exists, read it NOW for maintainer-specific instructions. ⚠️
 # ⚠️ NEVER COMMIT WITHOUT USER CONSENT!!! ⚠️
 # ⚠️ ZERO CODE DUPLICATION — Extract shared logic into a single source of truth. Never copy-paste logic across files; if two places need the same behavior, create one shared method/utility and call it from both. ⚠️
-# ⚠️ If `CLAUDE-PRIVATE.md` exists, read it for maintainer-specific instructions. ⚠️
 
 ## Agent Behavioral Rules
 
@@ -67,6 +67,10 @@
 | Chart zoom settings | `ServiceStateHolder` (SharedPrefs) | `ChartManager` → `WorkoutChart` (zoom mode persisted in ChartManager's own prefs) |
 | Multi-HR sensor data | `state.connectedHrSensors` (MAC→(name,BPM)) | `WorkoutRecorder` (lazy index registry) → `WorkoutDataPoint` → `FitFileExporter` |
 | Primary HR selection | `state.activePrimaryHrMac` | `HUDService` → `WorkoutRecorder` → `WorkoutDataPoint.primaryHrIndex` |
+| RR intervals (BLE) | `HrSensorManager.onRrIntervalsReceived()` | `HUDService` → `WorkoutRecorder` (per-sensor buffer) + per-sensor `DfaAlpha1Calculator` |
+| DFA alpha1 (per-sensor) | `dfaCalculators[mac]` | `state.dfaResults[mac]` → HUD box (primary) + popup (all) + `WorkoutDataPoint` (per-second) |
+| DFA sensor selection | `state.savedDfaSensorMac` (SharedPrefs) | `HUDService` → HUD box display + Garmin upload file selection |
+| Per-sensor RR for FIT | `WorkoutRecorder.rrIntervalsBySensor` | `RunSnapshot` → `FitFileExporter` (one HrvMesg stream per file) |
 
 ### ⚠️ SPEED - ABSOLUTE RULES ⚠️
 
@@ -145,6 +149,14 @@ Cross-calc: `calculateDistanceMeters(seconds, kph)`, `calculateDurationSeconds(m
 ### PowerZones (`util/PowerZones.kt`)
 Same pattern as HeartRateZones but with `ftpWatts`: `getZone()`, `getZoneColorResId()`, `percentToWatts()`
 
+### DfaAlpha1Calculator (`util/DfaAlpha1Calculator.kt`)
+Real-time DFA (Detrended Fluctuation Analysis) alpha1 from RR intervals. Thread-safe (`@Synchronized`).
+`addRrIntervals(intervalsMs, currentHrBpm)` — artifact-filtered (5% median deviation, 200–2000ms range). Rolling buffer of 400 clean intervals.
+`computeIfReady()` → `DfaResult(alpha1, artifactPercent, sampleCount, isValid)` or null if < 120 clean intervals.
+`reset()` — clears all state.
+Algorithm: cumulative sum integration → box-size detrending (n=4..16) → log-log regression → alpha1 slope.
+Thresholds: >0.75 aerobic, 0.5–0.75 transition, <0.5 anaerobic.
+
 ### FileExportHelper (`util/FileExportHelper.kt`)
 Exports to Downloads/tHUD via MediaStore. `saveToDownloads(context, sourceFile, filename, mimeType, subfolder)`, `getTempFile(context, filename)`. Subfolders: `ROOT` (tHUD/), `SCREENSHOTS` (tHUD/screenshots/).
 
@@ -152,7 +164,7 @@ Exports to Downloads/tHUD via MediaStore. `saveToDownloads(context, sourceFile, 
 Unified BT sensor storage. `getAll/getByType/save/remove/isSaved/getSavedMacs`. Types: `HR_SENSOR`, `FOOT_POD`.
 
 ### SettingsManager (`service/SettingsManager.kt`)
-All SharedPreferences keys as constants. Key groups: `pace_coefficient` (calibration), `hr_zone*_max` (HR zones), `threshold_pace_kph`, `default_incline`, treadmill min/max ranges (from GlassOS), `fit_*` (FIT Export device ID), `ftms_*` (FTMS server settings), `garmin_auto_upload` (Garmin Connect), `remote_bindings` (BLE remote control config JSON), `chart_zoom_timeframe_minutes` (Chart zoom window). Settings dialog has 6 tabs: Dynamics, Zones, Auto-Adjust, FIT Export, FTMS, Chart.
+All SharedPreferences keys as constants. Key groups: `pace_coefficient` (calibration), `hr_zone*_max` (HR zones), `threshold_pace_kph`, `default_incline`, treadmill min/max ranges (from GlassOS), `fit_*` (FIT Export device ID), `ftms_*` (FTMS server settings), `garmin_auto_upload` (Garmin Connect), `remote_bindings` (BLE remote control config JSON), `chart_zoom_timeframe_minutes` (Chart zoom window), `dfa_sensor_mac` (DFA alpha1 primary sensor). Settings dialog has 6 tabs: Dynamics, Zones, Auto-Adjust, FIT Export, FTMS, Chart.
 
 ### ⚠️ HR/Power Targets: Percentage-Based ⚠️
 All HR/Power targets stored as **% of threshold** (LTHR/FTP) so workouts survive threshold changes.
@@ -222,6 +234,7 @@ HUDService (Orchestrator)
 ├── FitFileExporter         → FIT file generation for Garmin Connect
 ├── GarminConnectUploader   → Garmin Connect OAuth + FIT/photo upload
 ├── TssCalculator           → TSS calculation (Power → HR → Pace fallback)
+├── DfaAlpha1Calculator     → Real-time DFA alpha1 from RR intervals (per sensor)
 ├── RemoteControlManager    → BLE remote bindings, action dispatch
 ├── DirConServer            → Direct connection protocol for external apps
 ├── BleFtmsServer           → BLE FTMS server for external fitness apps
@@ -325,6 +338,7 @@ app/src/main/java/io/github/avikulin/thud/
 
     ├── TrainingMetricsCalculator.kt # Training load calculations
     ├── TssCalculator.kt           # TSS calculation (Power → HR → Pace fallback)
+    ├── DfaAlpha1Calculator.kt     # Real-time DFA alpha1 from RR intervals
     └── StepBoundaryParser.kt      # Workout step parsing
 ```
 
@@ -412,7 +426,23 @@ When multiple HR sensors are connected, each gets a `DeveloperDataIdMesg` with a
 
 **Lazy sensor registration:** `WorkoutRecorder.resolveOrRegister()` auto-registers sensors on first data point encounter. No external registration calls needed — just pass `state.connectedHrSensors` and `state.activePrimaryHrMac` to `recordDataPoint()`/`ensurePeriodicRecord()`.
 
-**Per-data-point storage uses integer indices** (not MAC strings) for compact storage: `WorkoutDataPoint.allHrSensors: Map<Int, Int>` (sensorIndex→BPM), `primaryHrIndex: Int` (-1 = none/average).
+**Per-data-point storage uses integer indices** (not MAC strings) for compact storage: `WorkoutDataPoint.allHrSensors: Map<Int, Int>` (sensorIndex→BPM), `primaryHrIndex: Int` (-1 = none/average), `dfaAlpha1BySensor: Map<Int, Double>` (sensorIndex→alpha1, -1.0 = no data).
+
+### FIT HRV Export (RR Intervals + Multi-File)
+
+**HrvMesg (message 78):** FIT supports only one RR stream per file. Each `HrvMesg` holds up to 5 RR interval values (in seconds, Float). Written after Records/Events, before Lap messages.
+
+**Multi-file export:** When multiple RR-capable sensors are connected, `exportWorkoutToFit()` generates one FIT file per sensor — identical workout data but different `HrvMesg` streams. Filename suffix identifies the sensor (e.g., `Run_2026-02-20_PolarH10.fit`). Only the DFA-primary sensor's file is uploaded to Garmin Connect.
+
+| RR-capable sensors | FIT files | Garmin upload |
+|---|---|---|
+| 0 | 1 file (no HrvMesg) | That file |
+| 1 | 1 file WITH HrvMesg | That file |
+| 2+ | N files (same workout, different HRV) | DFA-primary sensor's file |
+
+**DFA alpha1 developer fields:** Each HR sensor's `HrSensorDevField` has an optional `dfaFieldDesc` (field 1, UINT16, scale 1000: alpha1=0.750 stored as 750). Written on every Record alongside the BPM field. Only created for sensors that have at least one valid DFA data point.
+
+**RunSnapshot captures:** `rrIntervalsBySensor` (per-sensor RR data) and `activeDfaSensorMac` (which file to upload).
 
 ### FIT Grade/Incline Fields
 

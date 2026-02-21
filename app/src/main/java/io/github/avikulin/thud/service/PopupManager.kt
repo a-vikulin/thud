@@ -49,7 +49,8 @@ class PopupManager(
     private val onPaceSelectedWithWorkoutLoaded: (adjustedKph: Double) -> Unit = {},
     private val isStructuredWorkoutPaused: () -> Boolean = { false },
     private val onResumeWorkoutAtStepPace: () -> Unit = {},
-    private val onPrimaryHrSelected: (value: String) -> Unit = {}
+    private val onPrimaryHrSelected: (value: String) -> Unit = {},
+    private val onDfaSensorSelected: (mac: String) -> Unit = {}
 ) {
     companion object {
         private const val TAG = "PopupManager"
@@ -69,6 +70,7 @@ class PopupManager(
     private var pacePopupView: View? = null
     private var inclinePopupView: View? = null
     private var hrSensorPopupView: View? = null
+    private var dfaSensorPopupView: View? = null
 
     // Zone colors cached for HR sensor popup (same as HUDDisplayManager)
     private val zoneColors = IntArray(6) { zone ->
@@ -83,6 +85,9 @@ class PopupManager(
 
     val isHrSensorPopupVisible: Boolean
         get() = hrSensorPopupView != null
+
+    val isDfaSensorPopupVisible: Boolean
+        get() = dfaSensorPopupView != null
 
     // ==================== Pace Popup ====================
 
@@ -612,6 +617,184 @@ class PopupManager(
         closeHrSensorPopup()
     }
 
+    // ==================== DFA Sensor Popup ====================
+
+    // Value TextViews for live refresh (keyed by MAC)
+    private val dfaSensorValueViews = mutableMapOf<String, TextView>()
+
+    // DFA zone colors cached at init
+    private val colorDfaAerobic = ContextCompat.getColor(service, R.color.dfa_zone_aerobic)
+    private val colorDfaTransition = ContextCompat.getColor(service, R.color.dfa_zone_transition)
+    private val colorDfaAnaerobic = ContextCompat.getColor(service, R.color.dfa_zone_anaerobic)
+    private val colorDfaNoData = ContextCompat.getColor(service, R.color.dfa_zone_no_data)
+
+    fun toggleDfaSensorPopup(dfaBoxBounds: IntArray? = null) {
+        if (dfaSensorPopupView != null) closeDfaSensorPopup() else showDfaSensorPopup(dfaBoxBounds)
+    }
+
+    fun closeDfaSensorPopup() {
+        dfaSensorPopupView?.let {
+            try { windowManager.removeView(it) } catch (_: Exception) {}
+        }
+        dfaSensorPopupView = null
+        dfaSensorValueViews.clear()
+    }
+
+    fun showDfaSensorPopup(dfaBoxBounds: IntArray? = null) {
+        if (dfaSensorPopupView != null) {
+            closeDfaSensorPopup()
+            return
+        }
+
+        val resources = service.resources
+        val boxPadding = resources.getDimensionPixelSize(R.dimen.box_padding)
+        val itemMargin = resources.getDimensionPixelSize(R.dimen.box_margin)
+        val labelTextSize = resources.getDimension(R.dimen.text_label) / resources.displayMetrics.density
+        val valueTextSize = resources.getDimension(R.dimen.text_value) / resources.displayMetrics.density
+        val unitTextSize = resources.getDimension(R.dimen.text_unit) / resources.displayMetrics.density
+
+        val boxX = dfaBoxBounds?.get(0) ?: 0
+        val boxY = dfaBoxBounds?.get(1) ?: 0
+        val boxWidth = dfaBoxBounds?.get(2) ?: WindowManager.LayoutParams.WRAP_CONTENT
+        val boxHeight = dfaBoxBounds?.get(3) ?: 0
+
+        dfaSensorValueViews.clear()
+
+        val container = LinearLayout(service).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(ContextCompat.getColor(service, R.color.hud_background))
+            setPadding(itemMargin, itemMargin, itemMargin, itemMargin)
+        }
+
+        // Only show RR-capable sensors (no "AVERAGE" — DFA requires single RR stream)
+        for ((mac, pair) in state.connectedHrSensors) {
+            val (name, _) = pair
+            // Check RR capability via dfaResults presence (calculator created on first RR data)
+            if (!state.dfaResults.containsKey(mac)) continue
+            val result = state.dfaResults[mac]
+            val isActive = mac == state.activeDfaSensorMac
+            container.addView(buildDfaSensorItem(
+                mac = mac,
+                label = name.uppercase(),
+                result = result,
+                isActive = isActive,
+                boxPadding = boxPadding,
+                itemMargin = itemMargin,
+                labelTextSize = labelTextSize,
+                valueTextSize = valueTextSize,
+                unitTextSize = unitTextSize,
+                onClick = { onDfaSensorSelected(mac) }
+            ))
+        }
+
+        dfaSensorPopupView = container
+
+        val params = OverlayHelper.createOverlayParams(boxWidth, focusable = true)
+        params.gravity = Gravity.TOP or Gravity.START
+        params.x = boxX
+        params.y = boxY + boxHeight
+        windowManager.addView(dfaSensorPopupView, params)
+    }
+
+    /**
+     * Build a single DFA sensor item styled like HUD boxes, zone-colored by alpha1 value.
+     */
+    private fun buildDfaSensorItem(
+        mac: String,
+        label: String,
+        result: io.github.avikulin.thud.util.DfaAlpha1Calculator.DfaResult?,
+        isActive: Boolean,
+        boxPadding: Int,
+        itemMargin: Int,
+        labelTextSize: Float,
+        valueTextSize: Float,
+        unitTextSize: Float,
+        onClick: () -> Unit
+    ): LinearLayout {
+        val bgColor = getDfaZoneColor(result)
+        val displayLabel = if (isActive) "✓ $label" else label
+
+        return LinearLayout(service).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(bgColor)
+            setPadding(boxPadding * 4, boxPadding * 2, boxPadding * 4, boxPadding * 2)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = itemMargin }
+
+            val textOnZone = ContextCompat.getColor(service, R.color.text_on_zone)
+
+            // Label
+            addView(TextView(service).apply {
+                text = displayLabel
+                setTextColor(textOnZone)
+                textSize = labelTextSize
+                gravity = Gravity.CENTER
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+
+            // Value (large, bold)
+            val valueView = TextView(service).apply {
+                text = formatDfaValue(result)
+                setTextColor(ContextCompat.getColor(service, R.color.text_primary))
+                textSize = valueTextSize * 0.7f
+                setTypeface(typeface, Typeface.BOLD)
+                gravity = Gravity.CENTER
+            }
+            addView(valueView)
+            dfaSensorValueViews[mac] = valueView
+
+            // Unit — show artifact % when data is valid
+            addView(TextView(service).apply {
+                text = if (result != null && result.isValid)
+                    String.format(Locale.US, "%.0f%% art", result.artifactPercent)
+                else "α1"
+                setTextColor(textOnZone)
+                textSize = unitTextSize
+                gravity = Gravity.CENTER
+            })
+
+            setOnClickListener { onClick() }
+        }
+    }
+
+    /** Format DFA alpha1 value for display. */
+    private fun formatDfaValue(result: io.github.avikulin.thud.util.DfaAlpha1Calculator.DfaResult?): String {
+        if (result == null || !result.isValid) return "--"
+        return String.format(Locale.US, "%.2f", result.alpha1)
+    }
+
+    /** Get DFA zone background color based on alpha1 value. */
+    private fun getDfaZoneColor(result: io.github.avikulin.thud.util.DfaAlpha1Calculator.DfaResult?): Int {
+        if (result == null || !result.isValid) return colorDfaNoData
+        return when {
+            result.alpha1 > 0.75 -> colorDfaAerobic
+            result.alpha1 >= 0.5 -> colorDfaTransition
+            else -> colorDfaAnaerobic
+        }
+    }
+
+    /**
+     * Rebuild DFA popup contents in-place when new DFA results arrive.
+     * Safe to call from non-main threads (posts to mainHandler).
+     */
+    fun updateDfaSensorPopupIfVisible() {
+        if (dfaSensorPopupView == null) return
+        mainHandler.post {
+            for ((mac, _) in dfaSensorValueViews) {
+                val result = state.dfaResults[mac]
+                dfaSensorValueViews[mac]?.text = formatDfaValue(result)
+                // Update zone background color
+                val valueView = dfaSensorValueViews[mac] ?: continue
+                val itemContainer = valueView.parent as? LinearLayout ?: continue
+                itemContainer.setBackgroundColor(getDfaZoneColor(result))
+            }
+        }
+    }
+
     /**
      * Close all popups.
      */
@@ -619,6 +802,7 @@ class PopupManager(
         closePacePopup()
         closeInclinePopup()
         closeHrSensorPopup()
+        closeDfaSensorPopup()
     }
 
     // ==================== Treadmill Control Helpers ====================

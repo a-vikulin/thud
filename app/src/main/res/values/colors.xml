@@ -37,6 +37,13 @@
     <color name="toggle_button_on_tint">#FFFFFF</color>
     <color name="toggle_button_off_tint">#8888A8</color>
 
+    <!-- ==================== DFA Alpha1 Zones ==================== -->
+
+    <color name="dfa_zone_aerobic">#3344DD44</color>      <!-- Green: alpha1 > 0.75, aerobic -->
+    <color name="dfa_zone_transition">#33FFAA00</color>    <!-- Amber: 0.5-0.75, transition -->
+    <color name="dfa_zone_anaerobic">#33FF4444</color>     <!-- Red: < 0.5, anaerobic -->
+    <color name="dfa_zone_no_data">#339999B8</color>       <!-- Gray: no data -->
+
     <!-- ==================== Heart Rate Zones ==================== -->
 
     <color name="hr_zone_1">#9999B8</color>  <!-- Blue-tinted grey - recovery -->

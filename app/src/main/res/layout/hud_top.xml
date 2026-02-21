@@ -97,6 +97,36 @@
                 style="@style/HudText.Unit" />
         </LinearLayout>
 
+        <!-- DFA Alpha1 Box (touchable) -->
+        <LinearLayout
+            android:id="@+id/dfaBox"
+            style="@style/HudBox.Interactive"
+            android:layout_marginStart="@dimen/box_margin"
+            android:layout_marginEnd="@dimen/box_margin">
+
+            <TextView
+                android:id="@+id/tvDfaLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_dfa"
+                style="@style/HudText.Label.Dim" />
+
+            <TextView
+                android:id="@+id/tvDfaValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/default_dfa"
+                style="@style/HudText.Value" />
+
+            <TextView
+                android:id="@+id/tvDfaSubtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:visibility="gone"
+                android:text=""
+                style="@style/HudText.Unit" />
+        </LinearLayout>
+
         <!-- Foot Pod Box (touchable) -->
         <LinearLayout
             android:id="@+id/footPodBox"

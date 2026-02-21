@@ -30,7 +30,8 @@ data class RecorderState(
     val calculatedCaloriesKcal: Double,
     val dataPoints: List<WorkoutDataPoint>,
     val pauseEvents: List<PauseEvent>,
-    val hrSensors: List<Pair<String, String>> = emptyList()  // index-ordered (MAC, name)
+    val hrSensors: List<Pair<String, String>> = emptyList(),  // index-ordered (MAC, name)
+    val rrIntervalsBySensor: Map<String, List<Pair<Long, Float>>> = emptyMap()
 )
 
 /**
@@ -235,6 +236,17 @@ class RunPersistenceManager(private val context: Context) {
                     }
                 })
             }
+            if (state.rrIntervalsBySensor.isNotEmpty()) {
+                put("rrbs", JSONObject().apply {
+                    state.rrIntervalsBySensor.forEach { (mac, intervals) ->
+                        put(mac, JSONArray().apply {
+                            intervals.forEach { (ts, rr) ->
+                                put(JSONArray().apply { put(ts); put(rr.toDouble()) })
+                            }
+                        })
+                    }
+                })
+            }
         }
     }
 
@@ -260,6 +272,13 @@ class RunPersistenceManager(private val context: Context) {
                     dp.allHrSensors.forEach { (idx, bpm) -> ahsObj.put(idx.toString(), bpm) }
                     put("ahs", ahsObj)
                     put("phi", dp.primaryHrIndex)
+                    if (dp.dfaAlpha1BySensor.isNotEmpty()) {
+                        val dfaObj = org.json.JSONObject()
+                        dp.dfaAlpha1BySensor.forEach { (idx, a1) ->
+                            if (a1 > 0) dfaObj.put(idx.toString(), a1)
+                        }
+                        if (dfaObj.length() > 0) put("dfa", dfaObj)
+                    }
                 })
             }
         }
@@ -331,6 +350,16 @@ class RunPersistenceManager(private val context: Context) {
                     val pair = arr.getJSONArray(i)
                     Pair(pair.getString(0), pair.getString(1))
                 }
+            },
+            rrIntervalsBySensor = run {
+                val obj = json.optJSONObject("rrbs") ?: return@run emptyMap()
+                obj.keys().asSequence().associate { mac ->
+                    val arr = obj.getJSONArray(mac)
+                    mac to (0 until arr.length()).map { i ->
+                        val pair = arr.getJSONArray(i)
+                        Pair(pair.getLong(0), pair.getDouble(1).toFloat())
+                    }
+                }
             }
         )
     }
@@ -357,7 +386,11 @@ class RunPersistenceManager(private val context: Context) {
                     val obj = dp.optJSONObject("ahs") ?: return@run emptyMap()
                     obj.keys().asSequence().associate { it.toInt() to obj.getInt(it) }
                 },
-                primaryHrIndex = dp.optInt("phi", -1)
+                primaryHrIndex = dp.optInt("phi", -1),
+                dfaAlpha1BySensor = run {
+                    val obj = dp.optJSONObject("dfa") ?: return@run emptyMap()
+                    obj.keys().asSequence().associate { it.toInt() to obj.getDouble(it) }
+                }
             )
         }
     }

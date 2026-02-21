@@ -59,6 +59,7 @@ class HrSensorManager(
         fun onHrSensorConnected(mac: String, deviceName: String)
         fun onHrSensorDisconnected(mac: String, deviceName: String)
         fun onHeartRateUpdate(mac: String, deviceName: String, bpm: Int)
+        fun onRrIntervalsReceived(mac: String, deviceName: String, rrIntervalsMs: List<Double>)
     }
 
     var listener: Listener? = null
@@ -76,6 +77,15 @@ class HrSensorManager(
     private val intentionalDisconnects = ConcurrentHashMap.newKeySet<String>()
     private val reconnectAttempts = ConcurrentHashMap<String, Int>()
     private val reconnectRunnables = ConcurrentHashMap<String, Runnable?>()
+
+    // Per-sensor RR interval capability (set on first notification with bit 4 set)
+    private val rrCapableSensors: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+    /** Returns true if the sensor at [mac] has been observed broadcasting RR intervals. */
+    fun hasRrCapability(mac: String): Boolean = mac in rrCapableSensors
+
+    /** Returns the set of MACs currently known to broadcast RR intervals. */
+    fun getRrCapableMacs(): Set<String> = rrCapableSensors.toSet()
 
     // BLE components
     private var bluetoothAdapter: BluetoothAdapter? = null
@@ -448,6 +458,7 @@ class HrSensorManager(
         Log.d(TAG, "Disconnecting HR sensor $mac")
         intentionalDisconnects.add(mac)
         cancelPendingReconnect(mac)
+        rrCapableSensors.remove(mac)
 
         val conn = connections.remove(mac)
         conn?.gatt?.disconnect()
@@ -668,11 +679,18 @@ class HrSensorManager(
 
             val flags = data[0].toInt() and 0xFF
             val is16Bit = (flags and 0x01) != 0
+            val hasEnergyExpended = (flags and 0x08) != 0
+            val hasRrIntervals = (flags and 0x10) != 0
 
-            val heartRate = if (is16Bit && data.size >= 3) {
-                ((data[2].toInt() and 0xFF) shl 8) or (data[1].toInt() and 0xFF)
+            // Parse heart rate value
+            var offset: Int
+            val heartRate: Int
+            if (is16Bit && data.size >= 3) {
+                heartRate = ((data[2].toInt() and 0xFF) shl 8) or (data[1].toInt() and 0xFF)
+                offset = 3
             } else if (data.size >= 2) {
-                data[1].toInt() and 0xFF
+                heartRate = data[1].toInt() and 0xFF
+                offset = 2
             } else {
                 return
             }
@@ -681,6 +699,26 @@ class HrSensorManager(
 
             connections[mac]?.lastDataMs = System.currentTimeMillis()
             listener?.onHeartRateUpdate(mac, deviceName, heartRate)
+
+            // Skip Energy Expended (UINT16 LE) if present
+            if (hasEnergyExpended) offset += 2
+
+            // Parse RR intervals (UINT16 LE, 1/1024 sec units)
+            if (hasRrIntervals && offset < data.size) {
+                rrCapableSensors.add(mac)
+                val rrIntervalsMs = mutableListOf<Double>()
+                while (offset + 1 < data.size) {
+                    val rawRr = ((data[offset + 1].toInt() and 0xFF) shl 8) or
+                                (data[offset].toInt() and 0xFF)
+                    offset += 2
+                    if (rawRr > 0) {
+                        rrIntervalsMs.add(rawRr * 1000.0 / 1024.0)
+                    }
+                }
+                if (rrIntervalsMs.isNotEmpty()) {
+                    listener?.onRrIntervalsReceived(mac, deviceName, rrIntervalsMs)
+                }
+            }
         }
     }
 
@@ -725,6 +763,7 @@ class HrSensorManager(
         connections.clear()
         pendingGatts.values.forEach { it.second.close() }
         pendingGatts.clear()
+        rrCapableSensors.clear()
     }
 
     /**

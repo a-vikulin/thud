@@ -107,6 +107,8 @@
     <string name="label_connecting">Connecting…</string>
     <string name="label_tss">TSS</string>
     <string name="default_tss">--</string>
+    <string name="label_dfa">DFA a1</string>
+    <string name="default_dfa">--</string>
     <string name="unit_grade">grade</string>
     <string name="unit_km">km</string>
     <string name="default_pace">--:--</string>
@@ -289,6 +291,7 @@
     <!-- FIT File Export -->
     <string name="free_run_name">Free Run</string>
     <string name="fit_export_success">Saved: %1$s</string>
+    <string name="fit_export_success_multi">Exported %1$d FIT files to Downloads/tHUD</string>
     <string name="fit_export_failed">Failed to save workout</string>
     <string name="fit_export_already_exported">Already saved</string>
     <string name="fit_export_no_data">No workout data to save</string>

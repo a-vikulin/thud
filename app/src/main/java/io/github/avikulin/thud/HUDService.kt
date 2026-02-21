@@ -63,8 +63,10 @@ import io.github.avikulin.thud.util.FitFileExporter
 import java.io.File
 import io.github.avikulin.thud.util.HeartRateZones
 
+import io.github.avikulin.thud.util.DfaAlpha1Calculator
 import io.github.avikulin.thud.util.PaceConverter
 import io.github.avikulin.thud.util.TssCalculator
+import java.util.concurrent.ConcurrentHashMap
 import com.ifit.glassos.workout.WorkoutState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -177,7 +179,9 @@ class HUDService : Service(),
         val executionSteps: List<ExecutionStep>?,  // null for free runs (flattened for runtime)
         val originalSteps: List<io.github.avikulin.thud.data.entity.WorkoutStep>?,  // null for free runs (hierarchical for FIT)
         val userSettings: UserExportSettings,
-        val hrSensors: List<Pair<String, String>> = emptyList()  // index-ordered (MAC, name) for FIT field labels
+        val hrSensors: List<Pair<String, String>> = emptyList(),  // index-ordered (MAC, name) for FIT field labels
+        val rrIntervalsBySensor: Map<String, List<Pair<Long, Float>>> = emptyMap(),
+        val activeDfaSensorMac: String = ""
     )
 
     // Coroutine scope for background work
@@ -206,6 +210,9 @@ class HUDService : Service(),
     // Workout data recording and export
     private val workoutRecorder = WorkoutRecorder()
     private lateinit var fitFileExporter: FitFileExporter
+
+    // Per-sensor DFA alpha1 calculators (MAC → calculator)
+    private val dfaCalculators = ConcurrentHashMap<String, DfaAlpha1Calculator>()
 
     private lateinit var garminUploader: GarminConnectUploader
     private var connectivityCallback: ConnectivityManager.NetworkCallback? = null
@@ -359,6 +366,10 @@ class HUDService : Service(),
             onPrimaryHrSelected = { value ->
                 setPrimaryHrSensor(value)
                 popupManager.closeHrSensorPopup()
+            },
+            onDfaSensorSelected = { mac ->
+                setDfaSensor(mac)
+                popupManager.closeDfaSensorPopup()
             }
         )
 
@@ -555,6 +566,10 @@ class HUDService : Service(),
         // Clear and start fresh
         workoutRecorder.clearData()
         chartManager.clearData()
+        // Reset DFA calculators for new run (keep active sensor selection)
+        dfaCalculators.values.forEach { it.reset() }
+        state.dfaResults.clear()
+        hudDisplayManager.updateDfaAlpha1(0.0, isValid = false)
         workoutRecorder.startRecording()
         workoutStartTimeMs = System.currentTimeMillis()
         workoutDataExported = false  // Reset export flag for new session
@@ -609,6 +624,11 @@ class HUDService : Service(),
         hudDisplayManager.updateDistance(0.0)  // Reset distance display
         workoutDataExported = false
         lastWorkoutName = null
+        // Clear DFA calculators and results
+        dfaCalculators.values.forEach { it.reset() }
+        dfaCalculators.clear()
+        state.dfaResults.clear()
+        hudDisplayManager.updateDfaAlpha1(0.0, isValid = false)
         // Clear persisted data and stop persistence
         runPersistenceManager.clearPersistedRun()
         stopPersistence()
@@ -665,6 +685,8 @@ class HUDService : Service(),
             executionSteps = executionSteps?.toList(),
             originalSteps = originalSteps?.toList(),
             hrSensors = workoutRecorder.getHrSensors(),
+            rrIntervalsBySensor = workoutRecorder.getRrIntervalsBySensor(),
+            activeDfaSensorMac = state.activeDfaSensorMac,
             userSettings = UserExportSettings(
                 hrRest = state.userHrRest,
                 lthrBpm = state.userLthrBpm,
@@ -714,43 +736,87 @@ class HUDService : Service(),
 
         // Export in background to avoid blocking UI
         serviceScope.launch(Dispatchers.IO) {
-            // Export FIT file
-            val fitResult = fitFileExporter.exportWorkout(
-                workoutData = snapshot.workoutData,
-                workoutName = snapshot.workoutName,
-                startTimeMs = snapshot.startTimeMs,
-                userHrRest = snapshot.userSettings.hrRest,
-                userLthr = snapshot.userSettings.lthrBpm,
-                userFtpWatts = snapshot.userSettings.ftpWatts,
-                thresholdPaceKph = snapshot.userSettings.thresholdPaceKph,
-                pauseEvents = snapshot.pauseEvents,
-                executionSteps = snapshot.executionSteps,
-                originalSteps = snapshot.originalSteps,
-                fitManufacturer = snapshot.userSettings.fitManufacturer,
-                fitProductId = snapshot.userSettings.fitProductId,
-                fitDeviceSerial = snapshot.userSettings.fitDeviceSerial,
-                fitSoftwareVersion = snapshot.userSettings.fitSoftwareVersion,
-                hrSensors = snapshot.hrSensors
+            val rrBySensor = snapshot.rrIntervalsBySensor
+            val rrCapableCount = rrBySensor.size
+
+            // Build export tasks: one file per RR-capable sensor, or single file if 0-1
+            data class FitExportTask(
+                val rrIntervals: List<Pair<Long, Float>>?,
+                val filenameSuffix: String?,
+                val isGarminPrimary: Boolean
             )
 
-            if (fitResult != null) {
+            val sensorNames = snapshot.hrSensors.associate { (mac, name) -> mac to name }
+            val tasks: List<FitExportTask> = when {
+                rrCapableCount == 0 -> listOf(FitExportTask(null, null, true))
+                rrCapableCount == 1 -> {
+                    val (_, rrData) = rrBySensor.entries.first()
+                    listOf(FitExportTask(rrData, null, true))
+                }
+                else -> rrBySensor.map { (mac, rrData) ->
+                    val shortName = sensorNames[mac]
+                        ?.replace(Regex("[^a-zA-Z0-9]"), "")
+                        ?: mac.takeLast(5).replace(":", "")
+                    FitExportTask(
+                        rrIntervals = rrData,
+                        filenameSuffix = shortName,
+                        isGarminPrimary = (mac == snapshot.activeDfaSensorMac)
+                    )
+                }
+            }
+
+            // If no task is marked primary, mark first
+            val finalTasks = if (tasks.none { it.isGarminPrimary })
+                tasks.mapIndexed { i, t -> if (i == 0) t.copy(isGarminPrimary = true) else t }
+            else tasks
+
+            var garminResult: FitFileExporter.FitExportResult? = null
+            var exportedCount = 0
+
+            for (task in finalTasks) {
+                val fitResult = fitFileExporter.exportWorkout(
+                    workoutData = snapshot.workoutData,
+                    workoutName = snapshot.workoutName,
+                    startTimeMs = snapshot.startTimeMs,
+                    userHrRest = snapshot.userSettings.hrRest,
+                    userLthr = snapshot.userSettings.lthrBpm,
+                    userFtpWatts = snapshot.userSettings.ftpWatts,
+                    thresholdPaceKph = snapshot.userSettings.thresholdPaceKph,
+                    pauseEvents = snapshot.pauseEvents,
+                    executionSteps = snapshot.executionSteps,
+                    originalSteps = snapshot.originalSteps,
+                    fitManufacturer = snapshot.userSettings.fitManufacturer,
+                    fitProductId = snapshot.userSettings.fitProductId,
+                    fitDeviceSerial = snapshot.userSettings.fitDeviceSerial,
+                    fitSoftwareVersion = snapshot.userSettings.fitSoftwareVersion,
+                    hrSensors = snapshot.hrSensors,
+                    rrIntervals = task.rrIntervals,
+                    filenameSuffix = task.filenameSuffix
+                )
+                if (fitResult != null) {
+                    exportedCount++
+                    if (task.isGarminPrimary) garminResult = fitResult
+                }
+            }
+
+            if (exportedCount > 0) {
                 // Clear persisted data on successful export
                 runPersistenceManager.clearPersistedRun()
                 stopPersistence()
+
+                val toastResult = garminResult ?: return@launch
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        this@HUDService,
-                        getString(R.string.fit_export_success, fitResult.displayPath),
-                        Toast.LENGTH_LONG
-                    ).show()
+                    val msg = if (exportedCount == 1)
+                        getString(R.string.fit_export_success, toastResult.displayPath)
+                    else
+                        getString(R.string.fit_export_success_multi, exportedCount)
+                    Toast.makeText(this@HUDService, msg, Toast.LENGTH_LONG).show()
                 }
 
-                // Auto-upload to Garmin Connect if enabled
+                // Auto-upload primary file to Garmin Connect if enabled
                 if (state.garminAutoUploadEnabled) {
-                    // Resolve screenshot NOW, before upload starts — a post-clear
-                    // screenshot may overwrite it by the time upload finishes
                     val screenshotFile = findLastScreenshot(snapshot.workoutName, snapshot.startTimeMs)
-                    uploadToGarminConnect(fitResult, snapshot.workoutName, snapshot.startTimeMs, screenshotFile = screenshotFile)
+                    uploadToGarminConnect(toastResult, snapshot.workoutName, snapshot.startTimeMs, screenshotFile = screenshotFile)
                 }
             } else {
                 withContext(Dispatchers.Main) {
@@ -1944,11 +2010,13 @@ class HUDService : Service(),
             stepIndex = stepIndex,
             stepName = stepName,
             connectedHrSensors = state.connectedHrSensors,
-            primaryHrMac = state.activePrimaryHrMac
+            primaryHrMac = state.activePrimaryHrMac,
+            dfaAlpha1BySensor = currentDfaSnapshot()
         )
 
         // Update sensor connection status displays
         hudDisplayManager.updateHrSensorStatus(state.hrSensorConnected)
+        hudDisplayManager.updateDfaSensorStatus(hrSensorManager.getRrCapableMacs().isNotEmpty())
         hudDisplayManager.updateFootPod(strydManager.getSelectedMetric(), state.strydConnected)
 
         // Update training metrics (throttled to every 5 seconds)
@@ -2194,7 +2262,8 @@ class HUDService : Service(),
             stepIndex = stepIndex,
             stepName = stepName,
             connectedHrSensors = state.connectedHrSensors,
-            primaryHrMac = state.activePrimaryHrMac
+            primaryHrMac = state.activePrimaryHrMac,
+            dfaAlpha1BySensor = currentDfaSnapshot()
         )
 
         // Update engine with calculated distance (from adjusted speed, not raw treadmill)
@@ -2325,6 +2394,32 @@ class HUDService : Service(),
         } else {
             // 0-1 sensors → show full BT dialog (existing behavior)
             bluetoothSensorDialogManager.toggleDialog()
+        }
+    }
+
+    override fun onDfaBoxClicked() {
+        val wasDfaPopupOpen = popupManager.isDfaSensorPopupVisible
+        popupManager.closeAllPopups()
+        settingsManager.removeDialog()
+        hrSensorManager.removeDialog()
+        strydManager.removeDialog()
+        strydManager.removeMetricSelector()
+        if (wasDfaPopupOpen) return
+
+        val rrCapableCount = hrSensorManager.getRrCapableMacs().size
+        when {
+            rrCapableCount == 0 -> {
+                // No RR-capable sensors → open BT dialog to connect one
+                bluetoothSensorDialogManager.toggleDialog()
+            }
+            rrCapableCount == 1 -> {
+                // Single RR sensor → auto-selected, no popup needed
+            }
+            else -> {
+                // 2+ RR-capable sensors → show DFA sensor selector
+                bluetoothSensorDialogManager.removeDialog()
+                popupManager.showDfaSensorPopup(hudDisplayManager.getDfaBoxBounds())
+            }
         }
     }
 
@@ -2590,6 +2685,10 @@ class HUDService : Service(),
         hudDisplayManager.updateHrSensorStatus(state.hrSensorConnected)
         hudDisplayManager.updateHrSubtitle(activeHrSubtitleLabel())
         bluetoothSensorDialogManager.updateStatus()
+        // Handle DFA sensor disconnect (clears calculator, falls back to next RR-capable)
+        if (hrSensorManager.hasRrCapability(mac)) {
+            handleDfaSensorDisconnect(mac)
+        }
     }
 
     override fun onHeartRateUpdate(mac: String, deviceName: String, bpm: Int) {
@@ -2610,6 +2709,38 @@ class HUDService : Service(),
         hudDisplayManager.updateHeartRate(effectiveBpm)
         workoutEngineManager.onHeartRateUpdate(effectiveBpm)
         popupManager.updateHrSensorPopupIfVisible()
+    }
+
+    override fun onRrIntervalsReceived(mac: String, deviceName: String, rrIntervalsMs: List<Double>) {
+        // 1. Buffer RR intervals for FIT HRV export
+        workoutRecorder.recordRrIntervals(mac, rrIntervalsMs)
+
+        // 2. Feed DFA calculator for this sensor
+        val calc = dfaCalculators.getOrPut(mac) { DfaAlpha1Calculator() }
+        val currentBpm = state.connectedHrSensors[mac]?.second ?: 0
+        calc.addRrIntervals(rrIntervalsMs, currentBpm)
+        val result = calc.computeIfReady()
+        if (result != null) {
+            state.dfaResults[mac] = result
+            // Update HUD box if this is the active DFA sensor
+            if (mac == state.activeDfaSensorMac) {
+                hudDisplayManager.updateDfaAlpha1(result.alpha1, result.isValid)
+            }
+            // Update DFA popup if visible (shows all sensors' values)
+            popupManager.updateDfaSensorPopupIfVisible()
+        }
+
+        // 3. Auto-select: prefer saved sensor, otherwise first RR-capable
+        if (state.activeDfaSensorMac.isEmpty()) {
+            if (state.savedDfaSensorMac.isNotEmpty() && mac == state.savedDfaSensorMac) {
+                setDfaSensor(mac)
+            } else if (state.savedDfaSensorMac.isEmpty()) {
+                setDfaSensor(mac)
+            }
+        } else if (state.savedDfaSensorMac == mac && state.activeDfaSensorMac != mac) {
+            // Saved sensor just started sending RR data — switch to it
+            setDfaSensor(mac)
+        }
     }
 
     /** Set the active primary HR sensor (MAC or HR_PRIMARY_AVERAGE). Persists the choice. */
@@ -2637,6 +2768,52 @@ class HUDService : Service(),
     }
 
     private fun getShortName(name: String?): String = name?.take(12) ?: ""
+
+    // ==================== DFA Sensor Management ====================
+
+    /** Set the active DFA sensor. Persists the choice, updates HUD box. */
+    private fun setDfaSensor(mac: String) {
+        state.savedDfaSensorMac = mac
+        state.activeDfaSensorMac = mac
+        settingsManager.saveDfaSensorMac(mac)
+        // Update HUD box with this sensor's latest result
+        val result = state.dfaResults[mac]
+        hudDisplayManager.updateDfaAlpha1(result?.alpha1 ?: 0.0, result?.isValid ?: false)
+        hudDisplayManager.updateDfaSubtitle(activeDfaSubtitleLabel())
+        hudDisplayManager.updateDfaSensorStatus(hrSensorManager.getRrCapableMacs().isNotEmpty())
+    }
+
+    /** Handle DFA sensor disconnect — fall back to next RR-capable sensor or clear. */
+    private fun handleDfaSensorDisconnect(mac: String) {
+        dfaCalculators.remove(mac)?.reset()
+        state.dfaResults.remove(mac)
+        if (mac == state.activeDfaSensorMac) {
+            val nextMac = hrSensorManager.getRrCapableMacs()
+                .firstOrNull { it != mac && state.dfaResults.containsKey(it) }
+            if (nextMac != null) {
+                setDfaSensor(nextMac)
+            } else {
+                state.activeDfaSensorMac = ""
+                hudDisplayManager.updateDfaAlpha1(0.0, isValid = false)
+                hudDisplayManager.updateDfaSubtitle("")
+            }
+        }
+        hudDisplayManager.updateDfaSensorStatus(hrSensorManager.getRrCapableMacs().isNotEmpty())
+    }
+
+    private fun activeDfaSubtitleLabel(): String {
+        val mac = state.activeDfaSensorMac
+        if (mac.isEmpty()) return ""
+        // Only show subtitle when multiple RR-capable sensors exist
+        if (hrSensorManager.getRrCapableMacs().size < 2) return ""
+        return getShortName(state.connectedHrSensors[mac]?.first)
+    }
+
+    /** Snapshot current DFA alpha1 values (MAC → alpha1) for data point recording. */
+    private fun currentDfaSnapshot(): Map<String, Double> {
+        if (state.dfaResults.isEmpty()) return emptyMap()
+        return state.dfaResults.mapValues { (_, r) -> if (r.isValid) r.alpha1 else -1.0 }
+    }
 
     // ==================== Public API (for WorkoutRecorder delegation) ====================
 

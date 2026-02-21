@@ -128,6 +128,9 @@ class SettingsManager(
         const val PREF_PRIMARY_HR_MAC = "primary_hr_mac"
         const val HR_PRIMARY_AVERAGE = "AVERAGE"  // sentinel: compute mean of all connected sensors
 
+        // DFA alpha1: primary sensor MAC for HUD display + Garmin upload
+        const val PREF_DFA_SENSOR_MAC = "dfa_sensor_mac"
+
         // Defaults
         const val DEFAULT_PACE_COEFFICIENT = 1.0
         const val DEFAULT_INCLINE_ADJUSTMENT = 1.0  // 1% treadmill = flat outdoor
@@ -386,6 +389,9 @@ class SettingsManager(
         // Multi-sensor HR primary selection
         state.savedPrimaryHrMac = prefs.getString(PREF_PRIMARY_HR_MAC, HR_PRIMARY_AVERAGE) ?: HR_PRIMARY_AVERAGE
 
+        // DFA alpha1 sensor selection
+        state.savedDfaSensorMac = prefs.getString(PREF_DFA_SENSOR_MAC, "") ?: ""
+
         Log.d(TAG, "Settings loaded: LTHR=${state.userLthrBpm}, FTP=${state.userFtpWatts}")
     }
 
@@ -395,6 +401,14 @@ class SettingsManager(
     fun savePrimaryHrMac(value: String) {
         prefs.edit { putString(PREF_PRIMARY_HR_MAC, value) }
         state.savedPrimaryHrMac = value
+    }
+
+    /**
+     * Persist the user's DFA alpha1 sensor choice (MAC).
+     */
+    fun saveDfaSensorMac(value: String) {
+        prefs.edit { putString(PREF_DFA_SENSOR_MAC, value) }
+        state.savedDfaSensorMac = value
     }
 
     /**

@@ -39,6 +39,7 @@ class FitFileExporter(private val context: Context) {
     private data class HrSensorDevField(
         val devDataIdMesg: DeveloperDataIdMesg,
         val recordFieldDesc: FieldDescriptionMesg,
+        val dfaFieldDesc: FieldDescriptionMesg?,  // null if no DFA data for this sensor
         val devDataIndex: Short
     )
 
@@ -116,7 +117,9 @@ class FitFileExporter(private val context: Context) {
         fitProductId: Int = DEFAULT_PRODUCT_ID,
         fitDeviceSerial: Long = DEFAULT_DEVICE_SERIAL,
         fitSoftwareVersion: Int = DEFAULT_SOFTWARE_VERSION,
-        hrSensors: List<Pair<String, String>> = emptyList()
+        hrSensors: List<Pair<String, String>> = emptyList(),
+        rrIntervals: List<Pair<Long, Float>>? = null,
+        filenameSuffix: String? = null
     ): FitExportResult? {
         if (workoutData.isEmpty()) {
             Log.w(TAG, "No workout data to export")
@@ -124,13 +127,13 @@ class FitFileExporter(private val context: Context) {
         }
 
         return try {
-            val filename = createFilename(workoutName, startTimeMs)
+            val filename = createFilename(workoutName, startTimeMs, filenameSuffix)
             val result = writeFitFileToMediaStore(
                 filename, workoutData, workoutName, startTimeMs,
                 userHrRest, userLthr, userFtpWatts, thresholdPaceKph, pauseEvents,
                 executionSteps, originalSteps,
                 fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion,
-                hrSensors
+                hrSensors, rrIntervals
             )
             Log.i(TAG, "FIT file exported: ${result.displayPath}")
             result
@@ -143,12 +146,13 @@ class FitFileExporter(private val context: Context) {
     /**
      * Create filename for the FIT file.
      */
-    private fun createFilename(workoutName: String, startTimeMs: Long): String {
-        // Create filename: WorkoutName_2026-01-19_14-30-00.fit
+    private fun createFilename(workoutName: String, startTimeMs: Long, suffix: String? = null): String {
+        // Create filename: WorkoutName_2026-01-19_14-30-00.fit (or _Suffix.fit)
         val dateFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US)
         val dateStr = dateFormat.format(Date(startTimeMs))
         val sanitizedName = workoutName.replace(Regex("[^a-zA-Z0-9_-]"), "_")
-        return "${sanitizedName}_$dateStr.fit"
+        val suffixPart = if (!suffix.isNullOrEmpty()) "_$suffix" else ""
+        return "${sanitizedName}_$dateStr${suffixPart}.fit"
     }
 
     /**
@@ -172,13 +176,14 @@ class FitFileExporter(private val context: Context) {
         fitProductId: Int,
         fitDeviceSerial: Long,
         fitSoftwareVersion: Int,
-        hrSensors: List<Pair<String, String>> = emptyList()
+        hrSensors: List<Pair<String, String>> = emptyList(),
+        rrIntervals: List<Pair<Long, Float>>? = null
     ): FitExportResult {
         // Create temp file for FIT SDK (it requires a File, not OutputStream)
         val tempFile = FileExportHelper.getTempFile(context, filename)
         try {
             // Write FIT file to temp location
-            writeFitFile(tempFile, workoutData, workoutName, startTimeMs, userHrRest, userLthr, userFtpWatts, thresholdPaceKph, pauseEvents, executionSteps, originalSteps, fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion, hrSensors)
+            writeFitFile(tempFile, workoutData, workoutName, startTimeMs, userHrRest, userLthr, userFtpWatts, thresholdPaceKph, pauseEvents, executionSteps, originalSteps, fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion, hrSensors, rrIntervals)
 
             // Read bytes before saving to MediaStore (for Garmin Connect upload)
             val fitData = tempFile.readBytes()
@@ -221,7 +226,8 @@ class FitFileExporter(private val context: Context) {
         fitProductId: Int,
         fitDeviceSerial: Long,
         fitSoftwareVersion: Int,
-        hrSensors: List<Pair<String, String>> = emptyList()
+        hrSensors: List<Pair<String, String>> = emptyList(),
+        rrIntervals: List<Pair<Long, Float>>? = null
     ) {
         val encoder = FileEncoder(file, Fit.ProtocolVersion.V2_0)
 
@@ -268,7 +274,12 @@ class FitFileExporter(private val context: Context) {
         } else null
 
         // 3c. HR sensor developer fields (one per registered sensor)
-        val hrDevFields = writeHrDeveloperFieldDefinitions(encoder, hrSensors)
+        // Detect which sensor indices have DFA alpha1 data
+        val dfaSensorIndices = workoutData
+            .flatMap { it.dfaAlpha1BySensor.keys }
+            .filter { idx -> workoutData.any { (it.dfaAlpha1BySensor[idx] ?: -1.0) > 0 } }
+            .toSet()
+        val hrDevFields = writeHrDeveloperFieldDefinitions(encoder, hrSensors, dfaSensorIndices)
             .takeIf { it.isNotEmpty() }
 
         // 4. Sport message (required for proper workout recognition)
@@ -300,6 +311,11 @@ class FitFileExporter(private val context: Context) {
             pauseEvents.sortedBy { it.timestampMs }.last().isPause
         if (!endedWhilePaused) {
             writeTimerEvent(encoder, endTimeMs, isStart = false)
+        }
+
+        // 7b. HRV messages (RR intervals from a single sensor)
+        if (!rrIntervals.isNullOrEmpty()) {
+            writeHrvMessages(encoder, rrIntervals)
         }
 
         // 8. Lap messages - one per workout step, or single lap for free runs
@@ -802,13 +818,14 @@ class FitFileExporter(private val context: Context) {
     /**
      * Write developer field definitions for every HR BLE sensor that reported at least one
      * non-zero reading. Each sensor gets its own DeveloperDataIdMesg (devDataIndex starting at 1,
-     * since Stryd occupies 0) and a single FieldDescriptionMesg (fieldDefNum=0, units="bpm").
-     * The MAC address is used as the field name for identification in analysis tools.
-     * Returns MAC → HrSensorDevField map; empty if no multi-sensor HR data present.
+     * since Stryd occupies 0) and field descriptors for BPM (fieldDefNum=0) and optionally
+     * DFA alpha1 (fieldDefNum=1, UINT16 scale 1000).
+     * Returns sensorIndex → HrSensorDevField map; empty if no multi-sensor HR data present.
      */
     private fun writeHrDeveloperFieldDefinitions(
         encoder: FileEncoder,
-        hrSensors: List<Pair<String, String>>
+        hrSensors: List<Pair<String, String>>,
+        dfaSensorIndices: Set<Int> = emptySet()
     ): Map<Int, HrSensorDevField> {
         if (hrSensors.isEmpty()) return emptyMap()
 
@@ -838,7 +855,7 @@ class FitFileExporter(private val context: Context) {
             devDataId.setApplicationVersion(1L)
             encoder.write(devDataId)
 
-            // Single field per sensor: HR value in bpm, no native field override
+            // Field 0: HR value in bpm
             val fieldDesc = FieldDescriptionMesg()
             fieldDesc.setDeveloperDataIndex(devDataIndex)
             fieldDesc.setFieldDefinitionNumber(0.toShort())
@@ -847,10 +864,22 @@ class FitFileExporter(private val context: Context) {
             fieldDesc.setUnits(0, "bpm")
             encoder.write(fieldDesc)
 
-            result[index] = HrSensorDevField(devDataId, fieldDesc, devDataIndex)
+            // Field 1: DFA alpha1 (UINT16, scale 1000: 0.750 → 750)
+            val dfaDesc = if (index in dfaSensorIndices) {
+                val desc = FieldDescriptionMesg()
+                desc.setDeveloperDataIndex(devDataIndex)
+                desc.setFieldDefinitionNumber(1.toShort())
+                desc.setFitBaseTypeId(FitBaseType.UINT16)
+                desc.setFieldName(0, "DFA_${name.ifEmpty { mac }}")
+                desc.setUnits(0, "")
+                encoder.write(desc)
+                desc
+            } else null
+
+            result[index] = HrSensorDevField(devDataId, fieldDesc, dfaDesc, devDataIndex)
         }
 
-        Log.d(TAG, "Wrote HR developer field definitions for ${result.size} sensors")
+        Log.d(TAG, "Wrote HR developer field definitions for ${result.size} sensors (${dfaSensorIndices.size} with DFA)")
         return result
     }
 
@@ -926,16 +955,46 @@ class FitFileExporter(private val context: Context) {
             record.addDeveloperField(devField)
         }
 
-        // HR sensor developer fields: one per sensor with a non-zero reading at this data point
+        // HR sensor developer fields: BPM + DFA alpha1 per sensor
         hrDevFields?.forEach { (sensorIndex, devField) ->
+            // BPM field
             val bpm = dataPoint.allHrSensors[sensorIndex] ?: return@forEach
             if (bpm <= 0) return@forEach
             val field = DeveloperField(devField.recordFieldDesc, devField.devDataIdMesg)
             field.setValue(bpm)
             record.addDeveloperField(field)
+
+            // DFA alpha1 field (UINT16, scale 1000)
+            val dfaDesc = devField.dfaFieldDesc
+            if (dfaDesc != null) {
+                val alpha1 = dataPoint.dfaAlpha1BySensor[sensorIndex]
+                if (alpha1 != null && alpha1 > 0) {
+                    val dfaField = DeveloperField(dfaDesc, devField.devDataIdMesg)
+                    dfaField.setValue((alpha1 * 1000).toInt())
+                    record.addDeveloperField(dfaField)
+                }
+            }
         }
 
         encoder.write(record)
+    }
+
+    /**
+     * Write HRV messages (FIT message 78) containing RR intervals from a single sensor.
+     * Each HrvMesg holds up to 5 RR interval values (in seconds).
+     */
+    private fun writeHrvMessages(encoder: FileEncoder, rrIntervals: List<Pair<Long, Float>>) {
+        var i = 0
+        while (i < rrIntervals.size) {
+            val hrv = HrvMesg()
+            val batch = minOf(5, rrIntervals.size - i)
+            for (j in 0 until batch) {
+                hrv.setTime(j, rrIntervals[i + j].second)
+            }
+            encoder.write(hrv)
+            i += batch
+        }
+        Log.d(TAG, "Wrote ${rrIntervals.size} RR intervals in ${(rrIntervals.size + 4) / 5} HRV messages")
     }
 
     private fun writeLapMessage(

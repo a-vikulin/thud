@@ -40,6 +40,7 @@ class HUDDisplayManager(
         fun onPaceBoxClicked()
         fun onInclineBoxClicked()
         fun onHrBoxClicked()
+        fun onDfaBoxClicked()
         fun onFootPodBoxClicked()
         fun onWorkoutsClicked()
         fun onChartClicked()
@@ -68,6 +69,10 @@ class HUDDisplayManager(
     private var paceBox: View? = null
     private var inclineBox: View? = null
     private var hrBox: View? = null
+    private var dfaBox: View? = null
+    private var tvDfaLabel: TextView? = null
+    private var tvDfaValue: TextView? = null
+    private var tvDfaSubtitle: TextView? = null
     private var footPodBox: View? = null
     private var tvFootPodLabel: TextView? = null
     private var tvFootPodValue: TextView? = null
@@ -105,6 +110,10 @@ class HUDDisplayManager(
     private var colorRemoteMode1Tint = 0
     private var colorRemoteMode2Tint = 0
     private var currentRemoteState = RemoteButtonState.OFF
+    private var colorDfaAerobic = 0
+    private var colorDfaTransition = 0
+    private var colorDfaAnaerobic = 0
+    private var colorDfaNoData = 0
 
     enum class RemoteButtonState { NO_PERMISSION, OFF, MODE1, MODE2 }
     private val zoneColors = IntArray(6)  // Zone 0-5 colors (shared by HR and Power zones)
@@ -174,6 +183,10 @@ class HUDDisplayManager(
             paceBox = topView?.findViewById(R.id.paceBox)
             inclineBox = topView?.findViewById(R.id.inclineBox)
             hrBox = topView?.findViewById(R.id.hrBox)
+            dfaBox = topView?.findViewById(R.id.dfaBox)
+            tvDfaLabel = topView?.findViewById(R.id.tvDfaLabel)
+            tvDfaValue = topView?.findViewById(R.id.tvDfaValue)
+            tvDfaSubtitle = topView?.findViewById(R.id.tvDfaSubtitle)
             footPodBox = topView?.findViewById(R.id.footPodBox)
             tvFootPodLabel = topView?.findViewById(R.id.tvFootPodLabel)
             tvFootPodValue = topView?.findViewById(R.id.tvFootPodValue)
@@ -200,11 +213,16 @@ class HUDDisplayManager(
             for (zone in 0..5) {
                 zoneColors[zone] = ContextCompat.getColor(service, HeartRateZones.getZoneColorResId(zone))
             }
+            colorDfaAerobic = ContextCompat.getColor(service, R.color.dfa_zone_aerobic)
+            colorDfaTransition = ContextCompat.getColor(service, R.color.dfa_zone_transition)
+            colorDfaAnaerobic = ContextCompat.getColor(service, R.color.dfa_zone_anaerobic)
+            colorDfaNoData = ContextCompat.getColor(service, R.color.dfa_zone_no_data)
 
             // Set up touch handlers
             paceBox?.setOnClickListener { listener?.onPaceBoxClicked() }
             inclineBox?.setOnClickListener { listener?.onInclineBoxClicked() }
             hrBox?.setOnClickListener { listener?.onHrBoxClicked() }
+            dfaBox?.setOnClickListener { listener?.onDfaBoxClicked() }
             footPodBox?.setOnClickListener { listener?.onFootPodBoxClicked() }
             btnWorkouts?.setOnClickListener { listener?.onWorkoutsClicked() }
             btnChart?.setOnClickListener { listener?.onChartClicked() }
@@ -252,6 +270,10 @@ class HUDDisplayManager(
             paceBox = null
             inclineBox = null
             hrBox = null
+            dfaBox = null
+            tvDfaLabel = null
+            tvDfaValue = null
+            tvDfaSubtitle = null
             footPodBox = null
             tvFootPodLabel = null
             tvFootPodValue = null
@@ -668,4 +690,50 @@ class HUDDisplayManager(
     fun getFootPodBoxBounds(): IntArray? = getBoxBounds(footPodBox)
 
     fun getHrBoxBounds(): IntArray? = getBoxBounds(hrBox)
+
+    fun getDfaBoxBounds(): IntArray? = getBoxBounds(dfaBox)
+
+    /**
+     * Update DFA alpha1 display value and zone-colored background.
+     * Zone thresholds: > 0.75 aerobic (green), 0.5-0.75 transition (amber), < 0.5 anaerobic (red).
+     */
+    fun updateDfaAlpha1(alpha1: Double, isValid: Boolean) {
+        mainHandler.post {
+            if (!isValid) {
+                tvDfaValue?.text = "--"
+                dfaBox?.setBackgroundColor(colorDfaNoData)
+                return@post
+            }
+            tvDfaValue?.text = String.format(Locale.US, "%.2f", alpha1)
+            val bgColor = when {
+                alpha1 > 0.75 -> colorDfaAerobic
+                alpha1 >= 0.5 -> colorDfaTransition
+                else -> colorDfaAnaerobic
+            }
+            dfaBox?.setBackgroundColor(bgColor)
+        }
+    }
+
+    /**
+     * Update DFA box subtitle showing the active sensor's short name.
+     * Hidden when empty (0 or 1 RR-capable sensors — no need to disambiguate).
+     */
+    fun updateDfaSubtitle(shortName: String) {
+        mainHandler.post {
+            tvDfaSubtitle?.text = shortName
+            tvDfaSubtitle?.visibility = if (shortName.isEmpty()) View.GONE else View.VISIBLE
+            tvDfaSubtitle?.setTextColor(colorTextPrimary)
+        }
+    }
+
+    /**
+     * Update DFA sensor connection status (label color).
+     *
+     * @param connected Whether at least one RR-capable sensor is connected
+     */
+    fun updateDfaSensorStatus(connected: Boolean) {
+        mainHandler.post {
+            tvDfaLabel?.setTextColor(if (connected) colorTextPrimary else colorTextLabelDim)
+        }
+    }
 }

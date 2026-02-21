@@ -1,6 +1,7 @@
 package io.github.avikulin.thud.service
 
 import com.ifit.glassos.workout.WorkoutState
+import io.github.avikulin.thud.util.DfaAlpha1Calculator
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.ceil
@@ -148,6 +149,13 @@ class ServiceStateHolder {
 
     // ==================== Garmin Connect Upload ====================
     @Volatile var garminAutoUploadEnabled = false
+
+    // ==================== DFA Alpha1 State ====================
+    // Per-sensor DFA results: MAC → latest DfaResult (computed for ALL RR-capable sensors)
+    val dfaResults: ConcurrentHashMap<String, DfaAlpha1Calculator.DfaResult> = ConcurrentHashMap()
+
+    @Volatile var savedDfaSensorMac: String = ""      // persisted user choice (displayed in HUD box)
+    @Volatile var activeDfaSensorMac: String = ""     // currently active primary
 
     // ==================== Chart Settings ====================
     @Volatile var chartZoomTimeframeMinutes = 3  // Default 3 minutes for TIMEFRAME zoom mode

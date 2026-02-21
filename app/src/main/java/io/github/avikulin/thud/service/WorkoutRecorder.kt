@@ -3,6 +3,7 @@ package io.github.avikulin.thud.service
 import android.util.Log
 import io.github.avikulin.thud.data.model.WorkoutDataPoint
 import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 
 // RecorderState is defined in RunPersistenceManager.kt
 
@@ -39,6 +40,10 @@ class WorkoutRecorder {
     // Index assigned on first encounter via resolveOrRegister(); stable for the duration of the run.
     private val hrSensors: MutableList<Pair<String, String>> = mutableListOf()
     private val hrSensorMacToIndex: MutableMap<String, Int> = mutableMapOf()
+
+    // Per-sensor RR intervals for FIT HRV export: MAC → list of (timestampMs, rrSeconds)
+    private val rrIntervalsBySensor: ConcurrentHashMap<String, MutableList<Pair<Long, Float>>> =
+        ConcurrentHashMap()
 
     // Recording state
     private var _isRecording = false
@@ -109,7 +114,8 @@ class WorkoutRecorder {
         stepIndex: Int = -1,
         stepName: String = "",
         connectedHrSensors: Map<String, Pair<String, Int>> = emptyMap(),
-        primaryHrMac: String = ""
+        primaryHrMac: String = "",
+        dfaAlpha1BySensor: Map<String, Double> = emptyMap()
     ) {
         if (!_isRecording && !forceRecord) return
 
@@ -179,6 +185,13 @@ class WorkoutRecorder {
         }
         val primaryIdx = hrSensorMacToIndex[primaryHrMac] ?: -1
 
+        // Convert DFA alpha1 MAC-keyed map to sensor-index-keyed map
+        val indexedDfa = mutableMapOf<Int, Double>()
+        for ((mac, alpha1) in dfaAlpha1BySensor) {
+            val idx = hrSensorMacToIndex[mac] ?: continue
+            indexedDfa[idx] = alpha1
+        }
+
         // Create data point
         val dataPoint = WorkoutDataPoint(
             timestampMs = now,
@@ -196,7 +209,8 @@ class WorkoutRecorder {
             stepIndex = stepIndex,
             stepName = stepName,
             allHrSensors = indexedHr,
-            primaryHrIndex = primaryIdx
+            primaryHrIndex = primaryIdx,
+            dfaAlpha1BySensor = indexedDfa
         )
         workoutData.add(dataPoint)
 
@@ -225,7 +239,8 @@ class WorkoutRecorder {
         stepIndex: Int = -1,
         stepName: String = "",
         connectedHrSensors: Map<String, Pair<String, Int>> = emptyMap(),
-        primaryHrMac: String = ""
+        primaryHrMac: String = "",
+        dfaAlpha1BySensor: Map<String, Double> = emptyMap()
     ): Boolean {
         if (!_isRecording) return false
 
@@ -244,7 +259,8 @@ class WorkoutRecorder {
                 stepIndex = stepIndex,
                 stepName = stepName,
                 connectedHrSensors = connectedHrSensors,
-                primaryHrMac = primaryHrMac
+                primaryHrMac = primaryHrMac,
+                dfaAlpha1BySensor = dfaAlpha1BySensor
             )
             return true
         }
@@ -301,6 +317,7 @@ class WorkoutRecorder {
         workoutData.clear()
         hrSensors.clear()
         hrSensorMacToIndex.clear()
+        rrIntervalsBySensor.clear()
         _calculatedDistanceKm = 0.0
         _calculatedElevationGainM = 0.0
         _calculatedCaloriesKcal = 0.0
@@ -385,6 +402,25 @@ class WorkoutRecorder {
     fun getHrSensors(): List<Pair<String, String>> = hrSensors.toList()
 
     /**
+     * Record RR intervals from a specific sensor for FIT HRV export.
+     */
+    fun recordRrIntervals(mac: String, intervalsMs: List<Double>) {
+        val sensorList = rrIntervalsBySensor.getOrPut(mac) {
+            Collections.synchronizedList(mutableListOf())
+        }
+        val now = System.currentTimeMillis()
+        for (rrMs in intervalsMs) {
+            sensorList.add(Pair(now, (rrMs / 1000.0).toFloat()))
+        }
+    }
+
+    /**
+     * Get per-sensor RR intervals for FIT export. Returns a snapshot.
+     */
+    fun getRrIntervalsBySensor(): Map<String, List<Pair<Long, Float>>> =
+        rrIntervalsBySensor.mapValues { (_, list) -> synchronized(list) { list.toList() } }
+
+    /**
      * Get the number of recorded data points.
      */
     fun getDataPointCount(): Int {
@@ -401,6 +437,7 @@ class WorkoutRecorder {
         pauseEvents.clear()
         hrSensors.clear()
         hrSensorMacToIndex.clear()
+        rrIntervalsBySensor.clear()
         _calculatedDistanceKm = 0.0
         _calculatedElevationGainM = 0.0
         _calculatedCaloriesKcal = 0.0
@@ -418,6 +455,7 @@ class WorkoutRecorder {
     private fun resetData() {
         workoutData.clear()
         pauseEvents.clear()
+        rrIntervalsBySensor.clear()
         _calculatedDistanceKm = 0.0
         _calculatedElevationGainM = 0.0
         _calculatedCaloriesKcal = 0.0
@@ -446,7 +484,8 @@ class WorkoutRecorder {
                     calculatedCaloriesKcal = _calculatedCaloriesKcal,
                     dataPoints = workoutData.toList(),
                     pauseEvents = pauseEvents.toList(),
-                    hrSensors = hrSensors.toList()
+                    hrSensors = hrSensors.toList(),
+                    rrIntervalsBySensor = getRrIntervalsBySensor()
                 )
             }
         }
@@ -474,13 +513,19 @@ class WorkoutRecorder {
                 hrSensorMacToIndex.clear()
                 hrSensors.addAll(state.hrSensors)
                 state.hrSensors.forEachIndexed { i, (mac, _) -> hrSensorMacToIndex[mac] = i }
+                // Restore per-sensor RR intervals
+                rrIntervalsBySensor.clear()
+                state.rrIntervalsBySensor.forEach { (mac, intervals) ->
+                    rrIntervalsBySensor[mac] = java.util.Collections.synchronizedList(intervals.toMutableList())
+                }
                 // Set lastRecordedElapsedSeconds based on restored data
                 lastRecordedElapsedSeconds = if (state.dataPoints.isNotEmpty()) {
                     (state.dataPoints.last().elapsedMs / 1000).toInt()
                 } else {
                     -1
                 }
-                Log.d(TAG, "Restored recorder state: dataPoints=${state.dataPoints.size}, isRecording=$_isRecording")
+                Log.d(TAG, "Restored recorder state: dataPoints=${state.dataPoints.size}, " +
+                    "rrSensors=${rrIntervalsBySensor.size}, isRecording=$_isRecording")
             }
         }
     }
