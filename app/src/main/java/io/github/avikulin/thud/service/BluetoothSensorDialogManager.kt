@@ -360,7 +360,8 @@ class BluetoothSensorDialogManager(
                             SensorDeviceType.FOOT_POD -> formatBatteryLevel(strydManager.batteryLevelPercent)
                         }
                         val batteryPart = if (batteryLevel != null) " | $batteryLevel" else ""
-                        text = "$lastDataTime | $currentValue$batteryPart"
+                        val rrPart = if (device.type == SensorDeviceType.HR_SENSOR && hrSensorManager.hasRrCapability(device.mac)) " | RR" else ""
+                        text = "$lastDataTime | $currentValue$batteryPart$rrPart"
                         setTextColor(ContextCompat.getColor(service, R.color.text_secondary))
                         setTextSize(TypedValue.COMPLEX_UNIT_PX, service.resources.getDimension(R.dimen.dialog_item_subtitle_size))
                     }

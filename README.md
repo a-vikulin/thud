@@ -47,7 +47,7 @@ blown away by Claude's capabilities!
 - Speed, Incline, HR, and Power lines can be toggled on/off
 - HR and Power lines are color coded with zone color
 - Colored horizontal zone border lines for reference 
-- Visual workout steps structure with speed&incline targets and HR/Power target ranges
+- Visual workout steps structure with speed&incline targets, HR/Power target ranges, and diagonal lines for pace progression steps
 - Three Y-axis zoom modes cycled via toggle button: Timeframe (≋, configurable 1–60 min window), Main Phase (◆, fits main workout only), Full (⇕, all data)
 
 ### Structured Workouts
@@ -55,7 +55,7 @@ blown away by Claude's capabilities!
 - Create custom interval workouts with the built-in editor
 - Repeat blocks for intervals, which can contain any number of steps
 - Time-based or distance-based step durations, with an option to keep going until Next button is pressed
-- Pace and incline targets per step
+- Pace and incline targets per step, with optional pace progression (gradual speed change from start to end pace within a step)
 - Optional HR and Power target zones per step with pace/incline auto-adjustment
 - Early step ending on HR reaching certain levels
 - Full undo/redo support in editor
@@ -217,7 +217,7 @@ Verify that auto-adjustment parameters are sensible
 3. Configure each step:
    - Type (Warmup, Run, Recover, etc.)
    - Duration (time or distance)
-   - Target pace
+   - Target pace (with optional progression checkbox ">" to set an end pace — speed changes gradually over the step duration)
    - Target incline
    - HR or Power targets (optional)
 4. Use Undo/Redo buttons if needed

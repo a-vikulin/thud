@@ -35,6 +35,9 @@ data class ExecutionStep(
     /** Target pace in kph (required - stored as kph, displayed as min:sec/km). */
     val paceTargetKph: Double,
 
+    /** End target pace for progression steps (null = flat pace). */
+    val paceEndTargetKph: Double? = null,
+
     /** Target incline in percent (required). */
     val inclineTargetPercent: Double,
 
@@ -109,6 +112,12 @@ data class ExecutionStep(
         hrEndTargetMaxPercent?.let { HeartRateZones.percentToBpm(it, lthrBpm) }
 
     // ==================== Convenience Properties ====================
+
+    /**
+     * Whether this step has pace progression (gradual speed change).
+     */
+    val hasProgression: Boolean
+        get() = paceEndTargetKph != null && paceEndTargetKph != paceTargetKph
 
     /**
      * Whether this step has HR target configured.

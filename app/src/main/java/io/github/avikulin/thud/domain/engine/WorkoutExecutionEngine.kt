@@ -1,6 +1,7 @@
 package io.github.avikulin.thud.domain.engine
 
 import android.util.Log
+import kotlin.math.roundToInt
 import io.github.avikulin.thud.data.entity.Workout
 import io.github.avikulin.thud.data.entity.WorkoutStep
 import io.github.avikulin.thud.data.repository.WorkoutRepository
@@ -105,6 +106,10 @@ class WorkoutExecutionEngine(
     // Key: stepIdentityKey, Value: (speedCoeff, inclineCoeff)
     private var adjustmentScope: AdjustmentScope = AdjustmentScope.ALL_STEPS
     private val stepCoefficients: MutableMap<String, Pair<Double, Double>> = mutableMapOf()
+
+    // Pace progression tracking
+    private var currentProgressionBaseSpeed: Double = 0.0  // 0 = no progression active
+    private var lastCommandedProgressionSpeed: Double = 0.0  // avoid spamming same speed
 
     // Adjustment controller (HR and Power)
     private val adjustmentController = AdjustmentController()
@@ -486,7 +491,8 @@ class WorkoutExecutionEngine(
 
         // Don't calculate coefficient during initial acceleration
         // Wait until belt has reached close to target speed
-        val effectiveTargetSpeed = step.paceTargetKph * speedAdjustmentCoefficient
+        val baseTarget = getProgressionBaseSpeed(step)
+        val effectiveTargetSpeed = baseTarget * speedAdjustmentCoefficient
         if (!hasReachedTargetSpeed) {
             // Check if we've reached 90% of target
             if (actualSpeedKph >= effectiveTargetSpeed * 0.9) {
@@ -498,9 +504,9 @@ class WorkoutExecutionEngine(
         }
 
         // Calculate new coefficient: actual / base target
-        if (step.paceTargetKph > 0) {
+        if (baseTarget > 0) {
             val oldCoefficient = speedAdjustmentCoefficient
-            speedAdjustmentCoefficient = actualSpeedKph / step.paceTargetKph
+            speedAdjustmentCoefficient = actualSpeedKph / baseTarget
 
             // Emit event if coefficient changed significantly (more than 1%)
             if (kotlin.math.abs(speedAdjustmentCoefficient - oldCoefficient) > 0.01) {
@@ -660,6 +666,30 @@ class WorkoutExecutionEngine(
         // NOTE: HR target checks moved to onTelemetryUpdate() to ensure fresh HR values
         // HR_RANGE early end condition also moved to onTelemetryUpdate()
 
+        // Tick pace progression if active
+        if (step.hasProgression) {
+            val progress = when (step.durationType) {
+                DurationType.TIME -> {
+                    val stepElapsedSec = treadmillElapsedSeconds - stepStartSeconds
+                    stepElapsedSec.toDouble() / (step.durationSeconds ?: 1)
+                }
+                DurationType.DISTANCE -> {
+                    val stepDistanceM = (lastDistanceKm - stepStartDistanceKm) * 1000
+                    stepDistanceM / (step.durationMeters ?: 1)
+                }
+            }
+            val newBase = computeProgressionBaseSpeed(step, progress)
+            if (newBase != currentProgressionBaseSpeed) {
+                currentProgressionBaseSpeed = newBase
+                val effectiveSpeed = newBase * speedAdjustmentCoefficient
+                if (effectiveSpeed != lastCommandedProgressionSpeed) {
+                    lastCommandedProgressionSpeed = effectiveSpeed
+                    val direction = if ((step.paceEndTargetKph ?: 0.0) > step.paceTargetKph) "up" else "down"
+                    emitEvent(WorkoutEvent.SpeedAdjusted(effectiveSpeed, direction, "progression"))
+                }
+            }
+        }
+
         // Update state
         updateRunningState()
     }
@@ -700,6 +730,8 @@ class WorkoutExecutionEngine(
                 speedAdjustmentCoefficient = 1.0
                 inclineAdjustmentCoefficient = 1.0
                 hasReachedTargetSpeed = false
+                currentProgressionBaseSpeed = 0.0
+                lastCommandedProgressionSpeed = 0.0
                 stepCoefficients.clear()
             }
         }
@@ -741,6 +773,14 @@ class WorkoutExecutionEngine(
 
         // Reset flags for new step
         hasReachedTargetSpeed = false  // Wait for belt to reach target before tracking coefficient
+
+        // Initialize progression base speed for new step
+        if (step.hasProgression) {
+            currentProgressionBaseSpeed = step.paceTargetKph  // Start at beginning pace
+            lastCommandedProgressionSpeed = 0.0  // Force first command
+        } else {
+            currentProgressionBaseSpeed = 0.0
+        }
 
         // Reset HR adjustment for new step (pass current treadmill elapsed time)
         adjustmentController.onStepStarted(treadmillElapsedSeconds * 1000L)
@@ -1170,6 +1210,8 @@ class WorkoutExecutionEngine(
         speedAdjustmentCoefficient = 1.0
         inclineAdjustmentCoefficient = 1.0
         hasReachedTargetSpeed = false
+        currentProgressionBaseSpeed = 0.0
+        lastCommandedProgressionSpeed = 0.0
         adjustmentScope = AdjustmentScope.ALL_STEPS
         stepCoefficients.clear()
         adjustmentController.reset()
@@ -1218,9 +1260,35 @@ class WorkoutExecutionEngine(
     fun getInclineAdjustmentCoefficient(): Double = inclineAdjustmentCoefficient
 
     /**
-     * Get effective speed for a step (base target * coefficient).
+     * Compute the current base speed for a progression step.
+     * Returns speed rounded to 0.1 kph steps (treadmill resolution).
+     * Uses time-based progress for TIME steps, distance-based for DISTANCE steps.
      */
-    fun getEffectiveSpeed(step: ExecutionStep): Double = step.paceTargetKph * speedAdjustmentCoefficient
+    private fun computeProgressionBaseSpeed(step: ExecutionStep, progress: Double): Double {
+        val start = step.paceTargetKph
+        val end = step.paceEndTargetKph ?: return start
+        val raw = start + (end - start) * progress.coerceIn(0.0, 1.0)
+        return (raw * 10).roundToInt() / 10.0  // Round to 0.1 kph
+    }
+
+    /**
+     * Get the current base speed for a step, accounting for progression.
+     * For progression steps with an active base, uses the dynamic base.
+     * For flat steps, uses the static paceTargetKph.
+     */
+    private fun getProgressionBaseSpeed(step: ExecutionStep): Double {
+        return if (step.hasProgression && currentProgressionBaseSpeed > 0) {
+            currentProgressionBaseSpeed
+        } else {
+            step.paceTargetKph
+        }
+    }
+
+    /**
+     * Get effective speed for a step (base target * coefficient).
+     * For progression steps, the base target changes dynamically over time.
+     */
+    fun getEffectiveSpeed(step: ExecutionStep): Double = getProgressionBaseSpeed(step) * speedAdjustmentCoefficient
 
     /**
      * Get effective incline for a step (base target * coefficient).
@@ -1294,6 +1362,7 @@ class WorkoutExecutionEngine(
             speedAdjustmentCoefficient = speedAdjustmentCoefficient,
             inclineAdjustmentCoefficient = inclineAdjustmentCoefficient,
             hasReachedTargetSpeed = hasReachedTargetSpeed,
+            currentProgressionBaseSpeed = currentProgressionBaseSpeed,
             adjustmentScope = adjustmentScope,
             stepCoefficients = if (adjustmentScope == AdjustmentScope.ONE_STEP) stepCoefficients.toMap() else null
         )
@@ -1333,6 +1402,7 @@ class WorkoutExecutionEngine(
         speedAdjustmentCoefficient = state.speedAdjustmentCoefficient
         inclineAdjustmentCoefficient = state.inclineAdjustmentCoefficient
         hasReachedTargetSpeed = state.hasReachedTargetSpeed
+        currentProgressionBaseSpeed = state.currentProgressionBaseSpeed
         adjustmentScope = state.adjustmentScope
         if (state.stepCoefficients != null) {
             stepCoefficients.clear()

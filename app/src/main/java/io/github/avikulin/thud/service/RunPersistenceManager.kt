@@ -51,6 +51,7 @@ data class EnginePersistenceState(
     val speedAdjustmentCoefficient: Double,
     val inclineAdjustmentCoefficient: Double,
     val hasReachedTargetSpeed: Boolean,
+    val currentProgressionBaseSpeed: Double = 0.0,
     val adjustmentScope: AdjustmentScope = AdjustmentScope.ALL_STEPS,
     val stepCoefficients: Map<String, Pair<Double, Double>>? = null
 )
@@ -310,6 +311,7 @@ class RunPersistenceManager(private val context: Context) {
             put("sac", state.speedAdjustmentCoefficient)
             put("iac2", state.inclineAdjustmentCoefficient)
             put("hrts", state.hasReachedTargetSpeed)
+            put("cpbs", state.currentProgressionBaseSpeed)
             put("as", state.adjustmentScope.name)
             if (!state.stepCoefficients.isNullOrEmpty()) {
                 val scm = JSONObject()
@@ -437,6 +439,7 @@ class RunPersistenceManager(private val context: Context) {
             speedAdjustmentCoefficient = json.getDouble("sac"),
             inclineAdjustmentCoefficient = json.getDouble("iac2"),
             hasReachedTargetSpeed = json.getBoolean("hrts"),
+            currentProgressionBaseSpeed = json.optDouble("cpbs", 0.0),
             adjustmentScope = adjustmentScope,
             stepCoefficients = stepCoefficients
         )

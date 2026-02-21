@@ -317,6 +317,8 @@ class InlineStepAdapter(
 
         // Pace/Incline containers
         private val containerPace: FrameLayout = itemView.findViewById(R.id.containerPace)
+        private val cbPaceProgression: CheckBox = itemView.findViewById(R.id.cbPaceProgression)
+        private val containerPaceEnd: FrameLayout = itemView.findViewById(R.id.containerPaceEnd)
         private val containerIncline: FrameLayout = itemView.findViewById(R.id.containerIncline)
 
         // Duration type
@@ -351,6 +353,7 @@ class InlineStepAdapter(
 
         // TouchSpinners
         private var paceSpinner: TouchSpinner? = null
+        private var paceEndSpinner: TouchSpinner? = null
         private var inclineSpinner: TouchSpinner? = null
         private var durationSpinner: TouchSpinner? = null
         private var repeatCountSpinner: TouchSpinner? = null
@@ -584,6 +587,44 @@ class InlineStepAdapter(
             }
             containerPace.addView(paceSpinner)
 
+            // End pace spinner (for progression steps)
+            paceEndSpinner = TouchSpinner(context, null).apply {
+                format = TouchSpinner.Format.PACE_MMSS
+                minValue = treadmillMinPaceSeconds.toDouble()
+                maxValue = treadmillMaxPaceSeconds.toDouble()
+                step = 1.0
+                suffix = "/km"
+            }
+            paceEndSpinner?.onValueChanged = onValueChanged@{ paceSeconds ->
+                if (!isBinding && currentPosition >= 0) {
+                    isUserDragging = true
+                    val step = currentStep ?: return@onValueChanged
+                    val kph = PaceConverter.paceSecondsToSpeed(paceSeconds.toInt())
+                    if (kph != step.paceEndTargetKph) {
+                        currentStep = step.copy(paceEndTargetKph = kph)
+                    }
+                }
+            }
+            paceEndSpinner?.onDragEnd = {
+                isUserDragging = false
+                if (currentPosition >= 0) {
+                    currentStep?.let { onStepChanged(currentPosition, it) }
+                }
+            }
+            containerPaceEnd.addView(paceEndSpinner)
+
+            // Pace progression checkbox
+            cbPaceProgression.setOnCheckedChangeListener { _, isChecked ->
+                if (!isBinding && currentPosition >= 0) {
+                    val step = currentStep ?: return@setOnCheckedChangeListener
+                    paceEndSpinner?.isEnabled = isChecked
+                    paceEndSpinner?.alpha = if (isChecked) 1.0f else 0.4f
+                    val newEndTarget = if (isChecked) step.paceTargetKph else null
+                    currentStep = step.copy(paceEndTargetKph = newEndTarget)
+                    onStepChanged(currentPosition, currentStep!!)
+                }
+            }
+
             // Incline spinner (%)
             // Bounds and step from treadmill capabilities
             inclineSpinner = TouchSpinner(context, null).apply {
@@ -780,6 +821,23 @@ class InlineStepAdapter(
                 inclineSpinner?.value = step.inclineTargetPercent
             }
 
+            // Pace progression
+            cbPaceProgression.visibility = View.VISIBLE
+            containerPaceEnd.visibility = View.VISIBLE
+            val hasProgression = step.paceEndTargetKph != null
+            cbPaceProgression.isChecked = hasProgression
+            paceEndSpinner?.isEnabled = hasProgression
+            paceEndSpinner?.alpha = if (hasProgression) 1.0f else 0.4f
+            if (!skipSpinnerUpdates) {
+                val endPaceSeconds = if (hasProgression && step.paceEndTargetKph!! > 0) {
+                    3600.0 / step.paceEndTargetKph
+                } else {
+                    // When disabled, show same pace as start
+                    if (step.paceTargetKph > 0) 3600.0 / step.paceTargetKph else 600.0
+                }
+                paceEndSpinner?.value = endPaceSeconds
+            }
+
             // Duration type spinner
             val durationTypeIndex = durationTypes.indexOf(step.durationType)
             if (durationTypeIndex >= 0) {
@@ -891,6 +949,8 @@ class InlineStepAdapter(
             // Hide regular step controls
             spinnerType.visibility = View.GONE
             containerPace.visibility = View.GONE
+            cbPaceProgression.visibility = View.GONE
+            containerPaceEnd.visibility = View.GONE
             containerIncline.visibility = View.GONE
             spinnerDurationType.visibility = View.GONE
             containerDuration.visibility = View.GONE

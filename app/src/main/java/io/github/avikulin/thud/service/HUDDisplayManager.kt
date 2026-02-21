@@ -114,6 +114,7 @@ class HUDDisplayManager(
     private var colorDfaTransition = 0
     private var colorDfaAnaerobic = 0
     private var colorDfaNoData = 0
+    private var colorDfaWaiting = 0
 
     enum class RemoteButtonState { NO_PERMISSION, OFF, MODE1, MODE2 }
     private val zoneColors = IntArray(6)  // Zone 0-5 colors (shared by HR and Power zones)
@@ -217,6 +218,7 @@ class HUDDisplayManager(
             colorDfaTransition = ContextCompat.getColor(service, R.color.dfa_zone_transition)
             colorDfaAnaerobic = ContextCompat.getColor(service, R.color.dfa_zone_anaerobic)
             colorDfaNoData = ContextCompat.getColor(service, R.color.dfa_zone_no_data)
+            colorDfaWaiting = ContextCompat.getColor(service, R.color.dfa_zone_waiting)
 
             // Set up touch handlers
             paceBox?.setOnClickListener { listener?.onPaceBoxClicked() }
@@ -706,6 +708,17 @@ class HUDDisplayManager(
             }
             tvDfaValue?.text = String.format(Locale.US, "%.2f", alpha1)
             dfaBox?.setBackgroundColor(dfaGradientColor(alpha1))
+        }
+    }
+
+    /**
+     * Show DFA box in "waiting" state: RR intervals are arriving but not enough data yet.
+     * Blue-grey background (HR zone 1 color) distinguishes from dark "no sensor" state.
+     */
+    fun updateDfaWaitingForData() {
+        mainHandler.post {
+            tvDfaValue?.text = "--"
+            dfaBox?.setBackgroundColor(colorDfaWaiting)
         }
     }
 

@@ -104,9 +104,11 @@ class DfaAlpha1Calculator(
             recentIntervals.addLast(rrMs)
 
             // Add to clean buffer with time-based eviction
+            // Only evict when removing an interval still keeps total >= windowDurationMs
             cleanBuffer.addLast(rrMs)
             bufferTotalMs += rrMs
-            while (bufferTotalMs > windowDurationMs && cleanBuffer.size > MIN_INTERVALS_SAFETY) {
+            while (cleanBuffer.size > MIN_INTERVALS_SAFETY &&
+                bufferTotalMs - cleanBuffer.first() >= windowDurationMs) {
                 bufferTotalMs -= cleanBuffer.removeFirst()
             }
 

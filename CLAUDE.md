@@ -72,6 +72,7 @@
 | DFA sensor selection | `state.savedDfaSensorMac` (SharedPrefs) | `HUDService` → HUD box display + Garmin upload file selection |
 | DFA algorithm config | `ServiceStateHolder` (SharedPrefs) | `HUDService` → `DfaAlpha1Calculator` constructor (reset on settings change) |
 | Per-sensor RR for FIT | `WorkoutRecorder.rrIntervalsBySensor` | `RunSnapshot` → `FitFileExporter` (one HrvMesg stream per file) |
+| Pace progression | `WorkoutStep.paceEndTargetKph` | `ExecutionStep` → Engine (ticking) → `SpeedAdjusted` event → Treadmill |
 
 ### ⚠️ SPEED - ABSOLUTE RULES ⚠️
 
@@ -103,6 +104,19 @@ TelemetryManager receives rawSpeed → state.currentSpeedKph = rawSpeed
 **Reading:** `TelemetryManager.onInclineUpdate(treadmillPercent)` subtracts `state.inclineAdjustment` before storing in `state.currentInclinePercent`.
 
 All stored/displayed values (`state.currentInclinePercent`, popup menu, min/max, editor, StrydManager`) are effective incline.
+
+### ⚠️ PACE PROGRESSION (Gradual Speed Change Within a Step) ⚠️
+`WorkoutStep.paceEndTargetKph` (nullable, DB version 9) enables gradual pace change from `paceTargetKph` to `paceEndTargetKph` over a step's duration. Pace-only (no incline progression).
+
+**Engine:** `WorkoutExecutionEngine` tracks `currentProgressionBaseSpeed` (0 = inactive). On each `onElapsedTimeUpdate()`, computes progress (time-based for TIME, distance-based for DISTANCE), rounds to 0.1 kph (treadmill resolution), and emits `SpeedAdjusted` events.
+
+**Coefficient interaction:** `getEffectiveSpeed()` returns `currentProgressionBaseSpeed * speedAdjustmentCoefficient`. Manual adjustments and HR/Power auto-adjust scale the progression proportionally — consistent with flat steps. `updateAdjustmentCoefficients()` uses the dynamic base (not the static `paceTargetKph`).
+
+**Chart:** `PlannedSegment.paceEndKph` renders as a straight diagonal line in `drawWorkoutOutline()`. Scale calculations include both start and end pace. `calculateAdjustedSegmentDurationMs()` uses average pace for distance-based progression steps.
+
+**Persistence:** `currentProgressionBaseSpeed` persisted in `EnginePersistenceState` (key `"cpbs"`). Restored on crash recovery.
+
+**Editor:** Checkbox "→" toggles progression. When checked, shows end pace spinner. Default end pace = start pace (user adjusts from there). Hidden for REPEAT steps.
 
 ### ⚠️ FIT EXPORT - CRITICAL RULES ⚠️
 **ALWAYS use the RunSnapshot pattern!** Export is async — snapshot captures data immutably before cleanup.

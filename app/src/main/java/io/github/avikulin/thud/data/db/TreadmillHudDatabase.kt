@@ -15,7 +15,7 @@ import io.github.avikulin.thud.data.entity.WorkoutStep
  */
 @Database(
     entities = [Workout::class, WorkoutStep::class],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -234,6 +234,16 @@ abstract class TreadmillHudDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration from version 8 to 9:
+         * - Add paceEndTargetKph column for pace progression (gradual speed change within a step)
+         */
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE workout_steps ADD COLUMN paceEndTargetKph REAL DEFAULT NULL")
+            }
+        }
+
         fun getInstance(context: Context): TreadmillHudDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: buildDatabase(context).also { INSTANCE = it }
@@ -246,7 +256,7 @@ abstract class TreadmillHudDatabase : RoomDatabase() {
                 TreadmillHudDatabase::class.java,
                 DATABASE_NAME
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                 .build()
         }
     }

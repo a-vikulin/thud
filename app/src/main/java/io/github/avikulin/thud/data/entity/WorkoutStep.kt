@@ -50,6 +50,10 @@ data class WorkoutStep(
     // Required for all steps - treadmill always needs a speed setting
     val paceTargetKph: Double,
 
+    // Pace progression end target (null = no progression, flat pace)
+    // When set, pace gradually changes from paceTargetKph to paceEndTargetKph over the step duration
+    val paceEndTargetKph: Double? = null,
+
     // Incline target (%) - required for all steps
     val inclineTargetPercent: Double,
 

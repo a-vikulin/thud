@@ -605,6 +605,7 @@ class WorkoutEngineManager(
                     stepIndex = index,
                     stepName = step.displayName,
                     paceKph = step.paceTargetKph,
+                    paceEndKph = step.paceEndTargetKph,
                     inclinePercent = step.inclineTargetPercent,
                     hrTargetMinPercent = step.hrTargetMinPercent,
                     hrTargetMaxPercent = step.hrTargetMaxPercent,

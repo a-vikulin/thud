@@ -107,6 +107,7 @@ object WorkoutStepFlattener {
             durationSeconds = step.durationSeconds,
             durationMeters = step.durationMeters,
             paceTargetKph = step.paceTargetKph,
+            paceEndTargetKph = step.paceEndTargetKph,
             inclineTargetPercent = step.inclineTargetPercent,
             autoAdjustMode = step.autoAdjustMode,
             adjustmentType = step.adjustmentType,

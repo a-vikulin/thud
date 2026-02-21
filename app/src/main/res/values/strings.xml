@@ -463,4 +463,7 @@
     <!-- Accessibility service -->
     <string name="remote_accessibility_label">tHUD Remote Control</string>
     <string name="remote_accessibility_description">Intercepts key events from configured BLE remotes to control treadmill speed, incline, and workout navigation. Only affects explicitly configured remote devices — all other input devices pass through untouched.</string>
+
+    <!-- Pace progression -->
+    <string name="step_pace_progression_arrow">></string>
 </resources>

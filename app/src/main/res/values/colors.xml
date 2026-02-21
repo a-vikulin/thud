@@ -43,6 +43,7 @@
     <color name="dfa_zone_transition">#FFDD00</color>      <!-- Yellow: alpha1 = 0.75, threshold -->
     <color name="dfa_zone_anaerobic">#FF4444</color>       <!-- Red: alpha1 <= 0.5, anaerobic -->
     <color name="dfa_zone_no_data">#555568</color>         <!-- Dark gray: no data -->
+    <color name="dfa_zone_waiting">#9999B8</color>        <!-- Blue-grey: RR arriving, accumulating data -->
 
     <!-- ==================== Heart Rate Zones ==================== -->
 

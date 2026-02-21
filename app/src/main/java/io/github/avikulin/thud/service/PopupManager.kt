@@ -628,8 +628,8 @@ class PopupManager(
     private val colorDfaAnaerobic = ContextCompat.getColor(service, R.color.dfa_zone_anaerobic)
     private val colorDfaNoData = ContextCompat.getColor(service, R.color.dfa_zone_no_data)
 
-    fun toggleDfaSensorPopup(dfaBoxBounds: IntArray? = null) {
-        if (dfaSensorPopupView != null) closeDfaSensorPopup() else showDfaSensorPopup(dfaBoxBounds)
+    fun toggleDfaSensorPopup(dfaBoxBounds: IntArray? = null, rrCapableMacs: Set<String> = emptySet()) {
+        if (dfaSensorPopupView != null) closeDfaSensorPopup() else showDfaSensorPopup(dfaBoxBounds, rrCapableMacs)
     }
 
     fun closeDfaSensorPopup() {
@@ -640,7 +640,7 @@ class PopupManager(
         dfaSensorValueViews.clear()
     }
 
-    fun showDfaSensorPopup(dfaBoxBounds: IntArray? = null) {
+    fun showDfaSensorPopup(dfaBoxBounds: IntArray? = null, rrCapableMacs: Set<String> = emptySet()) {
         if (dfaSensorPopupView != null) {
             closeDfaSensorPopup()
             return
@@ -669,8 +669,8 @@ class PopupManager(
         // Only show RR-capable sensors (no "AVERAGE" — DFA requires single RR stream)
         for ((mac, pair) in state.connectedHrSensors) {
             val (name, _) = pair
-            // Check RR capability via dfaResults presence (calculator created on first RR data)
-            if (!state.dfaResults.containsKey(mac)) continue
+            // Check RR capability via HrSensorManager's set (populated on first RR notification)
+            if (mac !in rrCapableMacs) continue
             val result = state.dfaResults[mac]
             val isActive = mac == state.activeDfaSensorMac
             container.addView(buildDfaSensorItem(

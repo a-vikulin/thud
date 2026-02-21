@@ -201,6 +201,7 @@ class WorkoutChart @JvmOverloads constructor(
         val stepIndex: Int,
         val stepName: String,
         val paceKph: Double,
+        val paceEndKph: Double? = null,  // End pace for progression steps (null = flat)
         val inclinePercent: Double,
         val hrTargetMinPercent: Double? = null,   // HR target as % of LTHR (1 decimal precision)
         val hrTargetMaxPercent: Double? = null,   // HR target as % of LTHR (1 decimal precision)
@@ -651,9 +652,9 @@ class WorkoutChart @JvmOverloads constructor(
      * Creates tight-fitting scales for all 4 metrics based on workout structure.
      */
     private fun calculateEditorScales(segments: List<PlannedSegment>) {
-        // Speed scale: from workout step targets
-        val minSpeed = segments.minOfOrNull { it.paceKph } ?: 5.0
-        val maxSpeed = segments.maxOfOrNull { it.paceKph } ?: 15.0
+        // Speed scale: from workout step targets (include progression end pace)
+        val minSpeed = segments.minOfOrNull { minOf(it.paceKph, it.paceEndKph ?: it.paceKph) } ?: 5.0
+        val maxSpeed = segments.maxOfOrNull { maxOf(it.paceKph, it.paceEndKph ?: it.paceKph) } ?: 15.0
         // Subtract 1 kph from min, floor to multiple of 2 kph
         speedMinKph = floor((minSpeed - 1.0) / 2.0) * 2.0
         // Add 1 kph to max, ceil to multiple of 2 kph
@@ -732,8 +733,8 @@ class WorkoutChart @JvmOverloads constructor(
         val segments = plannedSegments.filter(segmentFilter)
 
         // Speed scale: filtered workout structure + recent data
-        val workoutMinSpeed = segments.minOfOrNull { it.paceKph } ?: SPEED_INITIAL_MAX_KPH
-        val workoutMaxSpeed = segments.maxOfOrNull { it.paceKph } ?: SPEED_INITIAL_MAX_KPH
+        val workoutMinSpeed = segments.minOfOrNull { minOf(it.paceKph, it.paceEndKph ?: it.paceKph) } ?: SPEED_INITIAL_MAX_KPH
+        val workoutMaxSpeed = segments.maxOfOrNull { maxOf(it.paceKph, it.paceEndKph ?: it.paceKph) } ?: SPEED_INITIAL_MAX_KPH
         val recentMinSpeed = recentData.minOfOrNull { it.speedKph } ?: workoutMinSpeed
         val recentMaxSpeed = recentData.maxOfOrNull { it.speedKph } ?: workoutMaxSpeed
 
@@ -825,8 +826,8 @@ class WorkoutChart @JvmOverloads constructor(
         // Speed: all data for this run + workout structure (so planned segments aren't clipped)
         val dataMinSpeed = dataPoints.minOf { it.speedKph }
         val dataMaxSpeed = dataPoints.maxOf { it.speedKph }
-        val workoutMinSpeed = plannedSegments.minOfOrNull { it.paceKph } ?: dataMinSpeed
-        val workoutMaxSpeed = plannedSegments.maxOfOrNull { it.paceKph } ?: dataMaxSpeed
+        val workoutMinSpeed = plannedSegments.minOfOrNull { minOf(it.paceKph, it.paceEndKph ?: it.paceKph) } ?: dataMinSpeed
+        val workoutMaxSpeed = plannedSegments.maxOfOrNull { maxOf(it.paceKph, it.paceEndKph ?: it.paceKph) } ?: dataMaxSpeed
         val minSpeed = minOf(dataMinSpeed, workoutMinSpeed)
         val maxSpeed = maxOf(dataMaxSpeed, workoutMaxSpeed)
         targetSpeedMinKph = floor((minSpeed - 1.0) / 2.0) * 2.0
@@ -1225,6 +1226,7 @@ class WorkoutChart @JvmOverloads constructor(
                             stepIndex = result.size,
                             stepName = formatStepName(childStep.type, rep + 1, repeatCount),
                             paceKph = childStep.paceTargetKph,
+                            paceEndKph = childStep.paceEndTargetKph,
                             inclinePercent = childStep.inclineTargetPercent,
                             hrTargetMinPercent = childStep.hrTargetMinPercent,
                             hrTargetMaxPercent = childStep.hrTargetMaxPercent,
@@ -1249,6 +1251,7 @@ class WorkoutChart @JvmOverloads constructor(
                     stepIndex = result.size,
                     stepName = formatStepName(step.type, null, null),
                     paceKph = step.paceTargetKph,
+                    paceEndKph = step.paceEndTargetKph,
                     inclinePercent = step.inclineTargetPercent,
                     hrTargetMinPercent = step.hrTargetMinPercent,
                     hrTargetMaxPercent = step.hrTargetMaxPercent,
@@ -1611,8 +1614,13 @@ class WorkoutChart @JvmOverloads constructor(
 
         return if (segment.durationType == DurationType.DISTANCE && segment.durationMeters != null) {
             // Distance-based: recalculate duration based on adjusted pace
-            // Higher pace (higher coefficient) = shorter duration
-            val adjustedPaceKph = segment.paceKph * coefficient
+            // For progression steps, use average of start and end pace
+            val basePace = if (segment.paceEndKph != null) {
+                (segment.paceKph + segment.paceEndKph) / 2.0
+            } else {
+                segment.paceKph
+            }
+            val adjustedPaceKph = basePace * coefficient
             val seconds = PaceConverter.calculateDurationSeconds(segment.durationMeters, adjustedPaceKph)
             if (seconds > 0) (seconds * 1000).toLong() else plannedDurationMs
         } else {
@@ -2455,6 +2463,8 @@ class WorkoutChart @JvmOverloads constructor(
             // Apply adjustment coefficients to current and future segments
             val adjustedPace = segment.paceKph * segSpeedCoeff
             val adjustedIncline = segment.inclinePercent * segInclineCoeff
+            val hasProgression = segment.paceEndKph != null && segment.paceEndKph != segment.paceKph
+            val adjustedEndPace = if (hasProgression) segment.paceEndKph!! * segSpeedCoeff else adjustedPace
 
             // Use target scale values so workout outline animates with data paths
             val speedY = speedToY(adjustedPace)
@@ -2466,25 +2476,39 @@ class WorkoutChart @JvmOverloads constructor(
 
             if (clampedEndX <= clampedStartX) continue
 
+            // Draw incline line (always flat, no progression)
             if (firstDrawnSegment) {
-                // First drawn segment: just draw horizontal lines from its start
-                canvas.drawLine(clampedStartX, speedY, clampedEndX, speedY, targetSpeedPaint)
                 canvas.drawLine(clampedStartX, inclineY, clampedEndX, inclineY, targetInclinePaint)
-                firstDrawnSegment = false
             } else {
-                // Draw vertical transition from previous segment, then horizontal
-                // Speed: vertical step up/down, then horizontal
-                canvas.drawLine(lastEndX, lastSpeedY, clampedStartX, lastSpeedY, targetSpeedPaint) // Continue previous level
-                canvas.drawLine(clampedStartX, lastSpeedY, clampedStartX, speedY, targetSpeedPaint) // Vertical step
-                canvas.drawLine(clampedStartX, speedY, clampedEndX, speedY, targetSpeedPaint) // New level
-
-                // Incline: vertical step up/down, then horizontal
                 canvas.drawLine(lastEndX, lastInclineY, clampedStartX, lastInclineY, targetInclinePaint)
                 canvas.drawLine(clampedStartX, lastInclineY, clampedStartX, inclineY, targetInclinePaint)
                 canvas.drawLine(clampedStartX, inclineY, clampedEndX, inclineY, targetInclinePaint)
             }
 
-            lastSpeedY = speedY
+            // Draw speed line — diagonal for progression, flat for normal
+            if (hasProgression) {
+                val endSpeedY = speedToY(adjustedEndPace)
+                if (firstDrawnSegment) {
+                    canvas.drawLine(clampedStartX, speedY, clampedEndX, endSpeedY, targetSpeedPaint)
+                } else {
+                    canvas.drawLine(lastEndX, lastSpeedY, clampedStartX, lastSpeedY, targetSpeedPaint)
+                    canvas.drawLine(clampedStartX, lastSpeedY, clampedStartX, speedY, targetSpeedPaint)
+                    canvas.drawLine(clampedStartX, speedY, clampedEndX, endSpeedY, targetSpeedPaint)
+                }
+                lastSpeedY = endSpeedY
+            } else {
+                // Normal flat speed line
+                if (firstDrawnSegment) {
+                    canvas.drawLine(clampedStartX, speedY, clampedEndX, speedY, targetSpeedPaint)
+                } else {
+                    canvas.drawLine(lastEndX, lastSpeedY, clampedStartX, lastSpeedY, targetSpeedPaint)
+                    canvas.drawLine(clampedStartX, lastSpeedY, clampedStartX, speedY, targetSpeedPaint)
+                    canvas.drawLine(clampedStartX, speedY, clampedEndX, speedY, targetSpeedPaint)
+                }
+                lastSpeedY = speedY
+            }
+
+            firstDrawnSegment = false
             lastInclineY = inclineY
             lastEndX = clampedEndX
         }

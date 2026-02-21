@@ -2424,7 +2424,7 @@ class HUDService : Service(),
             else -> {
                 // 2+ RR-capable sensors → show DFA sensor selector
                 bluetoothSensorDialogManager.removeDialog()
-                popupManager.showDfaSensorPopup(hudDisplayManager.getDfaBoxBounds())
+                popupManager.showDfaSensorPopup(hudDisplayManager.getDfaBoxBounds(), hrSensorManager.getRrCapableMacs())
             }
         }
     }
@@ -2741,6 +2741,9 @@ class HUDService : Service(),
             }
             // Update DFA popup if visible (shows all sensors' values)
             popupManager.updateDfaSensorPopupIfVisible()
+        } else if (mac == state.activeDfaSensorMac && !state.dfaResults.containsKey(mac)) {
+            // RR data arriving but not enough for DFA yet — show waiting state
+            hudDisplayManager.updateDfaWaitingForData()
         }
 
         // 3. Auto-select: prefer saved sensor, otherwise first RR-capable

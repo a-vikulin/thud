@@ -86,6 +86,25 @@
             android:layout_height="match_parent"
             android:layout_marginStart="@dimen/inline_step_padding" />
 
+        <!-- Pace progression toggle -->
+        <CheckBox
+            android:id="@+id/cbPaceProgression"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:text="@string/step_pace_progression_arrow"
+            android:textColor="@color/text_label"
+            android:textSize="@dimen/text_step_type"
+            android:layout_marginStart="2dp"
+            android:visibility="gone" />
+
+        <!-- End Pace Spinner container (for progression) -->
+        <FrameLayout
+            android:id="@+id/containerPaceEnd"
+            android:layout_width="@dimen/inline_step_pace_width"
+            android:layout_height="match_parent"
+            android:layout_marginStart="@dimen/inline_step_padding"
+            android:visibility="gone" />
+
         <!-- Incline Spinner container -->
         <FrameLayout
             android:id="@+id/containerIncline"
