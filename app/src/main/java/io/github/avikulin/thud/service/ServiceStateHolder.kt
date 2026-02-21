@@ -157,6 +157,12 @@ class ServiceStateHolder {
     @Volatile var savedDfaSensorMac: String = ""      // persisted user choice (displayed in HUD box)
     @Volatile var activeDfaSensorMac: String = ""     // currently active primary
 
+    // DFA Alpha1 configuration (user-tunable, persisted in SharedPreferences)
+    @Volatile var dfaWindowDurationSec: Int = 120         // time-based window (seconds)
+    @Volatile var dfaArtifactThreshold: Double = 20.0     // percent deviation from median
+    @Volatile var dfaMedianWindow: Int = 11               // median filter window (beats)
+    @Volatile var dfaEmaAlpha: Double = 0.2               // EMA smoothing factor
+
     // ==================== Chart Settings ====================
     @Volatile var chartZoomTimeframeMinutes = 3  // Default 3 minutes for TIMEFRAME zoom mode
 

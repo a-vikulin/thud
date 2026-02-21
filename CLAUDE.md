@@ -70,6 +70,7 @@
 | RR intervals (BLE) | `HrSensorManager.onRrIntervalsReceived()` | `HUDService` → `WorkoutRecorder` (per-sensor buffer) + per-sensor `DfaAlpha1Calculator` |
 | DFA alpha1 (per-sensor) | `dfaCalculators[mac]` | `state.dfaResults[mac]` → HUD box (primary) + popup (all) + `WorkoutDataPoint` (per-second) |
 | DFA sensor selection | `state.savedDfaSensorMac` (SharedPrefs) | `HUDService` → HUD box display + Garmin upload file selection |
+| DFA algorithm config | `ServiceStateHolder` (SharedPrefs) | `HUDService` → `DfaAlpha1Calculator` constructor (reset on settings change) |
 | Per-sensor RR for FIT | `WorkoutRecorder.rrIntervalsBySensor` | `RunSnapshot` → `FitFileExporter` (one HrvMesg stream per file) |
 
 ### ⚠️ SPEED - ABSOLUTE RULES ⚠️
@@ -151,11 +152,13 @@ Same pattern as HeartRateZones but with `ftpWatts`: `getZone()`, `getZoneColorRe
 
 ### DfaAlpha1Calculator (`util/DfaAlpha1Calculator.kt`)
 Real-time DFA (Detrended Fluctuation Analysis) alpha1 from RR intervals. Thread-safe (`@Synchronized`).
-`addRrIntervals(intervalsMs, currentHrBpm)` — artifact-filtered (5% median deviation, 200–2000ms range). Rolling buffer of 400 clean intervals.
-`computeIfReady()` → `DfaResult(alpha1, artifactPercent, sampleCount, isValid)` or null if < 120 clean intervals.
-`reset()` — clears all state.
+Constructor accepts configuration: `windowDurationMs` (default 120s), `artifactThresholdPercent` (default 20%), `medianWindowSize` (default 11), `emaAlpha` (default 0.2).
+`addRrIntervals(intervalsMs, currentHrBpm)` — artifact-filtered (configurable % median deviation, 200–2000ms range). Time-based buffer eviction (adapts to HR: ~360 beats at 180 BPM, ~240 at 120 BPM).
+`computeIfReady()` → `DfaResult(alpha1, rawAlpha1, artifactPercent, sampleCount, isValid)` or null if buffer hasn't filled time window. `alpha1` is EMA-smoothed; `rawAlpha1` is unsmoothed.
+`reset()` — clears all state including EMA history.
 Algorithm: cumulative sum integration → box-size detrending (n=4..16) → log-log regression → alpha1 slope.
 Thresholds: >0.75 aerobic, 0.5–0.75 transition, <0.5 anaerobic.
+**Artifact filter:** Only clean intervals update the median baseline (rejected artifacts do NOT drift the baseline). Windowed artifact % tracks accept/reject over the same time window as the analysis buffer.
 
 ### FileExportHelper (`util/FileExportHelper.kt`)
 Exports to Downloads/tHUD via MediaStore. `saveToDownloads(context, sourceFile, filename, mimeType, subfolder)`, `getTempFile(context, filename)`. Subfolders: `ROOT` (tHUD/), `SCREENSHOTS` (tHUD/screenshots/).
@@ -164,7 +167,7 @@ Exports to Downloads/tHUD via MediaStore. `saveToDownloads(context, sourceFile, 
 Unified BT sensor storage. `getAll/getByType/save/remove/isSaved/getSavedMacs`. Types: `HR_SENSOR`, `FOOT_POD`.
 
 ### SettingsManager (`service/SettingsManager.kt`)
-All SharedPreferences keys as constants. Key groups: `pace_coefficient` (calibration), `hr_zone*_max` (HR zones), `threshold_pace_kph`, `default_incline`, treadmill min/max ranges (from GlassOS), `fit_*` (FIT Export device ID), `ftms_*` (FTMS server settings), `garmin_auto_upload` (Garmin Connect), `remote_bindings` (BLE remote control config JSON), `chart_zoom_timeframe_minutes` (Chart zoom window), `dfa_sensor_mac` (DFA alpha1 primary sensor). Settings dialog has 6 tabs: Dynamics, Zones, Auto-Adjust, FIT Export, FTMS, Chart.
+All SharedPreferences keys as constants. Key groups: `pace_coefficient` (calibration), `hr_zone*_max` (HR zones), `threshold_pace_kph`, `default_incline`, treadmill min/max ranges (from GlassOS), `fit_*` (FIT Export device ID), `ftms_*` (FTMS server settings), `garmin_auto_upload` (Garmin Connect), `remote_bindings` (BLE remote control config JSON), `dfa_window_duration_sec`/`dfa_artifact_threshold`/`dfa_median_window`/`dfa_ema_alpha` (DFA alpha1 algorithm config), `dfa_sensor_mac` (DFA alpha1 primary sensor), `chart_zoom_timeframe_minutes` (Chart zoom window). Settings dialog has 7 tabs: Dynamics, Zones, Auto-Adjust, FIT Export, FTMS, DFA α1, Chart.
 
 ### ⚠️ HR/Power Targets: Percentage-Based ⚠️
 All HR/Power targets stored as **% of threshold** (LTHR/FTP) so workouts survive threshold changes.

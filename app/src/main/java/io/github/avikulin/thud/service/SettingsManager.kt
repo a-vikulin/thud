@@ -131,6 +131,12 @@ class SettingsManager(
         // DFA alpha1: primary sensor MAC for HUD display + Garmin upload
         const val PREF_DFA_SENSOR_MAC = "dfa_sensor_mac"
 
+        // DFA alpha1 algorithm configuration
+        const val PREF_DFA_WINDOW_DURATION_SEC = "dfa_window_duration_sec"
+        const val PREF_DFA_ARTIFACT_THRESHOLD = "dfa_artifact_threshold"
+        const val PREF_DFA_MEDIAN_WINDOW = "dfa_median_window"
+        const val PREF_DFA_EMA_ALPHA = "dfa_ema_alpha"
+
         // Defaults
         const val DEFAULT_PACE_COEFFICIENT = 1.0
         const val DEFAULT_INCLINE_ADJUSTMENT = 1.0  // 1% treadmill = flat outdoor
@@ -147,6 +153,12 @@ class SettingsManager(
 
         // Chart defaults
         const val DEFAULT_CHART_ZOOM_TIMEFRAME_MINUTES = 3
+
+        // DFA alpha1 defaults (matching DfaAlpha1Calculator constructor defaults)
+        const val DEFAULT_DFA_WINDOW_DURATION_SEC = 120
+        const val DEFAULT_DFA_ARTIFACT_THRESHOLD = 20.0
+        const val DEFAULT_DFA_MEDIAN_WINDOW = 11
+        const val DEFAULT_DFA_EMA_ALPHA = 0.2
 
         // Foot pod defaults
         const val DEFAULT_FOOT_POD_METRIC = "cadence"  // cadence, power, gct, vo, stryd_pace
@@ -291,6 +303,13 @@ class SettingsManager(
     private var editFitDeviceSerial: EditText? = null
     private var editFitSoftwareVersion: EditText? = null
 
+    // DFA Alpha1 tab fields
+    private var dfaAlpha1Content: View? = null
+    private var spinnerDfaWindowDuration: TouchSpinner? = null
+    private var spinnerDfaArtifactThreshold: TouchSpinner? = null
+    private var spinnerDfaMedianWindow: TouchSpinner? = null
+    private var spinnerDfaEmaAlpha: TouchSpinner? = null
+
     // Chart tab fields
     private var chartContent: View? = null
     private var spinnerZoomTimeframe: TouchSpinner? = null
@@ -391,6 +410,12 @@ class SettingsManager(
 
         // DFA alpha1 sensor selection
         state.savedDfaSensorMac = prefs.getString(PREF_DFA_SENSOR_MAC, "") ?: ""
+
+        // DFA alpha1 algorithm configuration
+        state.dfaWindowDurationSec = prefs.getInt(PREF_DFA_WINDOW_DURATION_SEC, DEFAULT_DFA_WINDOW_DURATION_SEC)
+        state.dfaArtifactThreshold = prefs.getFloat(PREF_DFA_ARTIFACT_THRESHOLD, DEFAULT_DFA_ARTIFACT_THRESHOLD.toFloat()).toDouble()
+        state.dfaMedianWindow = prefs.getInt(PREF_DFA_MEDIAN_WINDOW, DEFAULT_DFA_MEDIAN_WINDOW)
+        state.dfaEmaAlpha = prefs.getFloat(PREF_DFA_EMA_ALPHA, DEFAULT_DFA_EMA_ALPHA.toFloat()).toDouble()
 
         Log.d(TAG, "Settings loaded: LTHR=${state.userLthrBpm}, FTP=${state.userFtpWatts}")
     }
@@ -499,6 +524,7 @@ class SettingsManager(
             service.getString(R.string.settings_tab_auto_adjust),
             service.getString(R.string.settings_tab_fit_export),
             service.getString(R.string.settings_tab_ftms),
+            service.getString(R.string.settings_tab_dfa_alpha1),
             service.getString(R.string.settings_tab_chart)
         )
 
@@ -536,6 +562,7 @@ class SettingsManager(
         autoAdjustContent = createAutoAdjustContent()
         fitExportContent = createFitExportContent()
         ftmsContent = createFtmsContent()
+        dfaAlpha1Content = createDfaAlpha1Content()
         chartContent = createChartContent()
 
         contentContainer.addView(dynamicsContent)
@@ -543,6 +570,7 @@ class SettingsManager(
         contentContainer.addView(autoAdjustContent)
         contentContainer.addView(fitExportContent)
         contentContainer.addView(ftmsContent)
+        contentContainer.addView(dfaAlpha1Content)
         contentContainer.addView(chartContent)
 
         container.addView(contentContainer)
@@ -607,7 +635,8 @@ class SettingsManager(
         autoAdjustContent?.visibility = if (index == 2) View.VISIBLE else View.GONE
         fitExportContent?.visibility = if (index == 3) View.VISIBLE else View.GONE
         ftmsContent?.visibility = if (index == 4) View.VISIBLE else View.GONE
-        chartContent?.visibility = if (index == 5) View.VISIBLE else View.GONE
+        dfaAlpha1Content?.visibility = if (index == 5) View.VISIBLE else View.GONE
+        chartContent?.visibility = if (index == 6) View.VISIBLE else View.GONE
     }
 
     /**
@@ -1385,6 +1414,103 @@ class SettingsManager(
     }
 
     /**
+     * Create the DFA Alpha1 tab content.
+     * Contains spinners for algorithm tuning parameters.
+     */
+    private fun createDfaAlpha1Content(): View {
+        val textColor = ContextCompat.getColor(service, R.color.text_primary)
+        val rowSpacing = service.resources.getDimensionPixelSize(R.dimen.settings_row_spacing)
+        val labelWidth = service.resources.getDimensionPixelSize(R.dimen.settings_label_width)
+        val spinnerWidth = service.resources.getDimensionPixelSize(R.dimen.settings_spinner_width)
+
+        fun createSettingsRow(labelText: String, control: View): LinearLayout {
+            return LinearLayout(service).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = rowSpacing
+                }
+
+                val label = TextView(service).apply {
+                    text = labelText
+                    setTextColor(textColor)
+                    layoutParams = LinearLayout.LayoutParams(labelWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
+                }
+                addView(label)
+                addView(control)
+            }
+        }
+
+        return LinearLayout(service).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+
+            // Window Duration spinner (30-300 sec, step 10)
+            spinnerDfaWindowDuration = TouchSpinner(service).apply {
+                minValue = 30.0
+                maxValue = 300.0
+                step = 10.0
+                format = TouchSpinner.Format.INTEGER
+                suffix = service.getString(R.string.unit_seconds)
+                value = state.dfaWindowDurationSec.toDouble()
+                layoutParams = LinearLayout.LayoutParams(spinnerWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
+            }
+            addView(createSettingsRow(
+                service.getString(R.string.settings_dfa_window_duration),
+                spinnerDfaWindowDuration!!
+            ))
+
+            // Artifact Threshold spinner (1-50%, step 1)
+            spinnerDfaArtifactThreshold = TouchSpinner(service).apply {
+                minValue = 1.0
+                maxValue = 50.0
+                step = 1.0
+                format = TouchSpinner.Format.INTEGER
+                suffix = "%"
+                value = state.dfaArtifactThreshold
+                layoutParams = LinearLayout.LayoutParams(spinnerWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
+            }
+            addView(createSettingsRow(
+                service.getString(R.string.settings_dfa_artifact_threshold),
+                spinnerDfaArtifactThreshold!!
+            ))
+
+            // Median Window spinner (3-21, step 2 — odd numbers only)
+            spinnerDfaMedianWindow = TouchSpinner(service).apply {
+                minValue = 3.0
+                maxValue = 21.0
+                step = 2.0
+                format = TouchSpinner.Format.INTEGER
+                suffix = ""
+                value = state.dfaMedianWindow.toDouble()
+                layoutParams = LinearLayout.LayoutParams(spinnerWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
+            }
+            addView(createSettingsRow(
+                service.getString(R.string.settings_dfa_median_window),
+                spinnerDfaMedianWindow!!
+            ))
+
+            // EMA Smoothing spinner (0.0-1.0, step 0.05)
+            spinnerDfaEmaAlpha = TouchSpinner(service).apply {
+                minValue = 0.05
+                maxValue = 1.0
+                step = 0.05
+                format = TouchSpinner.Format.DECIMAL_2
+                suffix = ""
+                value = state.dfaEmaAlpha
+                layoutParams = LinearLayout.LayoutParams(spinnerWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
+            }
+            addView(createSettingsRow(
+                service.getString(R.string.settings_dfa_ema_alpha),
+                spinnerDfaEmaAlpha!!
+            ))
+        }
+    }
+
+    /**
      * Create the Chart tab content.
      * Contains zoom timeframe spinner.
      */
@@ -1711,6 +1837,12 @@ class SettingsManager(
         editFitDeviceSerial?.text?.toString()?.toLongOrNull()?.let { state.fitDeviceSerial = it }
         editFitSoftwareVersion?.text?.toString()?.toIntOrNull()?.let { state.fitSoftwareVersion = it }
 
+        // Save DFA alpha1 settings from spinners
+        spinnerDfaWindowDuration?.let { state.dfaWindowDurationSec = it.value.toInt() }
+        spinnerDfaArtifactThreshold?.let { state.dfaArtifactThreshold = it.value }
+        spinnerDfaMedianWindow?.let { state.dfaMedianWindow = it.value.toInt() }
+        spinnerDfaEmaAlpha?.let { state.dfaEmaAlpha = it.value }
+
         // Save chart settings from spinner
         spinnerZoomTimeframe?.let { state.chartZoomTimeframeMinutes = it.value.toInt() }
 
@@ -1780,6 +1912,12 @@ class SettingsManager(
             // Garmin Connect upload
             putBoolean(PREF_GARMIN_AUTO_UPLOAD, state.garminAutoUploadEnabled)
 
+            // DFA alpha1 settings
+            putInt(PREF_DFA_WINDOW_DURATION_SEC, state.dfaWindowDurationSec)
+            putFloat(PREF_DFA_ARTIFACT_THRESHOLD, state.dfaArtifactThreshold.toFloat())
+            putInt(PREF_DFA_MEDIAN_WINDOW, state.dfaMedianWindow)
+            putFloat(PREF_DFA_EMA_ALPHA, state.dfaEmaAlpha.toFloat())
+
             // Chart settings
             putInt(PREF_CHART_ZOOM_TIMEFRAME_MINUTES, state.chartZoomTimeframeMinutes)
 
@@ -1829,6 +1967,7 @@ class SettingsManager(
         autoAdjustContent = null
         fitExportContent = null
         ftmsContent = null
+        dfaAlpha1Content = null
         chartContent = null
         tabButtons.clear()
 
@@ -1877,6 +2016,12 @@ class SettingsManager(
         editFitSoftwareVersion = null
         checkGarminAutoUpload = null
         btnGarminLogin = null
+
+        // Clean up DFA Alpha1 tab controls
+        spinnerDfaWindowDuration = null
+        spinnerDfaArtifactThreshold = null
+        spinnerDfaMedianWindow = null
+        spinnerDfaEmaAlpha = null
 
         // Clean up Chart tab controls
         spinnerZoomTimeframe = null

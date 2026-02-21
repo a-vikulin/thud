@@ -89,6 +89,7 @@ class TouchSpinner @JvmOverloads constructor(
     enum class Format {
         INTEGER,     // "42"
         DECIMAL,     // "42.5"
+        DECIMAL_2,   // "0.20"
         TIME_MMSS,   // "5:30" (value = total seconds)
         PACE_MMSS,   // "5:30" (value = seconds per km)
         DISTANCE     // "1.5 km" or "500 m" (value = meters)
@@ -296,6 +297,7 @@ class TouchSpinner @JvmOverloads constructor(
         return when (format) {
             Format.INTEGER -> "${v.toInt()}$suffix"
             Format.DECIMAL -> String.format("%.1f%s", v, suffix)
+            Format.DECIMAL_2 -> String.format("%.2f%s", v, suffix)
             Format.TIME_MMSS -> {
                 PaceConverter.formatPace(v.toInt()) + suffix
             }

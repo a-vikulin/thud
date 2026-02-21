@@ -10,38 +10,63 @@ import kotlin.math.sqrt
  * Computes the short-term fractal scaling exponent from RR intervals.
  * Alpha1 thresholds: >0.75 = aerobic, 0.5-0.75 = transition, <0.5 = anaerobic.
  *
- * Algorithm reference: Physionet DFA tutorial + FatMaxxer parameters.
+ * Algorithm reference: Physionet DFA tutorial + Kubios/FatMaxxer parameters.
  * Box sizes 4-16 (short-term correlations only).
  *
  * Thread-safe: all public methods are synchronized.
+ *
+ * @param windowDurationMs Time-based analysis window in milliseconds (default 120s).
+ *        Naturally adapts to heart rate: ~360 beats at 180 BPM, ~240 at 120 BPM.
+ * @param artifactThresholdPercent Percent deviation from median to reject as artifact (default 20%).
+ *        Matches Kubios "Medium" level. Lower = more aggressive filtering.
+ * @param medianWindowSize Number of recent clean intervals for median baseline (default 11).
+ *        Larger = more robust to bursts of consecutive artifacts.
+ * @param emaAlpha EMA smoothing factor for output (default 0.2). 0 = maximum smoothing, 1 = no smoothing.
  */
-class DfaAlpha1Calculator {
+class DfaAlpha1Calculator(
+    private val windowDurationMs: Long = DEFAULT_WINDOW_DURATION_MS,
+    private val artifactThresholdPercent: Double = DEFAULT_ARTIFACT_THRESHOLD_PERCENT,
+    private val medianWindowSize: Int = DEFAULT_MEDIAN_WINDOW_SIZE,
+    private val emaAlpha: Float = DEFAULT_EMA_ALPHA
+) {
 
     data class DfaResult(
         val alpha1: Double,
+        val rawAlpha1: Double,
         val artifactPercent: Double,
         val sampleCount: Int,
         val isValid: Boolean
     )
 
     companion object {
-        private const val MAX_BUFFER_SIZE = 400       // ~2 min at 200 BPM
-        private const val MIN_INTERVALS_FOR_DFA = 120 // Minimum clean intervals
-        private const val ARTIFACT_THRESHOLD = 0.05   // 5% deviation from median
-        private const val MEDIAN_WINDOW_SIZE = 5      // Median filter window
+        // Configurable defaults (used by Settings UI as default values)
+        const val DEFAULT_WINDOW_DURATION_SEC = 120
+        const val DEFAULT_WINDOW_DURATION_MS = 120_000L
+        const val DEFAULT_ARTIFACT_THRESHOLD_PERCENT = 20.0
+        const val DEFAULT_MEDIAN_WINDOW_SIZE = 11
+        const val DEFAULT_EMA_ALPHA = 0.2f
+
+        // Not configurable — safety floor to prevent degenerate computation
+        private const val MIN_INTERVALS_SAFETY = 50
         private const val MIN_BOX_SIZE = 4
         private const val MAX_BOX_SIZE = 16
     }
 
     // Rolling buffer of clean (artifact-filtered) RR intervals in ms
-    private val cleanBuffer = ArrayDeque<Double>(MAX_BUFFER_SIZE)
+    private val cleanBuffer = ArrayDeque<Double>()
 
-    // Recent intervals for median filter (includes artifacts, for baseline tracking)
-    private val recentIntervals = ArrayDeque<Double>(MEDIAN_WINDOW_SIZE)
+    // Running sum of all RR intervals in cleanBuffer (for time-based eviction)
+    private var bufferTotalMs = 0.0
 
-    // Artifact tracking
-    private var totalReceived = 0
-    private var totalRejected = 0
+    // Recent clean intervals for median filter (only updated with accepted intervals)
+    private val recentIntervals = ArrayDeque<Double>()
+
+    // Time-windowed artifact tracking: (wasRejected, rrMs)
+    private val artifactFlags = ArrayDeque<Pair<Boolean, Double>>()
+    private var artifactRrTotalMs = 0.0
+
+    // EMA smoothed output
+    private var smoothedAlpha1 = Double.NaN
 
     /**
      * Add new RR intervals from a BLE notification.
@@ -52,59 +77,82 @@ class DfaAlpha1Calculator {
      */
     @Synchronized
     fun addRrIntervals(intervalsMs: List<Double>, currentHrBpm: Int) {
-        for (rrMs in intervalsMs) {
-            totalReceived++
+        val thresholdFraction = artifactThresholdPercent / 100.0
 
+        for (rrMs in intervalsMs) {
             // Basic physiological range filter: 200-2000ms (30-300 BPM)
             if (rrMs < 200.0 || rrMs > 2000.0) {
-                totalRejected++
+                trackArtifact(rejected = true, rrMs = rrMs)
                 continue
             }
 
-            // Artifact filter: reject if >5% deviation from median of recent intervals
-            if (recentIntervals.size >= MEDIAN_WINDOW_SIZE) {
+            // Artifact filter: reject if deviation from median exceeds threshold
+            if (recentIntervals.size >= medianWindowSize) {
                 val median = medianOf(recentIntervals)
-                if (abs(rrMs - median) / median > ARTIFACT_THRESHOLD) {
-                    totalRejected++
-                    // Still update recent window so baseline tracks drift
-                    recentIntervals.removeFirst()
-                    recentIntervals.addLast(rrMs)
+                if (abs(rrMs - median) / median > thresholdFraction) {
+                    // Do NOT update recentIntervals with rejected artifacts —
+                    // prevents baseline from drifting toward artifact values
+                    trackArtifact(rejected = true, rrMs = rrMs)
                     continue
                 }
             }
 
-            // Update recent window
-            if (recentIntervals.size >= MEDIAN_WINDOW_SIZE) {
+            // Accepted: update recent clean window
+            if (recentIntervals.size >= medianWindowSize) {
                 recentIntervals.removeFirst()
             }
             recentIntervals.addLast(rrMs)
 
-            // Add to clean buffer (evict oldest if full)
-            if (cleanBuffer.size >= MAX_BUFFER_SIZE) {
-                cleanBuffer.removeFirst()
-            }
+            // Add to clean buffer with time-based eviction
             cleanBuffer.addLast(rrMs)
+            bufferTotalMs += rrMs
+            while (bufferTotalMs > windowDurationMs && cleanBuffer.size > MIN_INTERVALS_SAFETY) {
+                bufferTotalMs -= cleanBuffer.removeFirst()
+            }
+
+            trackArtifact(rejected = false, rrMs = rrMs)
+        }
+    }
+
+    /**
+     * Track accept/reject decision for windowed artifact percentage.
+     */
+    private fun trackArtifact(rejected: Boolean, rrMs: Double) {
+        artifactFlags.addLast(Pair(rejected, rrMs))
+        artifactRrTotalMs += rrMs
+        while (artifactRrTotalMs > windowDurationMs && artifactFlags.size > 1) {
+            artifactRrTotalMs -= artifactFlags.removeFirst().second
         }
     }
 
     /**
      * Compute DFA alpha1 if enough clean data is available.
-     * Returns null if fewer than [MIN_INTERVALS_FOR_DFA] clean intervals exist.
+     * Returns null if the buffer hasn't filled the time window or has too few intervals.
      */
     @Synchronized
     fun computeIfReady(): DfaResult? {
-        if (cleanBuffer.size < MIN_INTERVALS_FOR_DFA) return null
+        if (bufferTotalMs < windowDurationMs || cleanBuffer.size < MIN_INTERVALS_SAFETY) return null
 
-        val alpha1 = computeDfaAlpha1(cleanBuffer.toDoubleArray())
-        val artifactPercent = if (totalReceived > 0) {
-            totalRejected.toDouble() / totalReceived * 100.0
+        val rawAlpha1 = computeDfaAlpha1(cleanBuffer.toDoubleArray())
+
+        // Apply EMA smoothing
+        val smoothed = if (smoothedAlpha1.isNaN()) {
+            rawAlpha1  // first value: no smoothing
+        } else {
+            emaAlpha * rawAlpha1 + (1 - emaAlpha) * smoothedAlpha1
+        }
+        smoothedAlpha1 = smoothed
+
+        val artifactPercent = if (artifactFlags.isNotEmpty()) {
+            artifactFlags.count { it.first } * 100.0 / artifactFlags.size
         } else 0.0
 
         return DfaResult(
-            alpha1 = alpha1,
+            alpha1 = smoothed,
+            rawAlpha1 = rawAlpha1,
             artifactPercent = artifactPercent,
             sampleCount = cleanBuffer.size,
-            isValid = alpha1.isFinite() && alpha1 > 0
+            isValid = smoothed.isFinite() && smoothed > 0
         )
     }
 
@@ -114,9 +162,11 @@ class DfaAlpha1Calculator {
     @Synchronized
     fun reset() {
         cleanBuffer.clear()
+        bufferTotalMs = 0.0
         recentIntervals.clear()
-        totalReceived = 0
-        totalRejected = 0
+        artifactFlags.clear()
+        artifactRrTotalMs = 0.0
+        smoothedAlpha1 = Double.NaN
     }
 
     // ==================== DFA Algorithm ====================
@@ -135,7 +185,7 @@ class DfaAlpha1Calculator {
      */
     private fun computeDfaAlpha1(rrIntervals: DoubleArray): Double {
         val n = rrIntervals.size
-        if (n < MIN_INTERVALS_FOR_DFA) return Double.NaN
+        if (n < MIN_INTERVALS_SAFETY) return Double.NaN
 
         // Step 1: Subtract mean
         val mean = rrIntervals.average()

@@ -2285,6 +2285,12 @@ class HUDService : Service(),
         chartManager.updateZoomTimeframe(state.chartZoomTimeframeMinutes)
         updateRecorderUserProfile()
 
+        // Reset DFA calculators to pick up new config (they are recreated on next RR data)
+        dfaCalculators.values.forEach { it.reset() }
+        dfaCalculators.clear()
+        state.dfaResults.clear()
+        hudDisplayManager.updateDfaAlpha1(0.0, isValid = false)
+
         // Restart FTMS servers to apply new settings (device names, control permissions)
         restartFtmsServers()
     }
@@ -2716,7 +2722,14 @@ class HUDService : Service(),
         workoutRecorder.recordRrIntervals(mac, rrIntervalsMs)
 
         // 2. Feed DFA calculator for this sensor
-        val calc = dfaCalculators.getOrPut(mac) { DfaAlpha1Calculator() }
+        val calc = dfaCalculators.getOrPut(mac) {
+            DfaAlpha1Calculator(
+                windowDurationMs = state.dfaWindowDurationSec * 1000L,
+                artifactThresholdPercent = state.dfaArtifactThreshold,
+                medianWindowSize = state.dfaMedianWindow,
+                emaAlpha = state.dfaEmaAlpha.toFloat()
+            )
+        }
         val currentBpm = state.connectedHrSensors[mac]?.second ?: 0
         calc.addRrIntervals(rrIntervalsMs, currentBpm)
         val result = calc.computeIfReady()
