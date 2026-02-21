@@ -767,14 +767,29 @@ class PopupManager(
         return String.format(Locale.US, "%.2f", result.alpha1)
     }
 
-    /** Get DFA zone background color based on alpha1 value. */
+    /** Get DFA gradient background color: green(1.0) → amber(0.75) → red(0.5). */
     private fun getDfaZoneColor(result: io.github.avikulin.thud.util.DfaAlpha1Calculator.DfaResult?): Int {
         if (result == null || !result.isValid) return colorDfaNoData
+        val clamped = result.alpha1.coerceIn(0.5, 1.0)
         return when {
-            result.alpha1 > 0.75 -> colorDfaAerobic
-            result.alpha1 >= 0.5 -> colorDfaTransition
-            else -> colorDfaAnaerobic
+            clamped >= 0.75 -> {
+                val fraction = ((1.0 - clamped) / 0.25).toFloat()
+                blendArgb(colorDfaAerobic, colorDfaTransition, fraction)
+            }
+            else -> {
+                val fraction = ((0.75 - clamped) / 0.25).toFloat()
+                blendArgb(colorDfaTransition, colorDfaAnaerobic, fraction)
+            }
         }
+    }
+
+    private fun blendArgb(color1: Int, color2: Int, fraction: Float): Int {
+        val f = fraction.coerceIn(0f, 1f)
+        val a = ((color1 ushr 24) + ((color2 ushr 24).toInt() - (color1 ushr 24).toInt()) * f).toInt()
+        val r = (((color1 shr 16) and 0xFF) + (((color2 shr 16) and 0xFF) - ((color1 shr 16) and 0xFF)) * f).toInt()
+        val g = (((color1 shr 8) and 0xFF) + (((color2 shr 8) and 0xFF) - ((color1 shr 8) and 0xFF)) * f).toInt()
+        val b = ((color1 and 0xFF) + ((color2 and 0xFF) - (color1 and 0xFF)) * f).toInt()
+        return android.graphics.Color.argb(a, r, g, b)
     }
 
     /**

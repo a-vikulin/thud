@@ -39,10 +39,10 @@
 
     <!-- ==================== DFA Alpha1 Zones ==================== -->
 
-    <color name="dfa_zone_aerobic">#3344DD44</color>      <!-- Green: alpha1 > 0.75, aerobic -->
-    <color name="dfa_zone_transition">#33FFAA00</color>    <!-- Amber: 0.5-0.75, transition -->
-    <color name="dfa_zone_anaerobic">#33FF4444</color>     <!-- Red: < 0.5, anaerobic -->
-    <color name="dfa_zone_no_data">#339999B8</color>       <!-- Gray: no data -->
+    <color name="dfa_zone_aerobic">#44DD44</color>        <!-- Green: alpha1 >= 1.0, aerobic -->
+    <color name="dfa_zone_transition">#FFDD00</color>      <!-- Yellow: alpha1 = 0.75, threshold -->
+    <color name="dfa_zone_anaerobic">#FF4444</color>       <!-- Red: alpha1 <= 0.5, anaerobic -->
+    <color name="dfa_zone_no_data">#555568</color>         <!-- Dark gray: no data -->
 
     <!-- ==================== Heart Rate Zones ==================== -->
 

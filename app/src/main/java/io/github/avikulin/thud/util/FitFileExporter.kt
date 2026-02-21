@@ -303,19 +303,14 @@ class FitFileExporter(private val context: Context) {
         // 5. Timer START event (required at workout start)
         writeTimerEvent(encoder, startTimeMs, isStart = true)
 
-        // 6. Record messages interleaved with pause/resume events (in timestamp order)
-        writeRecordsWithEvents(encoder, workoutData, pauseEvents, strydDevFields, hrDevFields, hrSensors)
+        // 6. Record messages interleaved with pause/resume events and HRV (in timestamp order)
+        writeRecordsWithEvents(encoder, workoutData, pauseEvents, strydDevFields, hrDevFields, hrSensors, rrIntervals)
 
         // 7. Timer STOP event at workout end (skip if already paused to avoid duplicate STOP_ALL)
         val endedWhilePaused = pauseEvents.isNotEmpty() &&
             pauseEvents.sortedBy { it.timestampMs }.last().isPause
         if (!endedWhilePaused) {
             writeTimerEvent(encoder, endTimeMs, isStart = false)
-        }
-
-        // 7b. HRV messages (RR intervals from a single sensor)
-        if (!rrIntervals.isNullOrEmpty()) {
-            writeHrvMessages(encoder, rrIntervals)
         }
 
         // 8. Lap messages - one per workout step, or single lap for free runs
@@ -400,7 +395,8 @@ class FitFileExporter(private val context: Context) {
         pauseEvents: List<PauseEvent>,
         strydDevFields: StrydDevFields? = null,
         hrDevFields: Map<Int, HrSensorDevField>? = null,
-        hrSensors: List<Pair<String, String>> = emptyList()
+        hrSensors: List<Pair<String, String>> = emptyList(),
+        rrIntervals: List<Pair<Long, Float>>? = null
     ) {
         data class TimestampedItem(
             val timestampMs: Long,
@@ -441,7 +437,8 @@ class FitFileExporter(private val context: Context) {
         // Sort by timestamp
         items.sortBy { it.timestampMs }
 
-        // Write in order
+        // Write in order, interleaving HRV messages with records
+        var rrCursor = 0
         for (item in items) {
             when {
                 item.sensorChangeIndex >= 0 -> {
@@ -452,6 +449,11 @@ class FitFileExporter(private val context: Context) {
                     )
                 }
                 item.isRecord -> {
+                    // Before each record, drain pending RR intervals up to this timestamp.
+                    // This places HrvMesg between the previous and current Record (Garmin pattern).
+                    if (rrIntervals != null) {
+                        rrCursor = writeInterleavedHrv(encoder, rrIntervals, rrCursor, item.timestampMs)
+                    }
                     writeRecordMessage(encoder, item.dataPoint!!, strydDevFields, hrDevFields)
                 }
                 else -> {
@@ -464,9 +466,15 @@ class FitFileExporter(private val context: Context) {
                 }
             }
         }
+        // Flush any remaining RR intervals after the last record
+        if (rrIntervals != null && rrCursor < rrIntervals.size) {
+            rrCursor = writeInterleavedHrv(encoder, rrIntervals, rrCursor, Long.MAX_VALUE)
+        }
 
-        if (pauseEvents.isNotEmpty()) {
-            Log.d(TAG, "Wrote ${workoutData.size} records interleaved with ${pauseEvents.size} pause/resume events")
+        val rrCount = rrIntervals?.size ?: 0
+        if (pauseEvents.isNotEmpty() || rrCount > 0) {
+            Log.d(TAG, "Wrote ${workoutData.size} records interleaved with ${pauseEvents.size} pause/resume events" +
+                if (rrCount > 0) " and $rrCount RR intervals" else "")
         }
     }
 
@@ -980,21 +988,28 @@ class FitFileExporter(private val context: Context) {
     }
 
     /**
-     * Write HRV messages (FIT message 78) containing RR intervals from a single sensor.
+     * Write interleaved HRV messages for RR intervals up to (exclusive) a timestamp bound.
      * Each HrvMesg holds up to 5 RR interval values (in seconds).
+     * Returns the updated cursor position.
      */
-    private fun writeHrvMessages(encoder: FileEncoder, rrIntervals: List<Pair<Long, Float>>) {
-        var i = 0
-        while (i < rrIntervals.size) {
+    private fun writeInterleavedHrv(
+        encoder: FileEncoder,
+        rrIntervals: List<Pair<Long, Float>>,
+        fromIndex: Int,
+        beforeTimestampMs: Long
+    ): Int {
+        var i = fromIndex
+        while (i < rrIntervals.size && rrIntervals[i].first < beforeTimestampMs) {
             val hrv = HrvMesg()
-            val batch = minOf(5, rrIntervals.size - i)
-            for (j in 0 until batch) {
-                hrv.setTime(j, rrIntervals[i + j].second)
+            val batchEnd = minOf(i + 5, rrIntervals.size)
+            var slot = 0
+            while (i < batchEnd && rrIntervals[i].first < beforeTimestampMs) {
+                hrv.setTime(slot, rrIntervals[i].second)
+                i++; slot++
             }
             encoder.write(hrv)
-            i += batch
         }
-        Log.d(TAG, "Wrote ${rrIntervals.size} RR intervals in ${(rrIntervals.size + 4) / 5} HRV messages")
+        return i
     }
 
     private fun writeLapMessage(

@@ -430,7 +430,7 @@ When multiple HR sensors are connected, each gets a `DeveloperDataIdMesg` with a
 
 ### FIT HRV Export (RR Intervals + Multi-File)
 
-**HrvMesg (message 78):** FIT supports only one RR stream per file. Each `HrvMesg` holds up to 5 RR interval values (in seconds, Float). Written after Records/Events, before Lap messages.
+**HrvMesg (message 78):** FIT supports only one RR stream per file. Each `HrvMesg` holds up to 5 RR interval values (in seconds, Float). **MUST be interleaved with Record messages** (not batched at end) — Runalyze and other HRV tools require this Garmin-standard ordering. Written by `writeInterleavedHrv()` inside the record-writing loop, draining pending RR intervals before each Record.
 
 **Multi-file export:** When multiple RR-capable sensors are connected, `exportWorkoutToFit()` generates one FIT file per sensor — identical workout data but different `HrvMesg` streams. Filename suffix identifies the sensor (e.g., `Run_2026-02-20_PolarH10.fit`). Only the DFA-primary sensor's file is uploaded to Garmin Connect.
 

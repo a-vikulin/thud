@@ -694,8 +694,8 @@ class HUDDisplayManager(
     fun getDfaBoxBounds(): IntArray? = getBoxBounds(dfaBox)
 
     /**
-     * Update DFA alpha1 display value and zone-colored background.
-     * Zone thresholds: > 0.75 aerobic (green), 0.5-0.75 transition (amber), < 0.5 anaerobic (red).
+     * Update DFA alpha1 display value with smooth gradient background.
+     * Green (1.0) → Amber (0.75) → Red (0.5), clamped at extremes.
      */
     fun updateDfaAlpha1(alpha1: Double, isValid: Boolean) {
         mainHandler.post {
@@ -705,13 +705,35 @@ class HUDDisplayManager(
                 return@post
             }
             tvDfaValue?.text = String.format(Locale.US, "%.2f", alpha1)
-            val bgColor = when {
-                alpha1 > 0.75 -> colorDfaAerobic
-                alpha1 >= 0.5 -> colorDfaTransition
-                else -> colorDfaAnaerobic
-            }
-            dfaBox?.setBackgroundColor(bgColor)
+            dfaBox?.setBackgroundColor(dfaGradientColor(alpha1))
         }
+    }
+
+    /**
+     * Smooth gradient: green at 1.0 → amber at 0.75 → red at 0.5.
+     * Values above 1.0 clamp to green, below 0.5 clamp to red.
+     */
+    private fun dfaGradientColor(alpha1: Double): Int {
+        val clamped = alpha1.coerceIn(0.5, 1.0)
+        return when {
+            clamped >= 0.75 -> {
+                val fraction = ((1.0 - clamped) / 0.25).toFloat()
+                blendArgb(colorDfaAerobic, colorDfaTransition, fraction)
+            }
+            else -> {
+                val fraction = ((0.75 - clamped) / 0.25).toFloat()
+                blendArgb(colorDfaTransition, colorDfaAnaerobic, fraction)
+            }
+        }
+    }
+
+    private fun blendArgb(color1: Int, color2: Int, fraction: Float): Int {
+        val f = fraction.coerceIn(0f, 1f)
+        val a = ((color1 ushr 24) + ((color2 ushr 24).toInt() - (color1 ushr 24).toInt()) * f).toInt()
+        val r = (((color1 shr 16) and 0xFF) + (((color2 shr 16) and 0xFF) - ((color1 shr 16) and 0xFF)) * f).toInt()
+        val g = (((color1 shr 8) and 0xFF) + (((color2 shr 8) and 0xFF) - ((color1 shr 8) and 0xFF)) * f).toInt()
+        val b = ((color1 and 0xFF) + ((color2 and 0xFF) - (color1 and 0xFF)) * f).toInt()
+        return android.graphics.Color.argb(a, r, g, b)
     }
 
     /**
