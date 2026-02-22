@@ -153,6 +153,11 @@ class WorkoutExecutionEngine(
         adjustmentScope = workout.adjustmentScope
         stepCoefficients.clear()
 
+        // All steps are "main" when loaded without stitching
+        warmupStepCount = 0
+        mainStepCount = executionSteps.size
+        cooldownStepCount = 0
+
         Log.d(TAG, "Loaded workout: ${workout.name} with ${executionSteps.size} steps (${steps.size} original)")
         return true
     }
