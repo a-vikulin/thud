@@ -65,6 +65,10 @@ class DfaAlpha1Calculator(
     private val artifactFlags = ArrayDeque<Pair<Boolean, Double>>()
     private var artifactRrTotalMs = 0.0
 
+    // Consecutive artifact rejections — detects stale median baseline
+    private var consecutiveRejections = 0
+    private val RESEED_AFTER_REJECTIONS = 30  // ~20 seconds at 150 BPM
+
     // EMA smoothed output
     private var smoothedAlpha1 = Double.NaN
 
@@ -90,6 +94,18 @@ class DfaAlpha1Calculator(
             if (recentIntervals.size >= medianWindowSize) {
                 val median = medianOf(recentIntervals)
                 if (abs(rrMs - median) / median > thresholdFraction) {
+                    consecutiveRejections++
+                    if (consecutiveRejections >= RESEED_AFTER_REJECTIONS) {
+                        // Baseline is stale (e.g., seeded at rest, now running).
+                        // Force-reseed from this interval and restart clean buffer.
+                        recentIntervals.clear()
+                        recentIntervals.addLast(rrMs)
+                        cleanBuffer.clear()
+                        bufferTotalMs = 0.0
+                        consecutiveRejections = 0
+                        trackArtifact(rejected = false, rrMs = rrMs)
+                        continue
+                    }
                     // Do NOT update recentIntervals with rejected artifacts —
                     // prevents baseline from drifting toward artifact values
                     trackArtifact(rejected = true, rrMs = rrMs)
@@ -97,7 +113,8 @@ class DfaAlpha1Calculator(
                 }
             }
 
-            // Accepted: update recent clean window
+            // Accepted: update recent clean window and reset rejection counter
+            consecutiveRejections = 0
             if (recentIntervals.size >= medianWindowSize) {
                 recentIntervals.removeFirst()
             }
@@ -168,6 +185,7 @@ class DfaAlpha1Calculator(
         recentIntervals.clear()
         artifactFlags.clear()
         artifactRrTotalMs = 0.0
+        consecutiveRejections = 0
         smoothedAlpha1 = Double.NaN
     }
 
