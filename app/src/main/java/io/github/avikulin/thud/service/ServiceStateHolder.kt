@@ -166,6 +166,7 @@ class ServiceStateHolder {
     // ==================== Calculated HR Settings ====================
     @Volatile var calcHrEnabled: Boolean = false
     @Volatile var calcHrEmaAlpha: Double = 0.1
+    @Volatile var calcHrArtifactThreshold: Double = 20.0  // % deviation from median to reject (0 = disabled)
 
     // ==================== Chart Settings ====================
     @Volatile var chartZoomTimeframeMinutes = 3  // Default 3 minutes for TIMEFRAME zoom mode

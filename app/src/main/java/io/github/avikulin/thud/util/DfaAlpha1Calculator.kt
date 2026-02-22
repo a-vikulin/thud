@@ -58,16 +58,14 @@ class DfaAlpha1Calculator(
     // Running sum of all RR intervals in cleanBuffer (for time-based eviction)
     private var bufferTotalMs = 0.0
 
-    // Recent clean intervals for median filter (only updated with accepted intervals)
+    // Recent RR intervals for median filter (ALL physiologically valid intervals,
+    // not just clean ones — the median is inherently robust to outliers, and
+    // including all intervals prevents baseline staleness during rapid HR transitions)
     private val recentIntervals = ArrayDeque<Double>()
 
     // Time-windowed artifact tracking: (wasRejected, rrMs)
     private val artifactFlags = ArrayDeque<Pair<Boolean, Double>>()
     private var artifactRrTotalMs = 0.0
-
-    // Consecutive artifact rejections — detects stale median baseline
-    private var consecutiveRejections = 0
-    private val RESEED_AFTER_REJECTIONS = 30  // ~20 seconds at 150 BPM
 
     // EMA smoothed output
     private var smoothedAlpha1 = Double.NaN
@@ -91,34 +89,23 @@ class DfaAlpha1Calculator(
             }
 
             // Artifact filter: reject if deviation from median exceeds threshold
+            var isArtifact = false
             if (recentIntervals.size >= medianWindowSize) {
                 val median = medianOf(recentIntervals)
                 if (abs(rrMs - median) / median > thresholdFraction) {
-                    consecutiveRejections++
-                    if (consecutiveRejections >= RESEED_AFTER_REJECTIONS) {
-                        // Baseline is stale (e.g., seeded at rest, now running).
-                        // Force-reseed from this interval and restart clean buffer.
-                        recentIntervals.clear()
-                        recentIntervals.addLast(rrMs)
-                        cleanBuffer.clear()
-                        bufferTotalMs = 0.0
-                        consecutiveRejections = 0
-                        trackArtifact(rejected = false, rrMs = rrMs)
-                        continue
-                    }
-                    // Do NOT update recentIntervals with rejected artifacts —
-                    // prevents baseline from drifting toward artifact values
+                    isArtifact = true
                     trackArtifact(rejected = true, rrMs = rrMs)
-                    continue
                 }
             }
 
-            // Accepted: update recent clean window and reset rejection counter
-            consecutiveRejections = 0
+            // ALL physiologically valid intervals update the baseline —
+            // median is robust to outliers and this prevents staleness
             if (recentIntervals.size >= medianWindowSize) {
                 recentIntervals.removeFirst()
             }
             recentIntervals.addLast(rrMs)
+
+            if (isArtifact) continue
 
             // Add to clean buffer with time-based eviction
             // Only evict when removing an interval still keeps total >= windowDurationMs
@@ -185,7 +172,6 @@ class DfaAlpha1Calculator(
         recentIntervals.clear()
         artifactFlags.clear()
         artifactRrTotalMs = 0.0
-        consecutiveRejections = 0
         smoothedAlpha1 = Double.NaN
     }
 

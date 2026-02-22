@@ -174,10 +174,10 @@ Constructor accepts configuration: `windowDurationMs` (default 120s), `artifactT
 `reset()` — clears all state including EMA history.
 Algorithm: cumulative sum integration → box-size detrending (n=4..16) → log-log regression → alpha1 slope.
 Thresholds: >0.75 aerobic, 0.5–0.75 transition, <0.5 anaerobic.
-**Artifact filter:** Only clean intervals update the median baseline (rejected artifacts do NOT drift the baseline). Windowed artifact % tracks accept/reject over the same time window as the analysis buffer.
+**Artifact filter:** ALL physiologically valid intervals (200-2000ms) update the median baseline — the median is inherently robust to outliers and including all intervals prevents baseline staleness during rapid HR transitions. Windowed artifact % tracks accept/reject over the same time window as the analysis buffer.
 
 ### ⚠️ Calculated HR from RR Intervals ⚠️
-When enabled (`state.calcHrEnabled`), `HUDService.onRrIntervalsReceived()` computes HR directly from RR intervals (`60000/mean_RR`) and injects it as a **synthetic sensor** with key `"CALC:<original_mac>"` into `state.connectedHrSensors`. EMA smoothing (`state.calcHrEmaAlpha`, 0.01–1.0, default 0.1) controls responsiveness.
+When enabled (`state.calcHrEnabled`), `HUDService.onRrIntervalsReceived()` computes HR directly from RR intervals (`60000/mean_RR`) and injects it as a **synthetic sensor** with key `"CALC:<original_mac>"` into `state.connectedHrSensors`. Artifact filter (`state.calcHrArtifactThreshold`, 0-50%, default 20%, 0=disabled) rejects RR intervals deviating too far from a rolling all-inclusive median (same approach as DFA). EMA smoothing (`state.calcHrEmaAlpha`, 0.01–1.0, default 0.1) controls responsiveness.
 
 **Synthetic MAC convention:** `CALC:<mac>` keys reuse the entire multi-sensor pipeline (WorkoutRecorder, FIT export, popup) without changes. UUID v3 from `"tHUD-HR:CALC:<mac>"` produces valid FIT developer field IDs automatically.
 
@@ -185,7 +185,7 @@ When enabled (`state.calcHrEnabled`), `HUDService.onRrIntervalsReceived()` compu
 
 **`hrSensorConnected` correctness:** Checked against non-CALC entries only (CALC sensors are virtual, not real BLE connections).
 
-**Cleanup:** CALC entries removed on real sensor disconnect (`onHrSensorDisconnected`), on feature disable (`onSettingsSaved`), and EMA state (`calcHrEmaValues`) cleared in both cases.
+**Cleanup:** CALC entries removed on real sensor disconnect (`onHrSensorDisconnected`), on feature disable (`onSettingsSaved`), and EMA state (`calcHrEmaValues`) + artifact filter buffers (`calcHrRecentRr`) cleared in both cases.
 
 **Settings:** "HR" tab (formerly "DFA α1") has two sections — "HR-sensors" (checkbox + EMA spinner) and "DFA-alpha1" (existing 4 spinners), separated by a divider.
 
@@ -196,7 +196,7 @@ Exports to Downloads/tHUD via MediaStore. `saveToDownloads(context, sourceFile, 
 Unified BT sensor storage. `getAll/getByType/save/remove/isSaved/getSavedMacs`. Types: `HR_SENSOR`, `FOOT_POD`.
 
 ### SettingsManager (`service/SettingsManager.kt`)
-All SharedPreferences keys as constants. Key groups: `pace_coefficient` (calibration), `hr_zone*_max` (HR zones), `threshold_pace_kph`, `default_incline`, treadmill min/max ranges (from GlassOS), `fit_*` (FIT Export device ID), `ftms_*` (FTMS server settings), `garmin_auto_upload` (Garmin Connect), `remote_bindings` (BLE remote control config JSON), `calc_hr_enabled`/`calc_hr_ema_alpha` (Calculated HR from RR intervals), `dfa_window_duration_sec`/`dfa_artifact_threshold`/`dfa_median_window`/`dfa_ema_alpha` (DFA alpha1 algorithm config), `dfa_sensor_mac` (DFA alpha1 primary sensor), `chart_zoom_timeframe_minutes` (Chart zoom window). Settings dialog has 7 tabs: Dynamics, Zones, Auto-Adjust, FIT Export, FTMS, HR (calc HR + DFA α1), Chart.
+All SharedPreferences keys as constants. Key groups: `pace_coefficient` (calibration), `hr_zone*_max` (HR zones), `threshold_pace_kph`, `default_incline`, treadmill min/max ranges (from GlassOS), `fit_*` (FIT Export device ID), `ftms_*` (FTMS server settings), `garmin_auto_upload` (Garmin Connect), `remote_bindings` (BLE remote control config JSON), `calc_hr_enabled`/`calc_hr_ema_alpha`/`calc_hr_artifact_threshold` (Calculated HR from RR intervals), `dfa_window_duration_sec`/`dfa_artifact_threshold`/`dfa_median_window`/`dfa_ema_alpha` (DFA alpha1 algorithm config), `dfa_sensor_mac` (DFA alpha1 primary sensor), `chart_zoom_timeframe_minutes` (Chart zoom window). Settings dialog has 7 tabs: Dynamics, Zones, Auto-Adjust, FIT Export, FTMS, HR (calc HR + DFA α1), Chart.
 
 ### ⚠️ HR/Power Targets: Percentage-Based ⚠️
 All HR/Power targets stored as **% of threshold** (LTHR/FTP) so workouts survive threshold changes.

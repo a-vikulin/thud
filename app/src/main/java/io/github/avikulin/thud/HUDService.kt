@@ -67,6 +67,7 @@ import io.github.avikulin.thud.util.DfaAlpha1Calculator
 import io.github.avikulin.thud.util.PaceConverter
 import io.github.avikulin.thud.util.TssCalculator
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.abs
 import com.ifit.glassos.workout.WorkoutState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -216,6 +217,10 @@ class HUDService : Service(),
 
     // Per-sensor EMA state for calculated HR (real MAC → smoothed BPM)
     private val calcHrEmaValues = ConcurrentHashMap<String, Double>()
+
+    // Per-sensor rolling RR buffer for calc HR artifact filtering (real MAC → recent intervals)
+    private val calcHrRecentRr = ConcurrentHashMap<String, ArrayDeque<Double>>()
+    private val CALC_HR_MEDIAN_WINDOW = 11
 
     private lateinit var garminUploader: GarminConnectUploader
     private var connectivityCallback: ConnectivityManager.NetworkCallback? = null
@@ -2300,6 +2305,7 @@ class HUDService : Service(),
                 state.connectedHrSensors.remove(it)
             }
             calcHrEmaValues.clear()
+            calcHrRecentRr.clear()
             popupManager.updateHrSensorPopupIfVisible()
         }
 
@@ -2687,6 +2693,7 @@ class HUDService : Service(),
         // Also remove the synthetic CALC sensor for this device
         state.connectedHrSensors.remove("CALC:$mac")
         calcHrEmaValues.remove(mac)
+        calcHrRecentRr.remove(mac)
         // Check non-CALC sensors for hrSensorConnected (CALC sensors are virtual)
         state.hrSensorConnected = state.connectedHrSensors.keys.any { !it.startsWith("CALC:") }
         when {
@@ -2784,25 +2791,47 @@ class HUDService : Service(),
             setDfaSensor(mac)
         }
 
-        // 4. Compute calculated HR from RR intervals
+        // 4. Compute calculated HR from RR intervals (with artifact filtering)
         if (state.calcHrEnabled && rrIntervalsMs.isNotEmpty()) {
             val calcMac = "CALC:$mac"
-            val meanRr = rrIntervalsMs.average()
-            val rawBpm = 60000.0 / meanRr
-            val alpha = state.calcHrEmaAlpha
-            val prev = calcHrEmaValues[mac]
-            val smoothedBpm = if (prev == null) rawBpm else alpha * rawBpm + (1 - alpha) * prev
-            calcHrEmaValues[mac] = smoothedBpm
-            val realName = state.connectedHrSensors[mac]?.first ?: deviceName
-            state.connectedHrSensors[calcMac] = Pair("f:$realName", smoothedBpm.toInt())
+            val thresholdFraction = state.calcHrArtifactThreshold / 100.0
+            val recentRr = calcHrRecentRr.getOrPut(mac) { ArrayDeque() }
 
-            // If CALC sensor is primary, update display + engine
-            if (calcMac == state.activePrimaryHrMac) {
-                state.currentHeartRateBpm = smoothedBpm
-                hudDisplayManager.updateHeartRate(smoothedBpm)
-                workoutEngineManager.onHeartRateUpdate(smoothedBpm)
-            } else if (state.activePrimaryHrMac == SettingsManager.HR_PRIMARY_AVERAGE) {
-                // AVERAGE recomputed on next onHeartRateUpdate(); just update popup
+            // Filter RR intervals: median-based artifact rejection
+            val cleanIntervals = mutableListOf<Double>()
+            for (rrMs in rrIntervalsMs) {
+                if (rrMs < 200.0 || rrMs > 2000.0) continue
+                var isArtifact = false
+                if (thresholdFraction > 0 && recentRr.size >= CALC_HR_MEDIAN_WINDOW) {
+                    val median = medianOfDeque(recentRr)
+                    if (abs(rrMs - median) / median > thresholdFraction) {
+                        isArtifact = true
+                    }
+                }
+                // ALL physiologically valid intervals update the baseline
+                if (recentRr.size >= CALC_HR_MEDIAN_WINDOW) recentRr.removeFirst()
+                recentRr.addLast(rrMs)
+                if (!isArtifact) cleanIntervals.add(rrMs)
+            }
+
+            if (cleanIntervals.isNotEmpty()) {
+                val meanRr = cleanIntervals.average()
+                val rawBpm = 60000.0 / meanRr
+                val alpha = state.calcHrEmaAlpha
+                val prev = calcHrEmaValues[mac]
+                val smoothedBpm = if (prev == null) rawBpm else alpha * rawBpm + (1 - alpha) * prev
+                calcHrEmaValues[mac] = smoothedBpm
+                val realName = state.connectedHrSensors[mac]?.first ?: deviceName
+                state.connectedHrSensors[calcMac] = Pair("f:$realName", smoothedBpm.toInt())
+
+                // If CALC sensor is primary, update display + engine
+                if (calcMac == state.activePrimaryHrMac) {
+                    state.currentHeartRateBpm = smoothedBpm
+                    hudDisplayManager.updateHeartRate(smoothedBpm)
+                    workoutEngineManager.onHeartRateUpdate(smoothedBpm)
+                } else if (state.activePrimaryHrMac == SettingsManager.HR_PRIMARY_AVERAGE) {
+                    // AVERAGE recomputed on next onHeartRateUpdate(); just update popup
+                }
             }
             popupManager.updateHrSensorPopupIfVisible()
         }
@@ -2832,6 +2861,12 @@ class HUDService : Service(),
             .filter { !it.key.startsWith("CALC:") }
             .values.map { it.second }.filter { it > 0 }
         return if (nonZero.isEmpty()) 0.0 else nonZero.average()
+    }
+
+    private fun medianOfDeque(values: ArrayDeque<Double>): Double {
+        val sorted = values.toDoubleArray().also { it.sort() }
+        val mid = sorted.size / 2
+        return if (sorted.size % 2 == 0) (sorted[mid - 1] + sorted[mid]) / 2.0 else sorted[mid]
     }
 
     private fun activeHrSubtitleLabel(): String = when (state.activePrimaryHrMac) {
