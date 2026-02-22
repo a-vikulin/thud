@@ -35,7 +35,7 @@ blown away by Claude's capabilities!
 - Current pace and speed
 - Heart rate with zone coloring (supports multiple simultaneous HR sensors)
 - Calculated HR from RR intervals — for RR-capable HR sensors optionally computes heart rate directly from raw RR data (`60000/mean_RR`) as an independent, potentially more responsive alternative to the sensor's native BPM. Appears as a separate selectable sensor with EMA smoothing (configurable)
-- Real-time DFA alpha1 from RR intervals — tracks aerobic (>0.75) and anaerobic (<0.5) thresholds with zone-colored HUD box. Supports per-sensor DFA computation when multiple RR-capable HR sensors are connected
+- Real-time DFA alpha1 from RR intervals — tracks aerobic (>0.75) and anaerobic (<0.5) thresholds with zone-colored HUD box. Supports per-sensor DFA computation when multiple RR-capable HR sensors are connected. **Note:** Belching produces irregular chest wall movements that severely distort RR intervals, making DFA alpha1 readings meaningless for the duration of the analysis window. After a belch, wait for the configured window period (default 2 minutes) for the corrupted data to flush out before trusting the readings again
 - Running power with zone coloring (with Stryd)
 - Distance and elapsed time
 - Elevation gain

@@ -47,6 +47,7 @@ class WorkoutChart @JvmOverloads constructor(
 
         // Initial scale ranges (will expand as needed)
         private const val SPEED_MIN_KPH = 0.0
+        private const val SPEED_SCALE_FLOOR_KPH = 2.0  // Ignore belt ramp-up/down below this for auto-zoom
         private const val SPEED_INITIAL_MAX_KPH = 6.0
         private const val SPEED_EXPAND_STEP_KPH = 1.0
 
@@ -733,9 +734,10 @@ class WorkoutChart @JvmOverloads constructor(
         val segments = plannedSegments.filter(segmentFilter)
 
         // Speed scale: filtered workout structure + recent data
+        // Skip belt ramp-up/down speeds (below floor) to prevent scale compression
         val workoutMinSpeed = segments.minOfOrNull { minOf(it.paceKph, it.paceEndKph ?: it.paceKph) } ?: SPEED_INITIAL_MAX_KPH
         val workoutMaxSpeed = segments.maxOfOrNull { maxOf(it.paceKph, it.paceEndKph ?: it.paceKph) } ?: SPEED_INITIAL_MAX_KPH
-        val recentMinSpeed = recentData.minOfOrNull { it.speedKph } ?: workoutMinSpeed
+        val recentMinSpeed = recentData.filter { it.speedKph >= SPEED_SCALE_FLOOR_KPH }.minOfOrNull { it.speedKph } ?: workoutMinSpeed
         val recentMaxSpeed = recentData.maxOfOrNull { it.speedKph } ?: workoutMaxSpeed
 
         targetSpeedMinKph = floor((minOf(workoutMinSpeed, recentMinSpeed) - 1.0) / 2.0) * 2.0
@@ -824,7 +826,8 @@ class WorkoutChart @JvmOverloads constructor(
         if (dataPoints.isEmpty()) return
 
         // Speed: all data for this run + workout structure (so planned segments aren't clipped)
-        val dataMinSpeed = dataPoints.minOf { it.speedKph }
+        // Skip belt ramp-up/down speeds (below floor) to prevent scale compression
+        val dataMinSpeed = dataPoints.filter { it.speedKph >= SPEED_SCALE_FLOOR_KPH }.minOfOrNull { it.speedKph } ?: SPEED_INITIAL_MAX_KPH
         val dataMaxSpeed = dataPoints.maxOf { it.speedKph }
         val workoutMinSpeed = plannedSegments.minOfOrNull { minOf(it.paceKph, it.paceEndKph ?: it.paceKph) } ?: dataMinSpeed
         val workoutMaxSpeed = plannedSegments.maxOfOrNull { maxOf(it.paceKph, it.paceEndKph ?: it.paceKph) } ?: dataMaxSpeed
