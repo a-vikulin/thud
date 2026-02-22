@@ -215,6 +215,12 @@ class HUDService : Service(),
     // Per-sensor DFA alpha1 calculators (MAC → calculator)
     private val dfaCalculators = ConcurrentHashMap<String, DfaAlpha1Calculator>()
 
+    // Snapshot of DFA config to detect changes on settings save
+    private var lastDfaWindowSec = DfaAlpha1Calculator.DEFAULT_WINDOW_DURATION_SEC
+    private var lastDfaArtifactThreshold = DfaAlpha1Calculator.DEFAULT_ARTIFACT_THRESHOLD_PERCENT
+    private var lastDfaMedianWindow = DfaAlpha1Calculator.DEFAULT_MEDIAN_WINDOW_SIZE
+    private var lastDfaEmaAlpha = DfaAlpha1Calculator.DEFAULT_EMA_ALPHA.toDouble()
+
     // Per-sensor EMA state for calculated HR (real MAC → smoothed BPM)
     private val calcHrEmaValues = ConcurrentHashMap<String, Double>()
 
@@ -307,6 +313,7 @@ class HUDService : Service(),
         settingsManager = SettingsManager(this, windowManager, prefs, state)
         settingsManager.listener = this
         settingsManager.loadSettings()
+        snapshotDfaConfig()
 
         // Initialize run persistence manager
         runPersistenceManager = RunPersistenceManager(this)
@@ -574,10 +581,8 @@ class HUDService : Service(),
         // Clear and start fresh
         workoutRecorder.clearData()
         chartManager.clearData()
-        // Reset DFA calculators for new run (keep active sensor selection)
-        dfaCalculators.values.forEach { it.reset() }
-        state.dfaResults.clear()
-        hudDisplayManager.updateDfaAlpha1(0.0, isValid = false)
+        // DFA calculators are NOT reset here — preserve pre-workout buffer so the
+        // resting DFA value carries into the run without a 2-minute gap
         workoutRecorder.startRecording()
         workoutStartTimeMs = System.currentTimeMillis()
         workoutDataExported = false  // Reset export flag for new session
@@ -632,11 +637,7 @@ class HUDService : Service(),
         hudDisplayManager.updateDistance(0.0)  // Reset distance display
         workoutDataExported = false
         lastWorkoutName = null
-        // Clear DFA calculators and results
-        dfaCalculators.values.forEach { it.reset() }
-        dfaCalculators.clear()
-        state.dfaResults.clear()
-        hudDisplayManager.updateDfaAlpha1(0.0, isValid = false)
+        // DFA calculators are NOT reset here — they are per-sensor, independent of run lifecycle
         // Clear persisted data and stop persistence
         runPersistenceManager.clearPersistedRun()
         stopPersistence()
@@ -2293,11 +2294,17 @@ class HUDService : Service(),
         chartManager.updateZoomTimeframe(state.chartZoomTimeframeMinutes)
         updateRecorderUserProfile()
 
-        // Reset DFA calculators to pick up new config (they are recreated on next RR data)
-        dfaCalculators.values.forEach { it.reset() }
-        dfaCalculators.clear()
-        state.dfaResults.clear()
-        hudDisplayManager.updateDfaAlpha1(0.0, isValid = false)
+        // Only reset DFA calculators if DFA-specific config actually changed
+        if (state.dfaWindowDurationSec != lastDfaWindowSec ||
+            state.dfaArtifactThreshold != lastDfaArtifactThreshold ||
+            state.dfaMedianWindow != lastDfaMedianWindow ||
+            state.dfaEmaAlpha != lastDfaEmaAlpha) {
+            dfaCalculators.values.forEach { it.reset() }
+            dfaCalculators.clear()
+            state.dfaResults.clear()
+            hudDisplayManager.updateDfaAlpha1(0.0, isValid = false)
+            snapshotDfaConfig()
+        }
 
         // Clean up CALC sensors if feature was disabled
         if (!state.calcHrEnabled) {
@@ -2876,6 +2883,13 @@ class HUDService : Service(),
     }
 
     private fun getShortName(name: String?): String = name?.take(12) ?: ""
+
+    private fun snapshotDfaConfig() {
+        lastDfaWindowSec = state.dfaWindowDurationSec
+        lastDfaArtifactThreshold = state.dfaArtifactThreshold
+        lastDfaMedianWindow = state.dfaMedianWindow
+        lastDfaEmaAlpha = state.dfaEmaAlpha
+    }
 
     // ==================== DFA Sensor Management ====================
 
