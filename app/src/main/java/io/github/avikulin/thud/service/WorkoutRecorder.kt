@@ -402,6 +402,65 @@ class WorkoutRecorder {
     fun getHrSensors(): List<Pair<String, String>> = hrSensors.toList()
 
     /**
+     * Retroactively rebind all recorded data points to use a different HR sensor's readings
+     * as the native heartRateBpm. This makes the HR sensor selector a preview/export tool:
+     * switching sensors updates the chart, and the last selection determines the FIT native HR.
+     *
+     * For data points where the selected sensor wasn't connected, keeps existing heartRateBpm.
+     *
+     * @param primaryMac MAC of the new primary sensor, or HR_PRIMARY_AVERAGE for averaged
+     * @return number of data points that were rebound
+     */
+    fun rebindPrimaryHr(primaryMac: String): Int {
+        val isAverage = (primaryMac == SettingsManager.HR_PRIMARY_AVERAGE)
+        val sensorIndex = if (!isAverage) hrSensorMacToIndex[primaryMac] else null
+
+        if (!isAverage && sensorIndex == null) {
+            Log.w(TAG, "rebindPrimaryHr: sensor $primaryMac not in registry, skipping")
+            return 0
+        }
+
+        // Pre-compute CALC sensor indices for AVERAGE mode (exclude synthetic sensors)
+        val calcIndices: Set<Int> = if (isAverage) {
+            hrSensors.withIndex()
+                .filter { (_, pair) -> pair.first.startsWith("CALC:") }
+                .map { (i, _) -> i }
+                .toSet()
+        } else emptySet()
+
+        var reboundCount = 0
+        synchronized(workoutData) {
+            for (i in workoutData.indices) {
+                val dp = workoutData[i]
+                if (dp.allHrSensors.isEmpty()) continue
+
+                if (isAverage) {
+                    val validBpms = dp.allHrSensors
+                        .filter { (idx, bpm) -> idx !in calcIndices && bpm > 0 }
+                        .values
+                    if (validBpms.isEmpty()) continue
+                    workoutData[i] = dp.copy(
+                        heartRateBpm = validBpms.average(),
+                        primaryHrIndex = -1
+                    )
+                    reboundCount++
+                } else {
+                    val bpm = dp.allHrSensors[sensorIndex!!]
+                    if (bpm != null && bpm > 0) {
+                        workoutData[i] = dp.copy(
+                            heartRateBpm = bpm.toDouble(),
+                            primaryHrIndex = sensorIndex
+                        )
+                        reboundCount++
+                    }
+                }
+            }
+        }
+        Log.d(TAG, "rebindPrimaryHr: mac=$primaryMac, rebound=$reboundCount/${workoutData.size}")
+        return reboundCount
+    }
+
+    /**
      * Record RR intervals from a specific sensor for FIT HRV export.
      */
     fun recordRrIntervals(mac: String, intervalsMs: List<Double>) {

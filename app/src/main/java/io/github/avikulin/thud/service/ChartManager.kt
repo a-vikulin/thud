@@ -428,6 +428,15 @@ class ChartManager(
     }
 
     /**
+     * Clear chart paths and feed fresh data, forcing a full rebuild.
+     * Use after data point values change retroactively (e.g., HR sensor rebinding).
+     */
+    fun forceFullUpdate() {
+        chartView?.clearData()
+        updateChart()
+    }
+
+    /**
      * Update chart with new HR zone settings.
      */
     fun updateHRZones() {

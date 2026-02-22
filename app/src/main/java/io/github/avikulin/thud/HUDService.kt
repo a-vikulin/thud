@@ -2819,6 +2819,12 @@ class HUDService : Service(),
         state.currentHeartRateBpm = bpm
         hudDisplayManager.updateHeartRate(bpm)
         hudDisplayManager.updateHrSubtitle(activeHrSubtitleLabel())
+
+        // Retroactively rebind all historical data points to the new sensor's HR readings
+        workoutRecorder.rebindPrimaryHr(value)
+        chartManager.forceFullUpdate()
+        // Screenshot after chart scale animation settles (~500ms exponential decay at 60fps)
+        mainHandler.postDelayed({ screenshotManager.takeScreenshotIfEnabled("hr_sensor_changed") }, 600)
     }
 
     private fun computeAverageHrBpm(): Double {
