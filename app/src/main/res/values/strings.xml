@@ -14,9 +14,13 @@
     <string name="settings_tab_auto_adjust">Auto-Adjust</string>
     <string name="settings_tab_fit_export">FIT Export</string>
     <string name="settings_tab_ftms">FTMS</string>
-    <string name="settings_tab_dfa_alpha1">DFA α1</string>
+    <string name="settings_tab_dfa_alpha1">HR</string>
     <string name="settings_tab_chart">Chart</string>
-    <!-- DFA Alpha1 Tab -->
+    <!-- HR / DFA Alpha1 Tab -->
+    <string name="settings_hr_sensors_subtitle">HR-sensors</string>
+    <string name="settings_calc_hr_enabled">Calculate HR for RR-capable HR sensors</string>
+    <string name="settings_calc_hr_ema_alpha">Use EMA for smoothing:</string>
+    <string name="settings_dfa_alpha1_subtitle">DFA-alpha1</string>
     <string name="settings_dfa_window_duration">Window Duration</string>
     <string name="settings_dfa_artifact_threshold">Artifact Threshold</string>
     <string name="settings_dfa_median_window">Median Window</string>

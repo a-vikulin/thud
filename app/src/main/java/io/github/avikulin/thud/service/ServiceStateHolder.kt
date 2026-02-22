@@ -163,6 +163,10 @@ class ServiceStateHolder {
     @Volatile var dfaMedianWindow: Int = 11               // median filter window (beats)
     @Volatile var dfaEmaAlpha: Double = 0.2               // EMA smoothing factor
 
+    // ==================== Calculated HR Settings ====================
+    @Volatile var calcHrEnabled: Boolean = false
+    @Volatile var calcHrEmaAlpha: Double = 0.1
+
     // ==================== Chart Settings ====================
     @Volatile var chartZoomTimeframeMinutes = 3  // Default 3 minutes for TIMEFRAME zoom mode
 

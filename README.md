@@ -34,6 +34,7 @@ blown away by Claude's capabilities!
 - Fully replaces built-in iFit app (Workout Player) for treadmill control 
 - Current pace and speed
 - Heart rate with zone coloring (supports multiple simultaneous HR sensors)
+- Calculated HR from RR intervals — for RR-capable HR sensors optionally computes heart rate directly from raw RR data (`60000/mean_RR`) as an independent, potentially more responsive alternative to the sensor's native BPM. Appears as a separate selectable sensor with EMA smoothing (configurable)
 - Real-time DFA alpha1 from RR intervals — tracks aerobic (>0.75) and anaerobic (<0.5) thresholds with zone-colored HUD box. Supports per-sensor DFA computation when multiple RR-capable HR sensors are connected
 - Running power with zone coloring (with Stryd)
 - Distance and elapsed time

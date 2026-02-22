@@ -131,6 +131,11 @@ class SettingsManager(
         // DFA alpha1: primary sensor MAC for HUD display + Garmin upload
         const val PREF_DFA_SENSOR_MAC = "dfa_sensor_mac"
 
+        // Calculated HR settings
+        const val PREF_CALC_HR_ENABLED = "calc_hr_enabled"
+        const val PREF_CALC_HR_EMA_ALPHA = "calc_hr_ema_alpha"
+        const val DEFAULT_CALC_HR_EMA_ALPHA = 0.1
+
         // DFA alpha1 algorithm configuration
         const val PREF_DFA_WINDOW_DURATION_SEC = "dfa_window_duration_sec"
         const val PREF_DFA_ARTIFACT_THRESHOLD = "dfa_artifact_threshold"
@@ -303,6 +308,10 @@ class SettingsManager(
     private var editFitDeviceSerial: EditText? = null
     private var editFitSoftwareVersion: EditText? = null
 
+    // Calculated HR fields
+    private var checkCalcHrEnabled: CheckBox? = null
+    private var spinnerCalcHrEmaAlpha: TouchSpinner? = null
+
     // DFA Alpha1 tab fields
     private var dfaAlpha1Content: View? = null
     private var spinnerDfaWindowDuration: TouchSpinner? = null
@@ -410,6 +419,10 @@ class SettingsManager(
 
         // DFA alpha1 sensor selection
         state.savedDfaSensorMac = prefs.getString(PREF_DFA_SENSOR_MAC, "") ?: ""
+
+        // Calculated HR settings
+        state.calcHrEnabled = prefs.getBoolean(PREF_CALC_HR_ENABLED, false)
+        state.calcHrEmaAlpha = prefs.getFloat(PREF_CALC_HR_EMA_ALPHA, DEFAULT_CALC_HR_EMA_ALPHA.toFloat()).toDouble()
 
         // DFA alpha1 algorithm configuration
         state.dfaWindowDurationSec = prefs.getInt(PREF_DFA_WINDOW_DURATION_SEC, DEFAULT_DFA_WINDOW_DURATION_SEC)
@@ -1448,6 +1461,80 @@ class SettingsManager(
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
 
+            // ===== HR-sensors Section =====
+            val hrSensorsHeader = TextView(service).apply {
+                text = service.getString(R.string.settings_hr_sensors_subtitle)
+                setTextColor(textColor)
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, service.resources.getDimension(R.dimen.dialog_section_title_size))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = rowSpacing
+                }
+            }
+            addView(hrSensorsHeader)
+
+            // Calc HR enabled checkbox
+            checkCalcHrEnabled = CheckBox(service).apply {
+                text = service.getString(R.string.settings_calc_hr_enabled)
+                setTextColor(textColor)
+                isChecked = state.calcHrEnabled
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = rowSpacing / 2
+                }
+            }
+            addView(checkCalcHrEnabled)
+
+            // EMA alpha spinner for calc HR (0.01-1.0, step 0.01)
+            spinnerCalcHrEmaAlpha = TouchSpinner(service).apply {
+                minValue = 0.01
+                maxValue = 1.0
+                step = 0.01
+                format = TouchSpinner.Format.DECIMAL_2
+                suffix = ""
+                value = state.calcHrEmaAlpha
+                isEnabled = state.calcHrEnabled
+                layoutParams = LinearLayout.LayoutParams(spinnerWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
+            }
+            addView(createSettingsRow(
+                service.getString(R.string.settings_calc_hr_ema_alpha),
+                spinnerCalcHrEmaAlpha!!
+            ))
+
+            // Toggle spinner enabled state with checkbox
+            checkCalcHrEnabled!!.setOnCheckedChangeListener { _, isChecked ->
+                spinnerCalcHrEmaAlpha?.isEnabled = isChecked
+            }
+
+            // ===== Divider =====
+            val divider = View(service).apply {
+                setBackgroundColor(ContextCompat.getColor(service, R.color.editor_divider))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    1
+                ).apply {
+                    topMargin = rowSpacing
+                    bottomMargin = rowSpacing / 2
+                }
+            }
+            addView(divider)
+
+            // ===== DFA-alpha1 Section =====
+            val dfaHeader = TextView(service).apply {
+                text = service.getString(R.string.settings_dfa_alpha1_subtitle)
+                setTextColor(textColor)
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, service.resources.getDimension(R.dimen.dialog_section_title_size))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+            addView(dfaHeader)
+
             // Window Duration spinner (30-300 sec, step 10)
             spinnerDfaWindowDuration = TouchSpinner(service).apply {
                 minValue = 30.0
@@ -1837,6 +1924,10 @@ class SettingsManager(
         editFitDeviceSerial?.text?.toString()?.toLongOrNull()?.let { state.fitDeviceSerial = it }
         editFitSoftwareVersion?.text?.toString()?.toIntOrNull()?.let { state.fitSoftwareVersion = it }
 
+        // Save calculated HR settings
+        state.calcHrEnabled = checkCalcHrEnabled?.isChecked ?: state.calcHrEnabled
+        spinnerCalcHrEmaAlpha?.let { state.calcHrEmaAlpha = it.value }
+
         // Save DFA alpha1 settings from spinners
         spinnerDfaWindowDuration?.let { state.dfaWindowDurationSec = it.value.toInt() }
         spinnerDfaArtifactThreshold?.let { state.dfaArtifactThreshold = it.value }
@@ -1911,6 +2002,10 @@ class SettingsManager(
 
             // Garmin Connect upload
             putBoolean(PREF_GARMIN_AUTO_UPLOAD, state.garminAutoUploadEnabled)
+
+            // Calculated HR settings
+            putBoolean(PREF_CALC_HR_ENABLED, state.calcHrEnabled)
+            putFloat(PREF_CALC_HR_EMA_ALPHA, state.calcHrEmaAlpha.toFloat())
 
             // DFA alpha1 settings
             putInt(PREF_DFA_WINDOW_DURATION_SEC, state.dfaWindowDurationSec)
@@ -2016,6 +2111,10 @@ class SettingsManager(
         editFitSoftwareVersion = null
         checkGarminAutoUpload = null
         btnGarminLogin = null
+
+        // Clean up Calculated HR controls
+        checkCalcHrEnabled = null
+        spinnerCalcHrEmaAlpha = null
 
         // Clean up DFA Alpha1 tab controls
         spinnerDfaWindowDuration = null

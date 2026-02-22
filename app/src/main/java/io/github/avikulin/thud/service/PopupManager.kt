@@ -472,8 +472,10 @@ class PopupManager(
             setPadding(itemMargin, itemMargin, itemMargin, itemMargin)
         }
 
-        // Average row
-        val nonZeroBpms = state.connectedHrSensors.values.map { it.second }.filter { it > 0 }
+        // Average row (excludes CALC sensors to prevent double-counting)
+        val nonZeroBpms = state.connectedHrSensors
+            .filter { !it.key.startsWith("CALC:") }
+            .values.map { it.second }.filter { it > 0 }
         val avgBpm = if (nonZeroBpms.isEmpty()) 0 else nonZeroBpms.average().toInt()
         val isAvgActive = state.activePrimaryHrMac == SettingsManager.HR_PRIMARY_AVERAGE
         container.addView(buildHrSensorItem(
@@ -489,8 +491,9 @@ class PopupManager(
             onClick = { onPrimaryHrSelected(SettingsManager.HR_PRIMARY_AVERAGE) }
         ))
 
-        // Per-sensor rows
+        // Per-sensor rows: iterate real MACs, then immediately add CALC entry if it exists
         for ((mac, pair) in state.connectedHrSensors) {
+            if (mac.startsWith("CALC:")) continue  // handled below after its real sensor
             val (name, bpm) = pair
             val isActive = mac == state.activePrimaryHrMac
             container.addView(buildHrSensorItem(
@@ -505,6 +508,25 @@ class PopupManager(
                 unitTextSize = unitTextSize,
                 onClick = { onPrimaryHrSelected(mac) }
             ))
+            // Add CALC entry grouped right after its real sensor
+            val calcMac = "CALC:$mac"
+            val calcPair = state.connectedHrSensors[calcMac]
+            if (calcPair != null) {
+                val (calcName, calcBpm) = calcPair
+                val isCalcActive = calcMac == state.activePrimaryHrMac
+                container.addView(buildHrSensorItem(
+                    key = calcMac,
+                    label = calcName.uppercase(),
+                    bpm = calcBpm,
+                    isActive = isCalcActive,
+                    boxPadding = boxPadding,
+                    itemMargin = itemMargin,
+                    labelTextSize = labelTextSize,
+                    valueTextSize = valueTextSize,
+                    unitTextSize = unitTextSize,
+                    onClick = { onPrimaryHrSelected(calcMac) }
+                ))
+            }
         }
 
         hrSensorPopupView = container
@@ -589,8 +611,10 @@ class PopupManager(
     fun updateHrSensorPopupIfVisible() {
         if (hrSensorPopupView == null) return
         mainHandler.post {
-            // Update average
-            val nonZeroBpms = state.connectedHrSensors.values.map { it.second }.filter { it > 0 }
+            // Update average (excludes CALC sensors to prevent double-counting)
+            val nonZeroBpms = state.connectedHrSensors
+                .filter { !it.key.startsWith("CALC:") }
+                .values.map { it.second }.filter { it > 0 }
             val avgBpm = if (nonZeroBpms.isEmpty()) 0 else nonZeroBpms.average().toInt()
             hrSensorValueViews[SettingsManager.HR_PRIMARY_AVERAGE]?.text = if (avgBpm > 0) "$avgBpm" else "--"
             updateItemZoneColor(SettingsManager.HR_PRIMARY_AVERAGE, avgBpm)

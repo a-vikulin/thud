@@ -73,6 +73,8 @@
 | DFA algorithm config | `ServiceStateHolder` (SharedPrefs) | `HUDService` → `DfaAlpha1Calculator` constructor (reset on settings change) |
 | Per-sensor RR for FIT | `WorkoutRecorder.rrIntervalsBySensor` | `RunSnapshot` → `FitFileExporter` (one HrvMesg stream per file) |
 | Pace progression | `WorkoutStep.paceEndTargetKph` | `ExecutionStep` → Engine (ticking) → `SpeedAdjusted` event → Treadmill |
+| Calculated HR config | `ServiceStateHolder` (SharedPrefs) | `HUDService.onRrIntervalsReceived()` → synthetic `CALC:<mac>` sensor |
+| Calculated HR data | `HUDService.calcHrEmaValues` (EMA state) | `state.connectedHrSensors["CALC:<mac>"]` → popup, recording, FIT export |
 
 ### ⚠️ SPEED - ABSOLUTE RULES ⚠️
 
@@ -174,6 +176,19 @@ Algorithm: cumulative sum integration → box-size detrending (n=4..16) → log-
 Thresholds: >0.75 aerobic, 0.5–0.75 transition, <0.5 anaerobic.
 **Artifact filter:** Only clean intervals update the median baseline (rejected artifacts do NOT drift the baseline). Windowed artifact % tracks accept/reject over the same time window as the analysis buffer.
 
+### ⚠️ Calculated HR from RR Intervals ⚠️
+When enabled (`state.calcHrEnabled`), `HUDService.onRrIntervalsReceived()` computes HR directly from RR intervals (`60000/mean_RR`) and injects it as a **synthetic sensor** with key `"CALC:<original_mac>"` into `state.connectedHrSensors`. EMA smoothing (`state.calcHrEmaAlpha`, 0.01–1.0, default 0.1) controls responsiveness.
+
+**Synthetic MAC convention:** `CALC:<mac>` keys reuse the entire multi-sensor pipeline (WorkoutRecorder, FIT export, popup) without changes. UUID v3 from `"tHUD-HR:CALC:<mac>"` produces valid FIT developer field IDs automatically.
+
+**AVERAGE excludes CALC:** `computeAverageHrBpm()` and PopupManager average rows filter out `CALC:` entries to prevent double-counting.
+
+**`hrSensorConnected` correctness:** Checked against non-CALC entries only (CALC sensors are virtual, not real BLE connections).
+
+**Cleanup:** CALC entries removed on real sensor disconnect (`onHrSensorDisconnected`), on feature disable (`onSettingsSaved`), and EMA state (`calcHrEmaValues`) cleared in both cases.
+
+**Settings:** "HR" tab (formerly "DFA α1") has two sections — "HR-sensors" (checkbox + EMA spinner) and "DFA-alpha1" (existing 4 spinners), separated by a divider.
+
 ### FileExportHelper (`util/FileExportHelper.kt`)
 Exports to Downloads/tHUD via MediaStore. `saveToDownloads(context, sourceFile, filename, mimeType, subfolder)`, `getTempFile(context, filename)`. Subfolders: `ROOT` (tHUD/), `SCREENSHOTS` (tHUD/screenshots/).
 
@@ -181,7 +196,7 @@ Exports to Downloads/tHUD via MediaStore. `saveToDownloads(context, sourceFile, 
 Unified BT sensor storage. `getAll/getByType/save/remove/isSaved/getSavedMacs`. Types: `HR_SENSOR`, `FOOT_POD`.
 
 ### SettingsManager (`service/SettingsManager.kt`)
-All SharedPreferences keys as constants. Key groups: `pace_coefficient` (calibration), `hr_zone*_max` (HR zones), `threshold_pace_kph`, `default_incline`, treadmill min/max ranges (from GlassOS), `fit_*` (FIT Export device ID), `ftms_*` (FTMS server settings), `garmin_auto_upload` (Garmin Connect), `remote_bindings` (BLE remote control config JSON), `dfa_window_duration_sec`/`dfa_artifact_threshold`/`dfa_median_window`/`dfa_ema_alpha` (DFA alpha1 algorithm config), `dfa_sensor_mac` (DFA alpha1 primary sensor), `chart_zoom_timeframe_minutes` (Chart zoom window). Settings dialog has 7 tabs: Dynamics, Zones, Auto-Adjust, FIT Export, FTMS, DFA α1, Chart.
+All SharedPreferences keys as constants. Key groups: `pace_coefficient` (calibration), `hr_zone*_max` (HR zones), `threshold_pace_kph`, `default_incline`, treadmill min/max ranges (from GlassOS), `fit_*` (FIT Export device ID), `ftms_*` (FTMS server settings), `garmin_auto_upload` (Garmin Connect), `remote_bindings` (BLE remote control config JSON), `calc_hr_enabled`/`calc_hr_ema_alpha` (Calculated HR from RR intervals), `dfa_window_duration_sec`/`dfa_artifact_threshold`/`dfa_median_window`/`dfa_ema_alpha` (DFA alpha1 algorithm config), `dfa_sensor_mac` (DFA alpha1 primary sensor), `chart_zoom_timeframe_minutes` (Chart zoom window). Settings dialog has 7 tabs: Dynamics, Zones, Auto-Adjust, FIT Export, FTMS, HR (calc HR + DFA α1), Chart.
 
 ### ⚠️ HR/Power Targets: Percentage-Based ⚠️
 All HR/Power targets stored as **% of threshold** (LTHR/FTP) so workouts survive threshold changes.

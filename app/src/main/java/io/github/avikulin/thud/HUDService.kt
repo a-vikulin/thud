@@ -214,6 +214,9 @@ class HUDService : Service(),
     // Per-sensor DFA alpha1 calculators (MAC → calculator)
     private val dfaCalculators = ConcurrentHashMap<String, DfaAlpha1Calculator>()
 
+    // Per-sensor EMA state for calculated HR (real MAC → smoothed BPM)
+    private val calcHrEmaValues = ConcurrentHashMap<String, Double>()
+
     private lateinit var garminUploader: GarminConnectUploader
     private var connectivityCallback: ConnectivityManager.NetworkCallback? = null
     private var workoutStartTimeMs: Long = 0
@@ -2291,6 +2294,15 @@ class HUDService : Service(),
         state.dfaResults.clear()
         hudDisplayManager.updateDfaAlpha1(0.0, isValid = false)
 
+        // Clean up CALC sensors if feature was disabled
+        if (!state.calcHrEnabled) {
+            state.connectedHrSensors.keys.filter { it.startsWith("CALC:") }.forEach {
+                state.connectedHrSensors.remove(it)
+            }
+            calcHrEmaValues.clear()
+            popupManager.updateHrSensorPopupIfVisible()
+        }
+
         // Restart FTMS servers to apply new settings (device names, control permissions)
         restartFtmsServers()
     }
@@ -2672,13 +2684,27 @@ class HUDService : Service(),
     override fun onHrSensorDisconnected(mac: String, deviceName: String) {
         Log.d(TAG, "HR sensor disconnected: $deviceName ($mac)")
         state.connectedHrSensors.remove(mac)
-        state.hrSensorConnected = state.connectedHrSensors.isNotEmpty()
+        // Also remove the synthetic CALC sensor for this device
+        state.connectedHrSensors.remove("CALC:$mac")
+        calcHrEmaValues.remove(mac)
+        // Check non-CALC sensors for hrSensorConnected (CALC sensors are virtual)
+        state.hrSensorConnected = state.connectedHrSensors.keys.any { !it.startsWith("CALC:") }
         when {
             state.activePrimaryHrMac == SettingsManager.HR_PRIMARY_AVERAGE -> {
                 state.currentHeartRateBpm = computeAverageHrBpm()
                 hudDisplayManager.updateHeartRate(state.currentHeartRateBpm)
             }
             mac == state.activePrimaryHrMac -> {
+                val prefs = getSharedPreferences(SettingsManager.PREFS_NAME, MODE_PRIVATE)
+                val nextMac = SavedBluetoothDevices.getByType(prefs, SensorDeviceType.HR_SENSOR)
+                    .map { it.mac }
+                    .firstOrNull { state.connectedHrSensors.containsKey(it) }
+                state.activePrimaryHrMac = nextMac ?: ""
+                state.currentHeartRateBpm = nextMac?.let { state.connectedHrSensors[it]?.second?.toDouble() } ?: 0.0
+                hudDisplayManager.updateHeartRate(state.currentHeartRateBpm)
+            }
+            "CALC:$mac" == state.activePrimaryHrMac -> {
+                // CALC sensor was primary — fall back to the next real sensor
                 val prefs = getSharedPreferences(SettingsManager.PREFS_NAME, MODE_PRIVATE)
                 val nextMac = SavedBluetoothDevices.getByType(prefs, SensorDeviceType.HR_SENSOR)
                     .map { it.mac }
@@ -2757,6 +2783,29 @@ class HUDService : Service(),
             // Saved sensor just started sending RR data — switch to it
             setDfaSensor(mac)
         }
+
+        // 4. Compute calculated HR from RR intervals
+        if (state.calcHrEnabled && rrIntervalsMs.isNotEmpty()) {
+            val calcMac = "CALC:$mac"
+            val meanRr = rrIntervalsMs.average()
+            val rawBpm = 60000.0 / meanRr
+            val alpha = state.calcHrEmaAlpha
+            val prev = calcHrEmaValues[mac]
+            val smoothedBpm = if (prev == null) rawBpm else alpha * rawBpm + (1 - alpha) * prev
+            calcHrEmaValues[mac] = smoothedBpm
+            val realName = state.connectedHrSensors[mac]?.first ?: deviceName
+            state.connectedHrSensors[calcMac] = Pair("f:$realName", smoothedBpm.toInt())
+
+            // If CALC sensor is primary, update display + engine
+            if (calcMac == state.activePrimaryHrMac) {
+                state.currentHeartRateBpm = smoothedBpm
+                hudDisplayManager.updateHeartRate(smoothedBpm)
+                workoutEngineManager.onHeartRateUpdate(smoothedBpm)
+            } else if (state.activePrimaryHrMac == SettingsManager.HR_PRIMARY_AVERAGE) {
+                // AVERAGE recomputed on next onHeartRateUpdate(); just update popup
+            }
+            popupManager.updateHrSensorPopupIfVisible()
+        }
     }
 
     /** Set the active primary HR sensor (MAC or HR_PRIMARY_AVERAGE). Persists the choice. */
@@ -2773,7 +2822,9 @@ class HUDService : Service(),
     }
 
     private fun computeAverageHrBpm(): Double {
-        val nonZero = state.connectedHrSensors.values.map { it.second }.filter { it > 0 }
+        val nonZero = state.connectedHrSensors
+            .filter { !it.key.startsWith("CALC:") }
+            .values.map { it.second }.filter { it > 0 }
         return if (nonZero.isEmpty()) 0.0 else nonZero.average()
     }
 
