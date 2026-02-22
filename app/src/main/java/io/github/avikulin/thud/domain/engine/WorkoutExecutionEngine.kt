@@ -489,31 +489,39 @@ class WorkoutExecutionEngine(
         // Don't update when belt is stopped — speed=0 during pause/deceleration isn't a real adjustment
         if (actualSpeedKph <= 0) return
 
-        // Don't calculate coefficient during initial acceleration
-        // Wait until belt has reached close to target speed
-        val baseTarget = getProgressionBaseSpeed(step)
-        val effectiveTargetSpeed = baseTarget * speedAdjustmentCoefficient
-        if (!hasReachedTargetSpeed) {
-            // Check if we've reached 90% of target
-            if (actualSpeedKph >= effectiveTargetSpeed * 0.9) {
-                hasReachedTargetSpeed = true
-                Log.d(TAG, "Belt reached target speed: actual=$actualSpeedKph, target=$effectiveTargetSpeed")
-            } else {
-                return  // Still accelerating, don't update coefficient
+        val isActiveProgression = step.hasProgression && currentProgressionBaseSpeed > 0
+
+        // Skip speed coefficient during active pace progression — the treadmill physically lags
+        // behind progression speed commands, and that lag must not be absorbed into the
+        // coefficient (it would drift down over the ramp and corrupt the next step).
+        // Incline coefficient still tracked since progression is pace-only.
+        if (!isActiveProgression) {
+            // Don't calculate coefficient during initial acceleration
+            // Wait until belt has reached close to target speed
+            val baseTarget = getProgressionBaseSpeed(step)
+            val effectiveTargetSpeed = baseTarget * speedAdjustmentCoefficient
+            if (!hasReachedTargetSpeed) {
+                // Check if we've reached 90% of target
+                if (actualSpeedKph >= effectiveTargetSpeed * 0.9) {
+                    hasReachedTargetSpeed = true
+                    Log.d(TAG, "Belt reached target speed: actual=$actualSpeedKph, target=$effectiveTargetSpeed")
+                } else {
+                    return  // Still accelerating, don't update coefficient
+                }
             }
-        }
 
-        // Calculate new coefficient: actual / base target
-        if (baseTarget > 0) {
-            val oldCoefficient = speedAdjustmentCoefficient
-            speedAdjustmentCoefficient = actualSpeedKph / baseTarget
+            // Calculate new coefficient: actual / base target
+            if (baseTarget > 0) {
+                val oldCoefficient = speedAdjustmentCoefficient
+                speedAdjustmentCoefficient = actualSpeedKph / baseTarget
 
-            // Emit event if coefficient changed significantly (more than 1%)
-            if (kotlin.math.abs(speedAdjustmentCoefficient - oldCoefficient) > 0.01) {
-                val percentChange = ((speedAdjustmentCoefficient - 1.0) * 100)
-                val displayStr = if (percentChange >= 0) "+%.0f%%".format(percentChange) else "%.0f%%".format(percentChange)
-                emitEvent(WorkoutEvent.EffortAdjusted("speed", speedAdjustmentCoefficient, displayStr))
-                Log.d(TAG, "Speed coefficient changed: $oldCoefficient -> $speedAdjustmentCoefficient ($displayStr)")
+                // Emit event if coefficient changed significantly (more than 1%)
+                if (kotlin.math.abs(speedAdjustmentCoefficient - oldCoefficient) > 0.01) {
+                    val percentChange = ((speedAdjustmentCoefficient - 1.0) * 100)
+                    val displayStr = if (percentChange >= 0) "+%.0f%%".format(percentChange) else "%.0f%%".format(percentChange)
+                    emitEvent(WorkoutEvent.EffortAdjusted("speed", speedAdjustmentCoefficient, displayStr))
+                    Log.d(TAG, "Speed coefficient changed: $oldCoefficient -> $speedAdjustmentCoefficient ($displayStr)")
+                }
             }
         }
 
@@ -660,6 +668,7 @@ class WorkoutExecutionEngine(
             if (stepElapsedSeconds >= step.durationSeconds &&
                 step.earlyEndCondition != EarlyEndCondition.OPEN) {
                 completeCurrentStep()
+                return  // Step changed — don't run stale progression tick with old step's data
             }
         }
 
