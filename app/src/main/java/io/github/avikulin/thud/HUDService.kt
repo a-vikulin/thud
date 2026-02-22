@@ -2783,7 +2783,7 @@ class HUDService : Service(),
             popupManager.updateDfaSensorPopupIfVisible()
         } else if (mac == state.activeDfaSensorMac && !state.dfaResults.containsKey(mac)) {
             // RR data arriving but not enough for DFA yet — show waiting state
-            hudDisplayManager.updateDfaWaitingForData()
+            hudDisplayManager.updateDfaWaitingForData(calc.getRemainingSeconds())
         }
 
         // 3. Auto-select: prefer saved sensor, otherwise first RR-capable
@@ -2830,6 +2830,12 @@ class HUDService : Service(),
                 calcHrEmaValues[mac] = smoothedBpm
                 val realName = state.connectedHrSensors[mac]?.first ?: deviceName
                 state.connectedHrSensors[calcMac] = Pair("f:$realName", smoothedBpm.toInt())
+
+                // Restore persisted CALC selection on first appearance
+                if (calcMac == state.savedPrimaryHrMac && state.activePrimaryHrMac != calcMac) {
+                    state.activePrimaryHrMac = calcMac
+                    hudDisplayManager.updateHrSubtitle(activeHrSubtitleLabel())
+                }
 
                 // If CALC sensor is primary, update display + engine
                 if (calcMac == state.activePrimaryHrMac) {
@@ -2926,8 +2932,8 @@ class HUDService : Service(),
     private fun activeDfaSubtitleLabel(): String {
         val mac = state.activeDfaSensorMac
         if (mac.isEmpty()) return ""
-        // Only show subtitle when multiple RR-capable sensors exist
-        if (hrSensorManager.getRrCapableMacs().size < 2) return ""
+        // Show subtitle when at least one RR-capable sensor is connected
+        if (hrSensorManager.getRrCapableMacs().isEmpty()) return ""
         return getShortName(state.connectedHrSensors[mac]?.first)
     }
 

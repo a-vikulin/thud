@@ -163,6 +163,16 @@ class DfaAlpha1Calculator(
     }
 
     /**
+     * Seconds remaining until the analysis window is full.
+     * Returns 0 once buffer has enough data for computation.
+     */
+    @Synchronized
+    fun getRemainingSeconds(): Int {
+        val remainingMs = windowDurationMs - bufferTotalMs
+        return if (remainingMs <= 0) 0 else kotlin.math.ceil(remainingMs / 1000.0).toInt()
+    }
+
+    /**
      * Reset all state. Call when starting a new run or switching sensors.
      */
     @Synchronized

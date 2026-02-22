@@ -712,12 +712,14 @@ class HUDDisplayManager(
     }
 
     /**
-     * Show DFA box in "waiting" state: RR intervals are arriving but not enough data yet.
+     * Show DFA box in "waiting" state with countdown timer.
      * Blue-grey background (HR zone 1 color) distinguishes from dark "no sensor" state.
      */
-    fun updateDfaWaitingForData() {
+    fun updateDfaWaitingForData(remainingSeconds: Int) {
         mainHandler.post {
-            tvDfaValue?.text = "--"
+            val minutes = remainingSeconds / 60
+            val seconds = remainingSeconds % 60
+            tvDfaValue?.text = String.format(Locale.US, "%d:%02d", minutes, seconds)
             dfaBox?.setBackgroundColor(colorDfaWaiting)
         }
     }
