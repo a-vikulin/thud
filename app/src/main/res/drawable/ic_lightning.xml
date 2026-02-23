@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="96.258"
+    android:viewportHeight="96.258">
+    <!-- Lightning bolt icon (lightning-bolt-filled-shape-svgrepo-com.svg) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M75.225,37.515c-0.357,-0.616 -1.017,-0.995 -1.729,-0.995h-21.03L67.177,2.8c0.271,-0.618 0.21,-1.331 -0.16,-1.896S66.018,0 65.344,0H41.976c-0.848,0 -1.604,0.535 -1.886,1.334L20.876,55.762c-0.216,0.612 -0.122,1.291 0.253,1.821s0.984,0.845 1.633,0.845h22.636L34.391,93.662c-0.189,0.607 -0.079,1.269 0.298,1.781s0.975,0.814 1.611,0.814h5.449c0.719,0 1.382,-0.386 1.738,-1.01L75.234,39.51C75.587,38.891 75.583,38.131 75.225,37.515z"/>
+</vector>

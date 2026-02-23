@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="22"
+    android:viewportHeight="22">
+    <!-- Vertical zoom icon (zoom-vertical-svgrepo-com.svg, coordinates normalized) -->
+    <!-- Left bracket [ -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M3,19h5v-1H4V4h4V3H3v16z"/>
+    <!-- Right bracket ] -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M14,19h5V3h-5v1h4v14h-4v1z"/>
+    <!-- Up arrow -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M11,3L6,8h10L11,3z"/>
+    <!-- Down arrow -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M11,19L6,14h10L11,19z"/>
+    <!-- Center bar -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M7,10h8v2H7z"/>
+</vector>

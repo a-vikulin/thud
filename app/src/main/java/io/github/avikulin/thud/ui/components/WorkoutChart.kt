@@ -958,10 +958,12 @@ class WorkoutChart @JvmOverloads constructor(
 
     /**
      * Cycle to the next zoom mode and return it.
+     * Skips MAIN_PHASE when no planned segments are loaded (free run).
      */
     fun cycleZoomMode(): ChartZoomMode {
+        val hasSegments = plannedSegments.isNotEmpty()
         val next = when (zoomMode) {
-            ChartZoomMode.TIMEFRAME -> ChartZoomMode.MAIN_PHASE
+            ChartZoomMode.TIMEFRAME -> if (hasSegments) ChartZoomMode.MAIN_PHASE else ChartZoomMode.FULL
             ChartZoomMode.MAIN_PHASE -> ChartZoomMode.FULL
             ChartZoomMode.FULL -> ChartZoomMode.TIMEFRAME
         }
