@@ -753,7 +753,7 @@ class HUDDisplayManager(
 
     /**
      * Update DFA box subtitle showing the active sensor's short name.
-     * Hidden when empty (0 or 1 RR-capable sensors — no need to disambiguate).
+     * Always shown when an RR-capable sensor is active. Hidden when no sensor selected.
      */
     fun updateDfaSubtitle(shortName: String) {
         mainHandler.post {

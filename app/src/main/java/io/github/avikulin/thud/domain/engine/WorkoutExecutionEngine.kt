@@ -904,6 +904,7 @@ class WorkoutExecutionEngine(
         )
 
         executionSteps.add(cooldownStep)
+        cooldownStepCount++  // Mark auto-cooldown step as cooldown phase for chart
 
         // Emit plan finished event (so UI can show "Plan Complete" message)
         emitEvent(WorkoutEvent.WorkoutPlanFinished(plannedStepsCount))

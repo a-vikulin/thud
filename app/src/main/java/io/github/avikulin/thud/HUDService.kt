@@ -237,6 +237,7 @@ class HUDService : Service(),
     // Training metrics update throttling (every 5 seconds)
     private var lastTrainingMetricsUpdateMs: Long = 0
     private val TRAINING_METRICS_UPDATE_INTERVAL_MS = 5000L
+    @Volatile private var tssGeneration: Long = 0  // Guards against stale in-flight TSS posts
 
     // Saved panel visibility state (for restoring after editor activity)
     private var editorPanelStateSaved = false
@@ -637,6 +638,14 @@ class HUDService : Service(),
         hudDisplayManager.updateDistance(0.0)  // Reset distance display
         workoutDataExported = false
         lastWorkoutName = null
+        // Suppress TSS recalculation until next run starts.
+        // Two-layer defense against race condition: in-flight TssCalculator on gRPC thread
+        // may read workout data before clear, then post stale result to mainHandler AFTER
+        // this 0.0 reset, overwriting it with the old TSS value.
+        // 1) Generation counter: in-flight calculations detect stale generation and discard
+        // 2) Throttle block: prevents NEW calculations until startNewRun() resets to 0
+        tssGeneration++
+        lastTrainingMetricsUpdateMs = Long.MAX_VALUE
         // DFA calculators are NOT reset here — they are per-sensor, independent of run lifecycle
         // Clear persisted data and stop persistence
         runPersistenceManager.clearPersistedRun()
@@ -1088,6 +1097,10 @@ class HUDService : Service(),
         }
         lastTrainingMetricsUpdateMs = now
 
+        // Capture generation before expensive calculation — if resetRunState() fires
+        // concurrently on another thread, we'll detect the stale result and discard it
+        val gen = tssGeneration
+
         // Get workout data from recorder
         val workoutData = workoutRecorder.getWorkoutData()
         if (workoutData.isEmpty()) {
@@ -1120,6 +1133,12 @@ class HUDService : Service(),
             thresholdPaceKph = state.thresholdPaceKph
         )
 
+        // Discard if run was reset while we were calculating
+        if (gen != tssGeneration) {
+            Log.d(TAG, "Training metrics: discarding stale TSS (gen $gen != $tssGeneration)")
+            return
+        }
+
         Log.v(TAG, "Training metrics: tss=${tssResult.tss}, " +
                 "tssSource=${tssResult.source}, hrSamples=${hrSamples.size}, powerSamples=${powerSamples.size}")
 
@@ -1131,9 +1150,11 @@ class HUDService : Service(),
 
     private fun showHud() {
         hudDisplayManager.showHud()
-        // Restore HR subtitle in case sensors connected before the HUD was inflated
+        // Restore subtitles in case sensors connected before the HUD was inflated
         hudDisplayManager.updateHrSubtitle(activeHrSubtitleLabel())
         hudDisplayManager.updateHrSensorStatus(state.hrSensorConnected)
+        hudDisplayManager.updateDfaSubtitle(activeDfaSubtitleLabel())
+        hudDisplayManager.updateDfaSensorStatus(hrSensorManager.getRrCapableMacs().isNotEmpty())
         updateNotification()
 
         // Restore previously visible panels
@@ -2630,6 +2651,10 @@ class HUDService : Service(),
                     Toast.makeText(this@HUDService, getString(R.string.workout_plan_complete), Toast.LENGTH_LONG).show()
                 }
                 Log.d(TAG, "Workout plan finished: ${event.stepsCompleted} steps, entering auto-cooldown")
+                // Re-push planned segments so auto-cooldown step appears with cooldown phase coloring
+                val updatedSteps = workoutEngineManager.getExecutionSteps()
+                val segments = workoutEngineManager.convertToPlannedSegments(updatedSteps)
+                chartManager.setPlannedSegments(segments)
                 // Persist the state
                 persistCurrentRunState()
             }
