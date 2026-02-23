@@ -2788,9 +2788,11 @@ class HUDService : Service(),
 
         // 3. Auto-select: prefer saved sensor, otherwise first RR-capable
         if (state.activeDfaSensorMac.isEmpty()) {
-            if (state.savedDfaSensorMac.isNotEmpty() && mac == state.savedDfaSensorMac) {
+            if (state.savedDfaSensorMac.isEmpty() || mac == state.savedDfaSensorMac) {
+                // No saved preference, or this IS the saved sensor — select it
                 setDfaSensor(mac)
-            } else if (state.savedDfaSensorMac.isEmpty()) {
+            } else if (hrSensorManager.getRrCapableMacs().none { it == state.savedDfaSensorMac }) {
+                // Saved sensor isn't connected — fall back to this one
                 setDfaSensor(mac)
             }
         } else if (state.savedDfaSensorMac == mac && state.activeDfaSensorMac != mac) {
@@ -2904,9 +2906,18 @@ class HUDService : Service(),
         state.savedDfaSensorMac = mac
         state.activeDfaSensorMac = mac
         settingsManager.saveDfaSensorMac(mac)
-        // Update HUD box with this sensor's latest result
+        // Update HUD box with this sensor's latest result (or waiting state if collecting)
         val result = state.dfaResults[mac]
-        hudDisplayManager.updateDfaAlpha1(result?.alpha1 ?: 0.0, result?.isValid ?: false)
+        if (result != null) {
+            hudDisplayManager.updateDfaAlpha1(result.alpha1, result.isValid)
+        } else {
+            val calc = dfaCalculators[mac]
+            if (calc != null) {
+                hudDisplayManager.updateDfaWaitingForData(calc.getRemainingSeconds())
+            } else {
+                hudDisplayManager.updateDfaAlpha1(0.0, isValid = false)
+            }
+        }
         hudDisplayManager.updateDfaSubtitle(activeDfaSubtitleLabel())
         hudDisplayManager.updateDfaSensorStatus(hrSensorManager.getRrCapableMacs().isNotEmpty())
     }
