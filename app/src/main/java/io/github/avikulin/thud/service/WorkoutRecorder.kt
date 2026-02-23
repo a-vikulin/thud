@@ -461,6 +461,47 @@ class WorkoutRecorder {
     }
 
     /**
+     * Retroactively update a sensor's BPM values in all recorded data points.
+     * Used when CALC HR parameters change and the entire BPM timeline is recomputed.
+     *
+     * @param sensorMac MAC of the sensor to update (e.g., "CALC:AA:BB:CC:DD:EE:FF")
+     * @param bpmTimeline sorted list of (wall-clock timestampMs, bpm) entries
+     * @return number of updated data points
+     */
+    fun updateSensorBpmInHistory(sensorMac: String, bpmTimeline: List<Pair<Long, Int>>): Int {
+        val sensorIndex = hrSensorMacToIndex[sensorMac] ?: return 0
+        if (bpmTimeline.isEmpty()) return 0
+
+        var updated = 0
+        var timelineIdx = 0
+        synchronized(workoutData) {
+            for (i in workoutData.indices) {
+                val dp = workoutData[i]
+                if (!dp.allHrSensors.containsKey(sensorIndex)) continue
+
+                // Advance timeline pointer to latest entry at or before this data point's timestamp
+                while (timelineIdx < bpmTimeline.lastIndex &&
+                    bpmTimeline[timelineIdx + 1].first <= dp.timestampMs) {
+                    timelineIdx++
+                }
+
+                // Only update if we have a timeline entry at or before this data point
+                if (bpmTimeline[timelineIdx].first <= dp.timestampMs) {
+                    val newBpm = bpmTimeline[timelineIdx].second
+                    if (dp.allHrSensors[sensorIndex] != newBpm) {
+                        val newMap = dp.allHrSensors.toMutableMap()
+                        newMap[sensorIndex] = newBpm
+                        workoutData[i] = dp.copy(allHrSensors = newMap)
+                        updated++
+                    }
+                }
+            }
+        }
+        Log.d(TAG, "updateSensorBpmInHistory: mac=$sensorMac, updated=$updated/${workoutData.size}")
+        return updated
+    }
+
+    /**
      * Record RR intervals from a specific sensor for FIT HRV export.
      */
     fun recordRrIntervals(mac: String, intervalsMs: List<Double>) {

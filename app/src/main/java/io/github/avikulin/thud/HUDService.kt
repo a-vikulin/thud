@@ -226,7 +226,11 @@ class HUDService : Service(),
 
     // Per-sensor rolling RR buffer for calc HR artifact filtering (real MAC → recent intervals)
     private val calcHrRecentRr = ConcurrentHashMap<String, ArrayDeque<Double>>()
-    private val CALC_HR_MEDIAN_WINDOW = 11
+
+    // Snapshot of CALC HR config to detect changes on settings save
+    private var lastCalcHrEmaAlpha = SettingsManager.DEFAULT_CALC_HR_EMA_ALPHA
+    private var lastCalcHrArtifactThreshold = SettingsManager.DEFAULT_CALC_HR_ARTIFACT_THRESHOLD
+    private var lastCalcHrMedianWindow = SettingsManager.DEFAULT_CALC_HR_MEDIAN_WINDOW
 
     private lateinit var garminUploader: GarminConnectUploader
     private var connectivityCallback: ConnectivityManager.NetworkCallback? = null
@@ -315,6 +319,7 @@ class HUDService : Service(),
         settingsManager.listener = this
         settingsManager.loadSettings()
         snapshotDfaConfig()
+        snapshotCalcHrConfig()
 
         // Initialize run persistence manager
         runPersistenceManager = RunPersistenceManager(this)
@@ -2327,6 +2332,15 @@ class HUDService : Service(),
             snapshotDfaConfig()
         }
 
+        // Recalculate CALC HR if parameters changed while feature is enabled
+        if (state.calcHrEnabled && (
+            state.calcHrEmaAlpha != lastCalcHrEmaAlpha ||
+            state.calcHrArtifactThreshold != lastCalcHrArtifactThreshold ||
+            state.calcHrMedianWindow != lastCalcHrMedianWindow)) {
+            recalculateAllCalcHr()
+            snapshotCalcHrConfig()
+        }
+
         // Clean up CALC sensors if feature was disabled
         if (!state.calcHrEnabled) {
             state.connectedHrSensors.keys.filter { it.startsWith("CALC:") }.forEach {
@@ -2828,32 +2842,17 @@ class HUDService : Service(),
         // 4. Compute calculated HR from RR intervals (with artifact filtering)
         if (state.calcHrEnabled && rrIntervalsMs.isNotEmpty()) {
             val calcMac = "CALC:$mac"
-            val thresholdFraction = state.calcHrArtifactThreshold / 100.0
             val recentRr = calcHrRecentRr.getOrPut(mac) { ArrayDeque() }
 
-            // Filter RR intervals: median-based artifact rejection
-            val cleanIntervals = mutableListOf<Double>()
-            for (rrMs in rrIntervalsMs) {
-                if (rrMs < 200.0 || rrMs > 2000.0) continue
-                var isArtifact = false
-                if (thresholdFraction > 0 && recentRr.size >= CALC_HR_MEDIAN_WINDOW) {
-                    val median = medianOfDeque(recentRr)
-                    if (abs(rrMs - median) / median > thresholdFraction) {
-                        isArtifact = true
-                    }
-                }
-                // ALL physiologically valid intervals update the baseline
-                if (recentRr.size >= CALC_HR_MEDIAN_WINDOW) recentRr.removeFirst()
-                recentRr.addLast(rrMs)
-                if (!isArtifact) cleanIntervals.add(rrMs)
-            }
+            val smoothedBpm = processCalcHrBatch(
+                rrIntervalsMs, recentRr,
+                medianWindow = state.calcHrMedianWindow,
+                artifactThresholdFraction = state.calcHrArtifactThreshold / 100.0,
+                prevEma = calcHrEmaValues[mac],
+                emaAlpha = state.calcHrEmaAlpha
+            )
 
-            if (cleanIntervals.isNotEmpty()) {
-                val meanRr = cleanIntervals.average()
-                val rawBpm = 60000.0 / meanRr
-                val alpha = state.calcHrEmaAlpha
-                val prev = calcHrEmaValues[mac]
-                val smoothedBpm = if (prev == null) rawBpm else alpha * rawBpm + (1 - alpha) * prev
+            if (smoothedBpm != null) {
                 calcHrEmaValues[mac] = smoothedBpm
                 val realName = state.connectedHrSensors[mac]?.first ?: deviceName
                 state.connectedHrSensors[calcMac] = Pair("f:$realName", smoothedBpm.toInt())
@@ -2922,6 +2921,113 @@ class HUDService : Service(),
         lastDfaArtifactThreshold = state.dfaArtifactThreshold
         lastDfaMedianWindow = state.dfaMedianWindow
         lastDfaEmaAlpha = state.dfaEmaAlpha
+    }
+
+    private fun snapshotCalcHrConfig() {
+        lastCalcHrEmaAlpha = state.calcHrEmaAlpha
+        lastCalcHrArtifactThreshold = state.calcHrArtifactThreshold
+        lastCalcHrMedianWindow = state.calcHrMedianWindow
+    }
+
+    /**
+     * Process one batch of RR intervals through artifact filter and EMA smoothing.
+     * Shared by real-time path and retroactive recalculation.
+     *
+     * @param rrIntervalsMs raw RR intervals from BLE notification
+     * @param recentRr rolling buffer for median baseline (modified in place)
+     * @param medianWindow size of the median filter window
+     * @param artifactThresholdFraction fraction deviation from median to reject (0 = disabled)
+     * @param prevEma previous EMA value (null = first batch)
+     * @param emaAlpha EMA smoothing factor
+     * @return new smoothed BPM, or null if no clean intervals in this batch
+     */
+    private fun processCalcHrBatch(
+        rrIntervalsMs: Iterable<Double>,
+        recentRr: ArrayDeque<Double>,
+        medianWindow: Int,
+        artifactThresholdFraction: Double,
+        prevEma: Double?,
+        emaAlpha: Double
+    ): Double? {
+        val cleanIntervals = mutableListOf<Double>()
+        for (rrMs in rrIntervalsMs) {
+            if (rrMs < 200.0 || rrMs > 2000.0) continue
+            var isArtifact = false
+            if (artifactThresholdFraction > 0 && recentRr.size >= medianWindow) {
+                val median = medianOfDeque(recentRr)
+                if (abs(rrMs - median) / median > artifactThresholdFraction) {
+                    isArtifact = true
+                }
+            }
+            // ALL physiologically valid intervals update the baseline
+            if (recentRr.size >= medianWindow) recentRr.removeFirst()
+            recentRr.addLast(rrMs)
+            if (!isArtifact) cleanIntervals.add(rrMs)
+        }
+        if (cleanIntervals.isEmpty()) return null
+        val meanRr = cleanIntervals.average()
+        val rawBpm = 60000.0 / meanRr
+        return if (prevEma == null) rawBpm else emaAlpha * rawBpm + (1 - emaAlpha) * prevEma
+    }
+
+    /**
+     * Retroactively recalculate all CALC HR data from stored RR intervals using current params.
+     * Replays the entire RR history through the artifact filter + EMA, updates data points,
+     * and refreshes the chart.
+     */
+    private fun recalculateAllCalcHr() {
+        val allRr = workoutRecorder.getRrIntervalsBySensor()
+        val medianWindow = state.calcHrMedianWindow
+        val artifactFraction = state.calcHrArtifactThreshold / 100.0
+        val emaAlpha = state.calcHrEmaAlpha
+
+        for ((mac, rrList) in allRr) {
+            // Only process real sensor MACs that have a CALC counterpart
+            if (mac.startsWith("CALC:")) continue
+            val calcMac = "CALC:$mac"
+            if (!state.connectedHrSensors.containsKey(calcMac)) continue
+
+            // Replay all RR intervals through the filter with new params
+            val recentRr = ArrayDeque<Double>()
+            var prevEma: Double? = null
+            val bpmTimeline = mutableListOf<Pair<Long, Int>>()
+
+            // Group RR intervals by timestamp (same timestamp = same BLE batch)
+            val batches = rrList.groupBy({ it.first }, { (it.second * 1000.0).toDouble() })
+
+            for ((timestamp, batchRrMs) in batches) {
+                val smoothed = processCalcHrBatch(
+                    batchRrMs, recentRr, medianWindow, artifactFraction, prevEma, emaAlpha
+                )
+                if (smoothed != null) {
+                    prevEma = smoothed
+                    bpmTimeline.add(Pair(timestamp, smoothed.toInt()))
+                }
+            }
+
+            // Update live state for future real-time processing
+            calcHrRecentRr[mac] = recentRr
+            if (prevEma != null) {
+                calcHrEmaValues[mac] = prevEma
+                state.connectedHrSensors[calcMac] = Pair(
+                    state.connectedHrSensors[calcMac]!!.first,
+                    prevEma.toInt()
+                )
+            }
+
+            // Update historical data points
+            workoutRecorder.updateSensorBpmInHistory(calcMac, bpmTimeline)
+        }
+
+        // If primary is a CALC sensor or AVERAGE, rebind so heartRateBpm updates
+        val primary = state.activePrimaryHrMac
+        if (primary.startsWith("CALC:") || primary == SettingsManager.HR_PRIMARY_AVERAGE) {
+            workoutRecorder.rebindPrimaryHr(primary)
+        }
+
+        chartManager.forceFullUpdate()
+        Log.d("HUDService", "Recalculated all CALC HR with ema=${emaAlpha}, " +
+            "artifact=${state.calcHrArtifactThreshold}%, medianWindow=$medianWindow")
     }
 
     // ==================== DFA Sensor Management ====================

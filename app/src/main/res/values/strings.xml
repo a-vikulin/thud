@@ -21,6 +21,7 @@
     <string name="settings_calc_hr_enabled">Calculate HR for RR-capable HR sensors</string>
     <string name="settings_calc_hr_ema_alpha">Use EMA for smoothing:</string>
     <string name="settings_calc_hr_artifact_threshold">Artifact filter:</string>
+    <string name="settings_calc_hr_median_window">Median window:</string>
     <string name="settings_dfa_alpha1_subtitle">DFA-alpha1</string>
     <string name="settings_dfa_window_duration">Window Duration</string>
     <string name="settings_dfa_artifact_threshold">Artifact Threshold</string>

@@ -137,6 +137,8 @@ class SettingsManager(
         const val DEFAULT_CALC_HR_EMA_ALPHA = 0.1
         const val PREF_CALC_HR_ARTIFACT_THRESHOLD = "calc_hr_artifact_threshold"
         const val DEFAULT_CALC_HR_ARTIFACT_THRESHOLD = 20.0
+        const val PREF_CALC_HR_MEDIAN_WINDOW = "calc_hr_median_window"
+        const val DEFAULT_CALC_HR_MEDIAN_WINDOW = 11
 
         // DFA alpha1 algorithm configuration
         const val PREF_DFA_WINDOW_DURATION_SEC = "dfa_window_duration_sec"
@@ -314,6 +316,7 @@ class SettingsManager(
     private var checkCalcHrEnabled: CheckBox? = null
     private var spinnerCalcHrEmaAlpha: TouchSpinner? = null
     private var spinnerCalcHrArtifactThreshold: TouchSpinner? = null
+    private var spinnerCalcHrMedianWindow: TouchSpinner? = null
 
     // DFA Alpha1 tab fields
     private var dfaAlpha1Content: View? = null
@@ -427,6 +430,7 @@ class SettingsManager(
         state.calcHrEnabled = prefs.getBoolean(PREF_CALC_HR_ENABLED, false)
         state.calcHrEmaAlpha = prefs.getFloat(PREF_CALC_HR_EMA_ALPHA, DEFAULT_CALC_HR_EMA_ALPHA.toFloat()).toDouble()
         state.calcHrArtifactThreshold = prefs.getFloat(PREF_CALC_HR_ARTIFACT_THRESHOLD, DEFAULT_CALC_HR_ARTIFACT_THRESHOLD.toFloat()).toDouble()
+        state.calcHrMedianWindow = prefs.getInt(PREF_CALC_HR_MEDIAN_WINDOW, DEFAULT_CALC_HR_MEDIAN_WINDOW)
 
         // DFA alpha1 algorithm configuration
         state.dfaWindowDurationSec = prefs.getInt(PREF_DFA_WINDOW_DURATION_SEC, DEFAULT_DFA_WINDOW_DURATION_SEC)
@@ -1525,10 +1529,27 @@ class SettingsManager(
                 spinnerCalcHrArtifactThreshold!!
             ))
 
+            // Median window spinner for calc HR (3-21, step 2, odd numbers only)
+            spinnerCalcHrMedianWindow = TouchSpinner(service).apply {
+                minValue = 3.0
+                maxValue = 21.0
+                step = 2.0
+                format = TouchSpinner.Format.INTEGER
+                suffix = ""
+                value = state.calcHrMedianWindow.toDouble()
+                isEnabled = state.calcHrEnabled
+                layoutParams = LinearLayout.LayoutParams(spinnerWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
+            }
+            addView(createSettingsRow(
+                service.getString(R.string.settings_calc_hr_median_window),
+                spinnerCalcHrMedianWindow!!
+            ))
+
             // Toggle spinner enabled state with checkbox
             checkCalcHrEnabled!!.setOnCheckedChangeListener { _, isChecked ->
                 spinnerCalcHrEmaAlpha?.isEnabled = isChecked
                 spinnerCalcHrArtifactThreshold?.isEnabled = isChecked
+                spinnerCalcHrMedianWindow?.isEnabled = isChecked
             }
 
             // ===== Divider =====
@@ -1949,6 +1970,7 @@ class SettingsManager(
         state.calcHrEnabled = checkCalcHrEnabled?.isChecked ?: state.calcHrEnabled
         spinnerCalcHrEmaAlpha?.let { state.calcHrEmaAlpha = it.value }
         spinnerCalcHrArtifactThreshold?.let { state.calcHrArtifactThreshold = it.value }
+        spinnerCalcHrMedianWindow?.let { state.calcHrMedianWindow = it.value.toInt() }
 
         // Save DFA alpha1 settings from spinners
         spinnerDfaWindowDuration?.let { state.dfaWindowDurationSec = it.value.toInt() }
@@ -2029,6 +2051,7 @@ class SettingsManager(
             putBoolean(PREF_CALC_HR_ENABLED, state.calcHrEnabled)
             putFloat(PREF_CALC_HR_EMA_ALPHA, state.calcHrEmaAlpha.toFloat())
             putFloat(PREF_CALC_HR_ARTIFACT_THRESHOLD, state.calcHrArtifactThreshold.toFloat())
+            putInt(PREF_CALC_HR_MEDIAN_WINDOW, state.calcHrMedianWindow)
 
             // DFA alpha1 settings
             putInt(PREF_DFA_WINDOW_DURATION_SEC, state.dfaWindowDurationSec)
@@ -2139,6 +2162,7 @@ class SettingsManager(
         checkCalcHrEnabled = null
         spinnerCalcHrEmaAlpha = null
         spinnerCalcHrArtifactThreshold = null
+        spinnerCalcHrMedianWindow = null
 
         // Clean up DFA Alpha1 tab controls
         spinnerDfaWindowDuration = null
