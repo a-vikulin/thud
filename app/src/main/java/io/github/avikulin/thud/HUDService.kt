@@ -641,6 +641,7 @@ class HUDService : Service(),
         chartManager.clearPlannedSegments()
         hudDisplayManager.updateTrainingMetrics(0.0)  // Reset TSS display
         hudDisplayManager.updateDistance(0.0)  // Reset distance display
+        hudDisplayManager.updateClimb(0.0)  // Reset climb display
         workoutDataExported = false
         lastWorkoutName = null
         // Suppress TSS recalculation until next run starts.
