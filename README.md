@@ -32,24 +32,25 @@ blown away by Claude's capabilities!
 
 ### Real-Time HUD Display
 - Fully replaces built-in iFit app (Workout Player) for treadmill control 
-- Current pace and speed
-- Heart rate with zone coloring (supports multiple simultaneous HR sensors)
-- Calculated HR from RR intervals — for RR-capable HR sensors optionally computes heart rate directly from raw RR data (`60000/mean_RR`) as an independent, potentially more responsive alternative to the sensor's native BPM. Appears as a separate selectable sensor with configurable EMA smoothing, artifact filter threshold, and median window size. Parameters can be tuned retroactively during a paused run — changing settings replays all stored RR data through the filter with new parameters, instantly updating the chart
-- Real-time DFA alpha1 from RR intervals — tracks aerobic (>0.75) and anaerobic (<0.5) thresholds with zone-colored HUD box. Supports per-sensor DFA computation when multiple RR-capable HR sensors are connected. **Note:** Belching produces irregular chest wall movements that severely distort RR intervals, making DFA alpha1 readings meaningless for the duration of the analysis window. After a belch, wait for the configured window period (default 2 minutes) for the corrupted data to flush out before trusting the readings again
-- Running power with zone coloring (with Stryd)
+- Current (adjusted) pace and raw treadmill speed
 - Distance and elapsed time
 - Elevation gain
-- Cadence
+- Heart rate with zone coloring (supports multiple simultaneous Bluetooth HR sensors)
+- Calculated HR from RR intervals — for RR-capable HR sensors optionally computes heart rate directly from raw RR data as an independent, potentially more responsive alternative to the sensor's native BPM. Appears as a separate selectable sensor with configurable EMA smoothing, artifact filtering parameters. Parameters can be tuned retroactively during a paused run — changing settings replays all stored RR data through the filter with new parameters, instantly updating the chart
+- Real-time DFA alpha1 from RR intervals — tracks aerobic (>0.75) and anaerobic (<0.5) thresholds with zone-colored HUD box. Supports per-sensor DFA computation when multiple RR-capable HR sensors are connected.
+   - **Note1:** use of Polar H10 sensor with ECG-gel is highely recommended 
+   - **Note2:** Belching produces irregular chest wall movements that severely distort RR intervals, making DFA alpha1 readings meaningless for the duration of the analysis window. After a belch, wait for the configured window period (default 2 minutes) for the corrupted data to flush out before trusting the readings again
+- Running power and cadence with zone coloring (when Stryd foot pod is connected)
 - Stryd pace for comparison and treadmill speed calibration
-- Configurable speed coefficient adjuster. In my tests with foot pods, your actual running speed is about 10% slower than what treadmill reports.
+- Configurable speed coefficient adjuster. In my tests with Stryd foot pods, your actual running speed is about 10% slower than what treadmill reports.
 - Incline adjuster. Set to 1% to emulate flat outdoor running effort
 
 ### Live Run Chart
 - Speed, Incline, HR, and Power lines can be toggled on/off
 - HR and Power lines are color coded with zone color
 - Colored horizontal zone border lines for reference 
-- Visual workout steps structure with speed&incline targets, HR/Power target ranges, and diagonal lines for pace progression steps
-- Three Y-axis zoom modes cycled via toggle button: Timeframe (≋, configurable 1–60 min window), Main Phase (◆, fits main workout only), Full (⇕, all data)
+- Visual workout steps structure with speed & incline target lines and HR/Power target ranges
+- Three Y-axis zoom modes cycled via toggle button: Timeframe (configurable 1–60 min window), Main Phase (fits main workout only), Full (all data)
 
 ### Structured Workouts
 ![ss-5.png](screenshots/ss-5.png)
@@ -61,15 +62,13 @@ blown away by Claude's capabilities!
 - Early step ending on HR reaching certain levels
 - Full undo/redo support in editor
 - Default Warmup and Cooldown templates — edit once, attach to any workout
-- Coefficient isolation between warmup/main/cooldown phases (HR auto-adjustments during warmup don't affect the main workout)
-- Per-workout "Effort adjustment" scope: "All steps" (global scaling) or "One step" (independent per-step coefficients, but used for the same step within repeats)
 
 ### Auto-Adjustment (HR or Power)
 - Each workout step can pick either HR or Power and define a target zone for it
 - It also has to choose either pace or incline to be auto-adjusted in order to keep HR/Power in the target zone
 - Trend-aware algorithm prevents overcorrection
-- Visual feedback on adjustment state
-- Adjustment scope per workout: "All steps" scales the entire phase uniformly (e.g., "I'm tired today"); "One step" keeps each step's coefficients independent, with repeat intervals sharing per step coefficients across repetitions
+- Auto-adjustment coefficient isolation between warmup/main/cooldown phases (HR auto-adjustments during warmup don't affect the main workout steps)
+- Adjustment scope per workout. Either "All steps", which scales the entire phase uniformly (e.g., "I'm tired today"); or "One step", which keeps each step's coefficients independent, with repeat intervals sharing per step coefficients across repetitions
 - Manual speed and incline adjustment buttons also adjust effort level according to the chosen scope
 
 ### Power-Based Training (Stryd)
@@ -93,29 +92,29 @@ blown away by Claude's capabilities!
 
 ### Auto-Screenshot
 - Capture the full screenshot of the treadmill's screen
+- When taking a screen while watching Netflix or other DRM-protected content, the resulting black background is nicely replaced with the Home wallpaper
 - Toggle screenshot mode with the camera button in HUD
 - Automatic screenshots on workout step transitions and pause
 - Screenshots saved to Downloads/tHUD/screenshots/
 - Filename matches FIT file naming for easy correlation
+- The last screenshot of the run is auto-uploaded to Garmin Connect with the FIT file
 
 ### FIT File Export
 - Automatic export when run ends
-- Full Garmin Connect compatibility
-- Lap data for structured workouts with average grade per lap
-- Per-record incline/grade data
+- Full Garmin Connect, Strava and Stryd PowerCenter compatibility
+- Lap data for structured workouts
+- Full incline/grade data
 - Power and cadence from Stryd
 - Multi-HR sensor data preserved as developer fields (per-sensor BPM traces + DFA alpha1 values)
 - HRV data: RR intervals exported as FIT HrvMesg (message 78) for analysis in Runalyze, Kubios, Intervals.icu
-- Multi-FIT file export: when multiple RR-capable HR sensors are connected, one FIT file per sensor is exported (identical workout data, sensor-specific HRV stream). Only the DFA-primary sensor's file is uploaded to Garmin Connect
+- Multi-FIT file export: when multiple RR-capable HR sensors are connected, one FIT file per sensor is exported (identical workout data, sensor-specific HRV stream). Only the file that includes HRV data from the sensor selected as DFA-primary sensor is uploaded to Garmin Connect
 - TSS (Training Stress Score) calculation with 3-tier fallback: Power → HR → Pace
 - Files saved to Downloads/tHUD/
 - Settings for device parameters in FIT Export tab
-- **IMPORTANT for Garmin Training Load:**
-   1. **Device serial in FIT settings MUST be different from your main Garmin watch** (otherwise the watch won't sync the file - it thinks it already has it)
-   2. **After uploading the FIT file to Garmin Connect, sync your watch TWICE** - first sync downloads the file to watch for processing, second sync uploads calculated metrics back
-- **Full platform compatibility:** FIT files work with Garmin Connect, Strava (shows as Run), and Stryd PowerCenter
+   - **IMPORTANT for Garmin Acute/Chronic Training Load calculation:**
+      1. **Device serial in FIT settings MUST be different from your main Garmin watch** (otherwise the watch won't sync the file - it thinks it already has it)
+      2. **After uploading the FIT file to Garmin Connect, sync your watch TWICE** - first sync downloads the file to watch for processing, second sync uploads calculated metrics back
 - Power data is written as Stryd developer fields so Stryd PowerCenter recognizes it automatically
-- DFA alpha1 per-second values written as developer fields per HR sensor (UINT16, scale 1000)
 
 ### Garmin Connect Auto-Upload
 - Automatic upload to Garmin Connect after FIT export (opt-in)
@@ -191,8 +190,8 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 4. When first using the screenshot feature, grant screen recording permission when prompted (used for capturing screenshots only, not video)
 5. Open Settings (gear icon) to configure:
    - Pace Coefficient: 1.0 is "same as treadmill". Adjust to match your Foot pod pace readings
-   - Incline Power Coefficient: 0.9 seems right to me
-   - Incline Adjustment - set to 1%, meaning when treadmill is at 1% the HUD will call that 0% and will calculated elevation gain based on 0% incline for saving in FIT files
+   - Incline Power Coefficient: 0.85 seems right to me
+   - Incline Adjustment - set to 1%, meaning when treadmill is at 1% the HUD will call that 0% and will calculate elevation gain based on 0% incline for saving in FIT files
    - Set other parameters if you want to see realisting TSS load calculation
 
 ### HR/Power Zones
@@ -225,7 +224,7 @@ Verify that auto-adjustment parameters are sensible
 5. Optionally enable "Use Default Warmup" / "Use Default Cooldown" checkboxes to attach reusable templates
 6. Edit the Default Warmup or Default Cooldown workouts (pinned at top of the list) to customize them
 7. Workout is saved after every edit
-8. Click Run to run the workout
+8. Tap Run to run the workout
 
 ## Usage
 
