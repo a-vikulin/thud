@@ -402,12 +402,12 @@ class HUDDisplayManager(
 
     /**
      * Update the HR box subtitle showing the active primary sensor's short name (or "AVERAGE").
-     * Hidden when empty (0 or 1 sensors — no need to disambiguate).
+     * Empty when no sensor connected — INVISIBLE (not GONE) to preserve layout alignment.
      */
     fun updateHrSubtitle(shortName: String) {
         mainHandler.post {
             tvHrSubtitle?.text = shortName
-            tvHrSubtitle?.visibility = if (shortName.isEmpty()) View.GONE else View.VISIBLE
+            tvHrSubtitle?.visibility = if (shortName.isEmpty()) View.INVISIBLE else View.VISIBLE
             tvHrSubtitle?.setTextColor(colorTextPrimary)
         }
     }
@@ -753,12 +753,12 @@ class HUDDisplayManager(
 
     /**
      * Update DFA box subtitle showing the active sensor's short name.
-     * Always shown when an RR-capable sensor is active. Hidden when no sensor selected.
+     * Empty when no sensor selected — INVISIBLE (not GONE) to preserve layout alignment.
      */
     fun updateDfaSubtitle(shortName: String) {
         mainHandler.post {
             tvDfaSubtitle?.text = shortName
-            tvDfaSubtitle?.visibility = if (shortName.isEmpty()) View.GONE else View.VISIBLE
+            tvDfaSubtitle?.visibility = if (shortName.isEmpty()) View.INVISIBLE else View.VISIBLE
             tvDfaSubtitle?.setTextColor(colorTextPrimary)
         }
     }
