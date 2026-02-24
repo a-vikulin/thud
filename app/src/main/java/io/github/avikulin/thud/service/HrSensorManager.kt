@@ -500,6 +500,16 @@ class HrSensorManager(
     private inner class HrGattCallback(val mac: String) : BluetoothGattCallback() {
         private var pendingInitialBatteryRead = false
 
+        /** Resolve best available name: BLE cache → saved prefs → fallback. */
+        @SuppressLint("MissingPermission")
+        private fun resolveDeviceName(gatt: BluetoothGatt): String {
+            gatt.device.name?.let { return it }
+            connections[mac]?.device?.name?.let { return it }
+            val prefs = service.getSharedPreferences(SettingsManager.PREFS_NAME, Context.MODE_PRIVATE)
+            SavedBluetoothDevices.getAll(prefs).firstOrNull { it.mac == mac }?.name?.let { return it }
+            return "HR Sensor"
+        }
+
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             Log.d(TAG, "[$mac] onConnectionStateChange: status=$status, newState=$newState")
@@ -514,22 +524,30 @@ class HrSensorManager(
                     val device = pending?.first ?: gatt.device
                     connections[mac] = HrConnection(device, gatt)
 
-                    val deviceName = gatt.device.name ?: "HR Sensor"
+                    // Only update saved name if BLE provided a real name (not null)
                     val prefs = service.getSharedPreferences(SettingsManager.PREFS_NAME, Context.MODE_PRIVATE)
-                    SavedBluetoothDevices.save(prefs, SavedBluetoothDevice(
-                        mac = mac,
-                        name = deviceName,
-                        type = SensorDeviceType.HR_SENSOR
-                    ))
+                    val bleName = gatt.device.name
+                    if (bleName != null) {
+                        SavedBluetoothDevices.save(prefs, SavedBluetoothDevice(
+                            mac = mac,
+                            name = bleName,
+                            type = SensorDeviceType.HR_SENSOR
+                        ))
+                    } else if (!SavedBluetoothDevices.isSaved(prefs, mac)) {
+                        // First-time connection with no name — save with fallback
+                        SavedBluetoothDevices.save(prefs, SavedBluetoothDevice(
+                            mac = mac,
+                            name = "HR Sensor",
+                            type = SensorDeviceType.HR_SENSOR
+                        ))
+                    }
 
                     gatt.discoverServices()
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     Log.d(TAG, "[$mac] Disconnected from GATT server")
                     val wasIntentional = intentionalDisconnects.remove(mac)
-                    val deviceName = connections[mac]?.device?.name
-                        ?: pendingGatts[mac]?.first?.name
-                        ?: "HR Sensor"
+                    val deviceName = resolveDeviceName(gatt)
                     connections.remove(mac)
                     pendingGatts.remove(mac)?.second?.close()
 
@@ -644,7 +662,17 @@ class HrSensorManager(
 
         private fun notifyConnected(gatt: BluetoothGatt) {
             handler.post {
-                val deviceName = gatt.device.name ?: "HR Sensor"
+                val deviceName = resolveDeviceName(gatt)
+                // Update saved name if BLE now provides the real name (fixes "HR Sensor" from earlier)
+                val bleName = gatt.device.name
+                if (bleName != null) {
+                    val prefs = service.getSharedPreferences(SettingsManager.PREFS_NAME, Context.MODE_PRIVATE)
+                    val saved = SavedBluetoothDevices.getAll(prefs).firstOrNull { it.mac == mac }
+                    if (saved != null && saved.name != bleName) {
+                        SavedBluetoothDevices.save(prefs, saved.copy(name = bleName))
+                        Log.d(TAG, "[$mac] Updated saved name: '${saved.name}' → '$bleName'")
+                    }
+                }
                 // Update the connection slot with the authoritative gatt reference
                 val conn = connections[mac]
                 if (conn != null) {
@@ -664,13 +692,13 @@ class HrSensorManager(
             val data = characteristic.value
             if (data == null || data.isEmpty()) return
             if (characteristic.uuid == HEART_RATE_MEASUREMENT) {
-                parseHeartRateMeasurement(data, gatt.device.name ?: "HR Sensor")
+                parseHeartRateMeasurement(data, resolveDeviceName(gatt))
             }
         }
 
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
             if (characteristic.uuid == HEART_RATE_MEASUREMENT) {
-                parseHeartRateMeasurement(value, gatt.device.name ?: "HR Sensor")
+                parseHeartRateMeasurement(value, resolveDeviceName(gatt))
             }
         }
 
