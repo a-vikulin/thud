@@ -136,7 +136,7 @@
     <string name="overlay_permission_required">Overlay permission required</string>
 
     <!-- Toast Messages -->
-    <string name="toast_incline_requires_workout">Start a workout to change incline</string>
+    <string name="toast_incline_requires_belt_running">Incline can only be changed while the belt is running</string>
     <string name="toast_failed_to_load_workout">Failed to load workout</string>
     <string name="toast_no_workout_selected">No workout selected</string>
 

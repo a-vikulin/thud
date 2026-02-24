@@ -2,7 +2,11 @@ package io.github.avikulin.thud.service
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.widget.Toast
+import io.github.avikulin.thud.R
 import io.github.avikulin.thud.domain.model.AndroidAction
 import io.github.avikulin.thud.domain.model.RemoteAction
 import kotlinx.coroutines.CoroutineScope
@@ -132,6 +136,13 @@ class RemoteControlManager(
     }
 
     private fun adjustIncline(deltaPct: Double) {
+        if (state.currentSpeedKph <= 0) {
+            Log.d(TAG, "adjustIncline: belt not running, ignoring")
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(context, R.string.toast_incline_requires_belt_running, Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
         val fromPending = pendingInclineEffective != null
         val currentEffective = pendingInclineEffective ?: state.currentInclinePercent
         val minEffective = state.minInclinePercent - state.inclineAdjustment
@@ -140,7 +151,6 @@ class RemoteControlManager(
         pendingInclineEffective = newEffective
         Log.d(TAG, "adjustIncline: delta=$deltaPct, from=${if (fromPending) "pending" else "state"}=$currentEffective, target=$newEffective")
         scope.launch(Dispatchers.IO) {
-            telemetryManager.ensureTreadmillRunning()
             telemetryManager.setTreadmillIncline(newEffective)
             Log.d(TAG, "adjustIncline: sent $newEffective, clearing pending")
             pendingInclineEffective = null

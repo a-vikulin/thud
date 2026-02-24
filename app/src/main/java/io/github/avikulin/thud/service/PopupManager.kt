@@ -387,33 +387,14 @@ class PopupManager(
     }
 
     private fun setInclineAndClose(percent: Double) {
+        if (state.currentSpeedKph <= 0) {
+            Toast.makeText(service, R.string.toast_incline_requires_belt_running, Toast.LENGTH_SHORT).show()
+            closeInclinePopup()
+            return
+        }
         scope.launch(Dispatchers.IO) {
-            val client = getGlassOsClient()
-            val workoutState = client?.getWorkoutState()
-            Log.d(TAG, "setInclineAndClose: state=$workoutState, percent=$percent")
-
-            when (workoutState) {
-                WorkoutState.WORKOUT_STATE_PAUSED -> {
-                    Log.d(TAG, "Workout paused, using resume->setIncline->pause cycle")
-                    client?.resumeWorkout()
-                    delay(100)
-                    val success = setTreadmillIncline(percent)
-                    Log.d(TAG, "Set incline to $percent%: $success")
-                    delay(100)
-                    client?.pauseWorkout()
-                    Log.d(TAG, "Re-paused workout after incline change")
-                }
-                WorkoutState.WORKOUT_STATE_RUNNING -> {
-                    val success = setTreadmillIncline(percent)
-                    Log.d(TAG, "Set incline to $percent%: $success")
-                }
-                else -> {
-                    // Allow incline change even when idle - hardware buttons work at all times
-                    Log.d(TAG, "Workout idle, setting incline anyway (like hardware buttons)")
-                    val success = setTreadmillIncline(percent)
-                    Log.d(TAG, "Set incline to $percent%: $success")
-                }
-            }
+            val success = setTreadmillIncline(percent)
+            Log.d(TAG, "Set incline to $percent%: $success")
         }
         closeInclinePopup()
     }
