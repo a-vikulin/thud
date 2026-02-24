@@ -52,6 +52,7 @@ class FitFileExporter(private val context: Context) {
         val recordPowerFieldDesc: FieldDescriptionMesg,
         val lapPowerFieldDesc: FieldDescriptionMesg,
         val sessionCpFieldDesc: FieldDescriptionMesg,
+        val recordSpeedFieldDesc: FieldDescriptionMesg?,  // Stryd speed (null if no speed data)
         val userFtpWatts: Int
     )
 
@@ -85,6 +86,8 @@ class FitFileExporter(private val context: Context) {
         private const val STRYD_FIELD_POWER: Short = 0          // Record-level power
         private const val STRYD_FIELD_LAP_POWER: Short = 10     // Lap-level avg power
         private const val STRYD_FIELD_CP: Short = 99            // Session-level Critical Power
+        // tHUD-specific field (not used by Stryd CIQ app; chosen to avoid collision with 0-32,99-102)
+        private const val STRYD_FIELD_SPEED: Short = 1          // Record-level Stryd speed (m/s * 1000)
     }
 
     /**
@@ -267,10 +270,11 @@ class FitFileExporter(private val context: Context) {
         // 3. Device Info message
         writeDeviceInfoMessage(encoder, startTimeMs, fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion)
 
-        // 3b. Stryd developer fields (only if power data exists)
+        // 3b. Stryd developer fields (only if power or Stryd speed data exists)
         val hasPowerData = workoutData.any { it.powerWatts > 0 }
-        val strydDevFields = if (hasPowerData) {
-            writeStrydDeveloperFieldDefinitions(encoder, userFtpWatts)
+        val hasStrydSpeed = workoutData.any { it.strydSpeedKph > 0 }
+        val strydDevFields = if (hasPowerData || hasStrydSpeed) {
+            writeStrydDeveloperFieldDefinitions(encoder, userFtpWatts, hasStrydSpeed)
         } else null
 
         // 3c. HR sensor developer fields (one per registered sensor)
@@ -770,7 +774,8 @@ class FitFileExporter(private val context: Context) {
      */
     private fun writeStrydDeveloperFieldDefinitions(
         encoder: FileEncoder,
-        userFtpWatts: Int
+        userFtpWatts: Int,
+        includeSpeed: Boolean = false
     ): StrydDevFields {
         // Developer Data ID — identifies the Stryd Connect IQ app
         val devDataId = DeveloperDataIdMesg()
@@ -818,9 +823,22 @@ class FitFileExporter(private val context: Context) {
         sessionCpDesc.setNativeMesgNum(MesgNum.SESSION)
         encoder.write(sessionCpDesc)
 
-        Log.d(TAG, "Wrote Stryd developer field definitions (Power, Lap Power, CP=${userFtpWatts}W)")
+        // Field: Stryd Speed (record-level, no native override — main speed field stays as treadmill speed)
+        val recordSpeedDesc = if (includeSpeed) {
+            val desc = FieldDescriptionMesg()
+            desc.setDeveloperDataIndex(STRYD_DEV_DATA_INDEX)
+            desc.setFieldDefinitionNumber(STRYD_FIELD_SPEED)
+            desc.setFitBaseTypeId(FitBaseType.UINT16)
+            desc.setFieldName(0, "Stryd Speed")
+            desc.setUnits(0, "m/s")
+            desc.setNativeMesgNum(MesgNum.RECORD)
+            encoder.write(desc)
+            desc
+        } else null
 
-        return StrydDevFields(devDataId, recordPowerDesc, lapPowerDesc, sessionCpDesc, userFtpWatts)
+        Log.d(TAG, "Wrote Stryd developer field definitions (Power, Lap Power, CP=${userFtpWatts}W${if (includeSpeed) ", Speed" else ""})")
+
+        return StrydDevFields(devDataId, recordPowerDesc, lapPowerDesc, sessionCpDesc, recordSpeedDesc, userFtpWatts)
     }
 
     /**
@@ -956,11 +974,21 @@ class FitFileExporter(private val context: Context) {
             record.setCadence(dataPoint.cadenceSpm.toShort())
         }
 
-        // Stryd developer field: Power (so Stryd PowerCenter recognizes the data)
+        // Stryd developer fields
         if (strydDevFields != null) {
-            val devField = DeveloperField(strydDevFields.recordPowerFieldDesc, strydDevFields.devDataIdMesg)
-            devField.setValue(dataPoint.powerWatts.toInt())
-            record.addDeveloperField(devField)
+            // Power (so Stryd PowerCenter recognizes the data)
+            val powerField = DeveloperField(strydDevFields.recordPowerFieldDesc, strydDevFields.devDataIdMesg)
+            powerField.setValue(dataPoint.powerWatts.toInt())
+            record.addDeveloperField(powerField)
+
+            // Stryd Speed (raw instantaneous, UINT16 in m/s * 1000)
+            val speedDesc = strydDevFields.recordSpeedFieldDesc
+            if (speedDesc != null && dataPoint.strydSpeedKph > 0) {
+                val speedField = DeveloperField(speedDesc, strydDevFields.devDataIdMesg)
+                val speedMsScaled = (dataPoint.strydSpeedKph / 3.6 * 1000).toInt()
+                speedField.setValue(speedMsScaled)
+                record.addDeveloperField(speedField)
+            }
         }
 
         // HR sensor developer fields: BPM + DFA alpha1 per sensor
