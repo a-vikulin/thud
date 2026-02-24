@@ -52,7 +52,9 @@ class FitFileExporter(private val context: Context) {
         val recordPowerFieldDesc: FieldDescriptionMesg,
         val lapPowerFieldDesc: FieldDescriptionMesg,
         val sessionCpFieldDesc: FieldDescriptionMesg,
-        val recordSpeedFieldDesc: FieldDescriptionMesg?,  // Stryd speed (null if no speed data)
+        val recordSpeedFieldDesc: FieldDescriptionMesg?,      // Record-level Stryd speed
+        val lapSpeedFieldDesc: FieldDescriptionMesg?,          // Lap-level avg Stryd speed
+        val sessionSpeedFieldDesc: FieldDescriptionMesg?,      // Session-level avg Stryd speed
         val userFtpWatts: Int
     )
 
@@ -86,8 +88,10 @@ class FitFileExporter(private val context: Context) {
         private const val STRYD_FIELD_POWER: Short = 0          // Record-level power
         private const val STRYD_FIELD_LAP_POWER: Short = 10     // Lap-level avg power
         private const val STRYD_FIELD_CP: Short = 99            // Session-level Critical Power
-        // tHUD-specific field (not used by Stryd CIQ app; chosen to avoid collision with 0-32,99-102)
+        // tHUD-specific fields (not used by Stryd CIQ app; chosen to avoid collision with 0-32,99-102)
         private const val STRYD_FIELD_SPEED: Short = 1          // Record-level Stryd speed (m/s * 1000)
+        private const val STRYD_FIELD_LAP_SPEED: Short = 2      // Lap-level avg Stryd speed (m/s * 1000)
+        private const val STRYD_FIELD_SESSION_SPEED: Short = 3  // Session-level avg Stryd speed (m/s * 1000)
     }
 
     /**
@@ -347,6 +351,7 @@ class FitFileExporter(private val context: Context) {
             avgGrade = agg.avgIncline,
             avgInclinePower = avgInclinePower,
             avgRawPower = avgRawPower,
+            avgStrydSpeedKph = agg.avgStrydSpeedKph,
             strydDevFields = strydDevFields
         )
 
@@ -703,6 +708,7 @@ class FitFileExporter(private val context: Context) {
             avgGrade = agg.avgIncline,
             avgInclinePower = avgInclinePower,
             avgRawPower = avgRawPower,
+            avgStrydSpeedKph = agg.avgStrydSpeedKph,
             wktStepIndex = wktStepIndex,
             intensity = intensity,
             messageIndex = lapIndex,
@@ -836,9 +842,35 @@ class FitFileExporter(private val context: Context) {
             desc
         } else null
 
-        Log.d(TAG, "Wrote Stryd developer field definitions (Power, Lap Power, CP=${userFtpWatts}W${if (includeSpeed) ", Speed" else ""})")
+        // Field: Lap avg Stryd Speed
+        val lapSpeedDesc = if (includeSpeed) {
+            val desc = FieldDescriptionMesg()
+            desc.setDeveloperDataIndex(STRYD_DEV_DATA_INDEX)
+            desc.setFieldDefinitionNumber(STRYD_FIELD_LAP_SPEED)
+            desc.setFitBaseTypeId(FitBaseType.UINT16)
+            desc.setFieldName(0, "Avg Stryd Speed")
+            desc.setUnits(0, "m/s")
+            desc.setNativeMesgNum(MesgNum.LAP)
+            encoder.write(desc)
+            desc
+        } else null
 
-        return StrydDevFields(devDataId, recordPowerDesc, lapPowerDesc, sessionCpDesc, recordSpeedDesc, userFtpWatts)
+        // Field: Session avg Stryd Speed
+        val sessionSpeedDesc = if (includeSpeed) {
+            val desc = FieldDescriptionMesg()
+            desc.setDeveloperDataIndex(STRYD_DEV_DATA_INDEX)
+            desc.setFieldDefinitionNumber(STRYD_FIELD_SESSION_SPEED)
+            desc.setFitBaseTypeId(FitBaseType.UINT16)
+            desc.setFieldName(0, "Avg Stryd Speed")
+            desc.setUnits(0, "m/s")
+            desc.setNativeMesgNum(MesgNum.SESSION)
+            encoder.write(desc)
+            desc
+        } else null
+
+        Log.d(TAG, "Wrote Stryd developer field definitions (Power, Lap Power, CP=${userFtpWatts}W${if (includeSpeed) ", Speed (record/lap/session)" else ""})")
+
+        return StrydDevFields(devDataId, recordPowerDesc, lapPowerDesc, sessionCpDesc, recordSpeedDesc, lapSpeedDesc, sessionSpeedDesc, userFtpWatts)
     }
 
     /**
@@ -1061,6 +1093,7 @@ class FitFileExporter(private val context: Context) {
         avgGrade: Double = 0.0,
         avgInclinePower: Double = 0.0,
         avgRawPower: Double = 0.0,
+        avgStrydSpeedKph: Double = 0.0,
         wktStepIndex: Int? = null,
         intensity: Intensity = Intensity.ACTIVE,
         messageIndex: Int = 0,
@@ -1126,6 +1159,14 @@ class FitFileExporter(private val context: Context) {
             lap.addDeveloperField(devField)
         }
 
+        // Stryd developer field: Lap avg Stryd Speed
+        val lapSpeedDesc = strydDevFields?.lapSpeedFieldDesc
+        if (lapSpeedDesc != null && avgStrydSpeedKph > 0) {
+            val devField = DeveloperField(lapSpeedDesc, strydDevFields.devDataIdMesg)
+            devField.setValue((avgStrydSpeedKph / 3.6 * 1000).toInt())
+            lap.addDeveloperField(devField)
+        }
+
         encoder.write(lap)
     }
 
@@ -1151,6 +1192,7 @@ class FitFileExporter(private val context: Context) {
         avgGrade: Double = 0.0,
         avgInclinePower: Double = 0.0,
         avgRawPower: Double = 0.0,
+        avgStrydSpeedKph: Double = 0.0,
         strydDevFields: StrydDevFields? = null
     ) {
         val session = SessionMesg()
@@ -1212,6 +1254,14 @@ class FitFileExporter(private val context: Context) {
         if (strydDevFields != null && avgPower > 0) {
             val devField = DeveloperField(strydDevFields.sessionCpFieldDesc, strydDevFields.devDataIdMesg)
             devField.setValue(strydDevFields.userFtpWatts)
+            session.addDeveloperField(devField)
+        }
+
+        // Stryd developer field: Session avg Stryd Speed
+        val sessionSpeedDesc = strydDevFields?.sessionSpeedFieldDesc
+        if (sessionSpeedDesc != null && avgStrydSpeedKph > 0) {
+            val devField = DeveloperField(sessionSpeedDesc, strydDevFields.devDataIdMesg)
+            devField.setValue((avgStrydSpeedKph / 3.6 * 1000).toInt())
             session.addDeveloperField(devField)
         }
 
@@ -1541,6 +1591,7 @@ class FitFileExporter(private val context: Context) {
         var sumPower = 0.0; var countPower = 0; var maxPower = 0.0
         var sumCadence = 0.0; var countCadence = 0; var maxCadence = 0
         var sumIncline = 0.0
+        var sumStrydSpeed = 0.0; var countStrydSpeed = 0
         var sumInclinePower = 0.0; var countInclinePower = 0
         var sumRawPower = 0.0; var countRawPower = 0
         var count = 0
@@ -1564,6 +1615,9 @@ class FitFileExporter(private val context: Context) {
                 sumCadence += dp.cadenceSpm; countCadence++
                 if (dp.cadenceSpm > maxCadence) maxCadence = dp.cadenceSpm
             }
+            if (dp.strydSpeedKph > 0) {
+                sumStrydSpeed += dp.strydSpeedKph; countStrydSpeed++
+            }
             if (dp.inclinePowerWatts != 0.0) {
                 sumInclinePower += dp.inclinePowerWatts; countInclinePower++
             }
@@ -1578,6 +1632,7 @@ class FitFileExporter(private val context: Context) {
         val avgPower: Double get() = if (countPower > 0) sumPower / countPower else 0.0
         val avgCadence: Double get() = if (countCadence > 0) sumCadence / countCadence else 0.0
         val avgIncline: Double get() = if (count > 0) sumIncline / count else 0.0
+        val avgStrydSpeedKph: Double get() = if (countStrydSpeed > 0) sumStrydSpeed / countStrydSpeed else 0.0
         val avgInclinePower: Double get() = if (countInclinePower > 0) sumInclinePower / countInclinePower else 0.0
         val avgRawPower: Double get() = if (countRawPower > 0) sumRawPower / countRawPower else 0.0
     }
