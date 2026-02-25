@@ -39,6 +39,7 @@ import io.github.avikulin.thud.service.HUDDisplayManager
 import io.github.avikulin.thud.service.HrSensorManager
 import io.github.avikulin.thud.service.OverlayHelper
 import io.github.avikulin.thud.service.PopupManager
+import io.github.avikulin.thud.service.ProfileManager
 import io.github.avikulin.thud.service.ServiceStateHolder
 import io.github.avikulin.thud.service.SettingsManager
 import io.github.avikulin.thud.service.TelemetryManager
@@ -59,6 +60,7 @@ import io.github.avikulin.thud.service.PersistedRunType
 import io.github.avikulin.thud.service.PersistedRunState
 import io.github.avikulin.thud.ui.editor.WorkoutEditorActivityNew
 import io.github.avikulin.thud.service.garmin.GarminConnectUploader
+import io.github.avikulin.thud.util.FileExportHelper
 import io.github.avikulin.thud.util.FitFileExporter
 import java.io.File
 import io.github.avikulin.thud.util.HeartRateZones
@@ -113,6 +115,10 @@ class HUDService : Service(),
         const val ACTION_ACTIVITY_FOREGROUND = "io.github.avikulin.thud.ACTIVITY_FOREGROUND"
         const val ACTION_ACTIVITY_BACKGROUND = "io.github.avikulin.thud.ACTIVITY_BACKGROUND"
         const val ACTION_ACTIVITY_CLOSED = "io.github.avikulin.thud.ACTIVITY_CLOSED"
+
+        // Profile switch action
+        const val ACTION_SWITCH_PROFILE = "io.github.avikulin.thud.SWITCH_PROFILE"
+        const val EXTRA_PROFILE_ID = "profile_id"
 
         // Notification
         private const val NOTIFICATION_CHANNEL_ID = "HUD_SERVICE_CHANNEL"
@@ -307,6 +313,16 @@ class HUDService : Service(),
         state = ServiceStateHolder()
         state.isRunning = true
 
+        // ========== Profile system initialization (MUST be first) ==========
+        // This migrates existing data on upgrade and sets up profile-aware paths.
+        // CRITICAL: Must happen BEFORE any getSharedPreferences() or Room DB access,
+        // because Android caches SharedPreferences on first open.
+        ProfileManager.ensureRegistryExists(applicationContext)
+        val activeProfile = ProfileManager.getActiveProfile(applicationContext)
+        SettingsManager.updatePrefsName(ProfileManager.prefsName(activeProfile.id))
+        GarminConnectUploader.updatePrefsName(ProfileManager.garminPrefsName(activeProfile.id))
+        FileExportHelper.activeProfileSubfolder = ProfileManager.downloadsSubfolder(activeProfile.name)
+
         // Initialize window manager and get screen dimensions
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val windowMetrics = windowManager.currentWindowMetrics
@@ -321,8 +337,9 @@ class HUDService : Service(),
         snapshotDfaConfig()
         snapshotCalcHrConfig()
 
-        // Initialize run persistence manager
-        runPersistenceManager = RunPersistenceManager(this)
+        // Initialize run persistence manager with profile-specific directory
+        val activeProfileDir = ProfileManager.profileDir(applicationContext, activeProfile.id)
+        runPersistenceManager = RunPersistenceManager(this, activeProfileDir)
 
         // Initialize screenshot manager
         screenshotManager = ScreenshotManager(this, serviceScope)
@@ -477,7 +494,7 @@ class HUDService : Service(),
 
         // Ensure system workouts exist (Default Warmup, Default Cooldown)
         serviceScope.launch {
-            val database = TreadmillHudDatabase.getInstance(applicationContext)
+            val database = TreadmillHudDatabase.getActiveInstance(applicationContext)
             val repository = WorkoutRepository(database.workoutDao())
             repository.ensureSystemWorkoutsExist()
         }
@@ -547,6 +564,11 @@ class HUDService : Service(),
             ACTION_ACTIVITY_CLOSED -> {
                 Log.d(TAG, "Editor closed")
                 onActivityClosed()
+            }
+            ACTION_SWITCH_PROFILE -> {
+                val profileId = intent.getStringExtra(EXTRA_PROFILE_ID) ?: return START_STICKY
+                Log.d(TAG, "Switching to profile: $profileId")
+                handleProfileSwitch(profileId)
             }
             else -> {
                 // Default: show HUD (for backwards compatibility)
@@ -997,13 +1019,19 @@ class HUDService : Service(),
         connectivityCallback = null
     }
 
+    /** Get the pending Garmin upload file for the active profile. */
+    private fun pendingGarminFile(): File {
+        val profileDir = ProfileManager.profileDir(applicationContext, ProfileManager.getActiveProfileId(applicationContext))
+        return File(profileDir, PENDING_GARMIN_FILE)
+    }
+
     private fun savePendingGarminUpload(
         fitResult: FitFileExporter.FitExportResult,
         workoutName: String,
         startTimeMs: Long
     ) {
         try {
-            File(filesDir, PENDING_GARMIN_FILE).writeBytes(fitResult.fitData)
+            pendingGarminFile().writeBytes(fitResult.fitData)
             val prefs = getSharedPreferences(SettingsManager.PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit {
                 putString(PREF_PENDING_GARMIN_FILENAME, fitResult.filename)
@@ -1018,7 +1046,7 @@ class HUDService : Service(),
 
     private fun clearPendingGarminUpload() {
         try {
-            File(filesDir, PENDING_GARMIN_FILE).delete()
+            pendingGarminFile().delete()
         } catch (e: Exception) {
             // Ignore — file may not exist
         }
@@ -1031,7 +1059,7 @@ class HUDService : Service(),
     }
 
     private suspend fun retryPendingGarminUpload() {
-        val pendingFile = File(filesDir, PENDING_GARMIN_FILE)
+        val pendingFile = pendingGarminFile()
         if (!pendingFile.exists()) return
 
         val prefs = getSharedPreferences(SettingsManager.PREFS_NAME, Context.MODE_PRIVATE)
@@ -1359,6 +1387,30 @@ class HUDService : Service(),
     private fun onActivityClosed() {
         Log.d(TAG, "Editor closed - clearing saved state flag")
         clearSavedPanelState()
+    }
+
+    // ==================== Profile Switch ====================
+
+    /**
+     * Handle a profile switch request.
+     * Blocks if a run is in progress (unexported data would be lost).
+     * Otherwise: sets the new active profile and stops the service.
+     * The caller is responsible for restarting the service afterward.
+     */
+    private fun handleProfileSwitch(profileId: String) {
+        // Block switching if a run has data that hasn't been exported
+        val hasUnexportedData = workoutRecorder.getDataPointCount() > 0 && !workoutDataExported
+        if (hasUnexportedData || workoutRecorder.isRecording) {
+            Toast.makeText(this, R.string.toast_cannot_switch_during_run, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Close all DB connections before switching
+        TreadmillHudDatabase.closeAll()
+
+        // Set the new active profile — service will reinit with correct paths on restart
+        ProfileManager.setActiveProfile(applicationContext, profileId)
+        stopSelf()
     }
 
     // ==================== Free Run Confirmation Dialog ====================

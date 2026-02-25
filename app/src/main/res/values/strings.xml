@@ -472,4 +472,7 @@
 
     <!-- Pace progression -->
     <string name="step_pace_progression_arrow">></string>
+
+    <!-- User Profiles -->
+    <string name="toast_cannot_switch_during_run">Cannot switch profiles during an active run</string>
 </resources>

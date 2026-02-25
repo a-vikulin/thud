@@ -34,7 +34,9 @@
 **IMPORTANT**: Never use inline styling in Kotlin code. Use `R.dimen.*`, `R.string.*`, `R.color.*` instead of hardcoded values.
 
 ### SharedPreferences Name
-**CRITICAL**: Always use `"TreadmillHUD"` as the SharedPreferences name.
+**CRITICAL**: Always use `SettingsManager.PREFS_NAME` (dynamic, `@Volatile var`) to open SharedPreferences — never hardcode `"TreadmillHUD"`. The name is set per-profile by `ProfileManager` on startup (e.g., `"TreadmillHUD_a1b2c3d4"`). Similarly, Garmin tokens use `GarminConnectUploader.PREFS_NAME` (`"GarminConnectTokens_<id>"`). The profile registry uses its own separate `"tHUD_profiles"` prefs.
+
+**⚠️ Android rejects path separators in SharedPreferences names.** Use flat naming (`"TreadmillHUD_<id>"`), never `"profiles/<id>/TreadmillHUD"`. Room DB paths CAN use absolute paths with separators.
 
 ### Single Source of Truth
 **CRITICAL**: Before adding new data flows, check if a pathway already exists. Never send the same data through multiple callbacks.
@@ -75,6 +77,9 @@
 | Pace progression | `WorkoutStep.paceEndTargetKph` | `ExecutionStep` → Engine (ticking) → `SpeedAdjusted` event → Treadmill |
 | Calculated HR config | `ServiceStateHolder` (SharedPrefs) | `HUDService.onRrIntervalsReceived()` → synthetic `CALC:<mac>` sensor; retroactive recalc on change |
 | Calculated HR data | `HUDService.calcHrEmaValues` (EMA state) | `state.connectedHrSensors["CALC:<mac>"]` → popup, recording, FIT export |
+| Profile registry | `ProfileManager` (`tHUD_profiles` SharedPrefs) | `HUDService.onCreate()` → all managers |
+| Active profile paths | `ProfileManager.prefsName/dbPath/profileDir` | `SettingsManager.PREFS_NAME`, `GarminConnectUploader.PREFS_NAME`, `FileExportHelper.activeProfileSubfolder`, `RunPersistenceManager.baseDir`, `TreadmillHudDatabase.getActiveInstance()` |
+| Profile switch | `HUDService.ACTION_SWITCH_PROFILE` | `ProfileManager.setActiveProfile()` → `stopSelf()` → caller restarts service |
 
 ### ⚠️ SPEED - ABSOLUTE RULES ⚠️
 
@@ -194,7 +199,7 @@ When enabled (`state.calcHrEnabled`), `HUDService.onRrIntervalsReceived()` compu
 **Settings:** "HR" tab (formerly "DFA α1") has two sections — "HR-sensors" (checkbox + 3 spinners: EMA alpha, artifact threshold, median window) and "DFA-alpha1" (existing 4 spinners), separated by a divider.
 
 ### FileExportHelper (`util/FileExportHelper.kt`)
-Exports to Downloads/tHUD via MediaStore. `saveToDownloads(context, sourceFile, filename, mimeType, subfolder)`, `getTempFile(context, filename)`. Subfolders: `ROOT` (tHUD/), `SCREENSHOTS` (tHUD/screenshots/).
+Exports to Downloads/tHUD/<profile>/ via MediaStore. `saveToDownloads(context, sourceFile, filename, mimeType, subfolder)`, `getTempFile(context, filename)`. `activeProfileSubfolder` (`@Volatile var`) is set by `HUDService.onCreate()` to the profile display name. Subfolders: `ROOT` (tHUD/<profile>/), `SCREENSHOTS` (tHUD/<profile>/screenshots/), `EXPORT` (tHUD/<profile>/export/), `IMPORT` (tHUD/<profile>/import/).
 
 ### SavedBluetoothDevices (`service/SavedBluetoothDevices.kt`)
 Unified BT sensor storage. `getAll/getByType/save/remove/isSaved/getSavedMacs`. Types: `HR_SENSOR`, `FOOT_POD`.
@@ -260,6 +265,12 @@ System workouts identified by `systemWorkoutType` column (`"WARMUP"`/`"COOLDOWN"
 ## Architecture
 
 ```
+ProfileManager (Singleton, initialized first in HUDService.onCreate)
+├── Profile registry        → tHUD_profiles SharedPrefs (separate from user prefs)
+├── Path derivation         → prefsName(), garminPrefsName(), dbPath(), profileDir()
+├── Migration               → Moves existing data into "User" profile on first upgrade
+└── PIN utilities           → hashPin(), verifyPin(), isValidPinFormat()
+
 HUDService (Orchestrator)
 ├── TelemetryManager        → GlassOS gRPC connection + subscriptions
 ├── WorkoutEngineManager    → Workout lifecycle (load, start, stop)
@@ -282,7 +293,8 @@ HUDService (Orchestrator)
     └── BluetoothSensorDialogManager → BT sensor connection dialog
 
 Data Layer
-├── TreadmillHudDatabase    → Room DB (version 8)
+├── TreadmillHudDatabase    → Room DB (version 9), multi-instance map keyed by absolute path
+│                              Use getActiveInstance(context), NOT getInstance(context, path) directly
 ├── WorkoutRepository       → Clean CRUD API (use this, not DAO directly)
 ├── Workout                 → Entity: metadata + systemWorkoutType, useDefaultWarmup/Cooldown, adjustmentScope
 └── WorkoutStep             → Entity: step with HR/Power targets (% of threshold)
@@ -317,6 +329,7 @@ app/src/main/java/io/github/avikulin/thud/
 │       ├── WorkoutStepFlattener.kt, WorkoutEvent.kt, WorkoutExecutionState.kt
 │
 ├── service/
+│   ├── ProfileManager.kt          # User profile registry + file isolation
 │   ├── GlassOsClient.kt           # gRPC client (mTLS, localhost:54321)
 │   ├── ServiceStateHolder.kt      # Shared volatile state
 │   ├── TelemetryManager.kt        # GlassOS comms

@@ -9,6 +9,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import io.github.avikulin.thud.data.entity.Workout
 import io.github.avikulin.thud.data.entity.WorkoutStep
+import io.github.avikulin.thud.service.ProfileManager
+import java.io.File
 
 /**
  * Room database for tHUD app.
@@ -26,8 +28,7 @@ abstract class TreadmillHudDatabase : RoomDatabase() {
     companion object {
         private const val DATABASE_NAME = "treadmillhud.db"
 
-        @Volatile
-        private var INSTANCE: TreadmillHudDatabase? = null
+        private val instances = mutableMapOf<String, TreadmillHudDatabase>()
 
         /**
          * Migration from version 1 to 2:
@@ -244,17 +245,49 @@ abstract class TreadmillHudDatabase : RoomDatabase() {
             }
         }
 
-        fun getInstance(context: Context): TreadmillHudDatabase {
-            return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: buildDatabase(context).also { INSTANCE = it }
+        /**
+         * Get a database instance for a specific absolute path.
+         * Each profile has its own DB at files/profiles/<id>/treadmillhud.db.
+         */
+        fun getInstance(context: Context, dbPath: String): TreadmillHudDatabase {
+            return synchronized(this) {
+                instances[dbPath] ?: buildDatabase(context, dbPath).also { instances[dbPath] = it }
             }
         }
 
-        private fun buildDatabase(context: Context): TreadmillHudDatabase {
+        /**
+         * Convenience: get the database instance for the active profile.
+         */
+        fun getActiveInstance(context: Context): TreadmillHudDatabase {
+            val dbPath = ProfileManager.dbPath(context, ProfileManager.getActiveProfileId(context))
+            return getInstance(context, dbPath)
+        }
+
+        /**
+         * Close all open database instances. Call during profile switch.
+         */
+        fun closeAll() {
+            synchronized(this) {
+                instances.values.forEach { it.close() }
+                instances.clear()
+            }
+        }
+
+        /**
+         * Close a specific database instance by path.
+         */
+        fun closeDatabase(dbPath: String) {
+            synchronized(this) {
+                instances.remove(dbPath)?.close()
+            }
+        }
+
+        private fun buildDatabase(context: Context, dbPath: String): TreadmillHudDatabase {
+            File(dbPath).parentFile?.mkdirs()
             return Room.databaseBuilder(
                 context.applicationContext,
                 TreadmillHudDatabase::class.java,
-                DATABASE_NAME
+                dbPath
             )
                 .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                 .build()

@@ -1291,7 +1291,7 @@ class FitFileExporter(private val context: Context) {
         val hrZoneTimeMs = LongArray(7) { 0L }
 
         // Read zone boundaries from user settings (SharedPreferences)
-        val prefs = context.getSharedPreferences("TreadmillHUD", android.content.Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences(SettingsManager.PREFS_NAME, android.content.Context.MODE_PRIVATE)
         val z2StartPercent = SettingsManager.Companion.getFloatOrInt(
             prefs, SettingsManager.PREF_HR_ZONE2_START_PERCENT, SettingsManager.DEFAULT_HR_ZONE2_START_PERCENT
         ).toInt()

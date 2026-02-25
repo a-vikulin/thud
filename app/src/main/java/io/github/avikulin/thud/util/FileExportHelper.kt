@@ -19,32 +19,47 @@ object FileExportHelper {
     private const val BASE_FOLDER = "tHUD"
 
     /**
-     * Subfolders within tHUD directory.
+     * Active profile's subfolder name (display name, e.g. "Alex").
+     * Set by HUDService.onCreate() on startup and profile switch.
+     */
+    @Volatile
+    var activeProfileSubfolder: String = ""
+
+    /**
+     * Subfolders within tHUD/<profile>/ directory.
      */
     object Subfolder {
-        const val ROOT = ""           // Downloads/tHUD/
-        const val SCREENSHOTS = "screenshots"  // Downloads/tHUD/screenshots/
+        const val ROOT = ""           // Downloads/tHUD/<profile>/
+        const val SCREENSHOTS = "screenshots"  // Downloads/tHUD/<profile>/screenshots/
+        const val EXPORT = "export"   // Downloads/tHUD/<profile>/export/
+        const val IMPORT = "import"   // Downloads/tHUD/<profile>/import/
     }
 
     /**
-     * Get the relative path for MediaStore (e.g., "Download/tHUD" or "Download/tHUD/screenshots").
+     * Get the relative path for MediaStore.
+     * With profile: "Download/tHUD/Alex" or "Download/tHUD/Alex/screenshots"
      */
     fun getRelativePath(subfolder: String = Subfolder.ROOT): String {
+        val profilePart = activeProfileSubfolder
+        val base = if (profilePart.isEmpty()) BASE_FOLDER else "$BASE_FOLDER/$profilePart"
         return if (subfolder.isEmpty()) {
-            "${Environment.DIRECTORY_DOWNLOADS}/$BASE_FOLDER"
+            "${Environment.DIRECTORY_DOWNLOADS}/$base"
         } else {
-            "${Environment.DIRECTORY_DOWNLOADS}/$BASE_FOLDER/$subfolder"
+            "${Environment.DIRECTORY_DOWNLOADS}/$base/$subfolder"
         }
     }
 
     /**
-     * Get display path for user feedback (e.g., "Downloads/tHUD/file.fit").
+     * Get display path for user feedback.
+     * With profile: "Downloads/tHUD/Alex/file.fit"
      */
     fun getDisplayPath(filename: String, subfolder: String = Subfolder.ROOT): String {
+        val profilePart = activeProfileSubfolder
+        val base = if (profilePart.isEmpty()) BASE_FOLDER else "$BASE_FOLDER/$profilePart"
         return if (subfolder.isEmpty()) {
-            "Downloads/$BASE_FOLDER/$filename"
+            "Downloads/$base/$filename"
         } else {
-            "Downloads/$BASE_FOLDER/$subfolder/$filename"
+            "Downloads/$base/$subfolder/$filename"
         }
     }
 

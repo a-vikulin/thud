@@ -138,7 +138,7 @@ class WorkoutEditorViewModel(application: Application) : AndroidViewModel(applic
     private var hrRest: Int = SettingsManager.DEFAULT_USER_HR_REST
 
     init {
-        val database = TreadmillHudDatabase.getInstance(application)
+        val database = TreadmillHudDatabase.getActiveInstance(application)
         repository = WorkoutRepository(database.workoutDao())
 
         // Load settings

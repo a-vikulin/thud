@@ -34,8 +34,16 @@ class SettingsManager(
     companion object {
         private const val TAG = "SettingsManager"
 
-        // SharedPreferences name
-        const val PREFS_NAME = "TreadmillHUD"
+        // SharedPreferences name — dynamic per profile.
+        // Updated by ProfileManager on startup and profile switch.
+        @Volatile
+        @JvmStatic
+        var PREFS_NAME = "TreadmillHUD"
+            private set
+
+        fun updatePrefsName(name: String) {
+            PREFS_NAME = name
+        }
 
         // SharedPreferences keys
         const val PREF_PACE_COEFFICIENT = "pace_coefficient"

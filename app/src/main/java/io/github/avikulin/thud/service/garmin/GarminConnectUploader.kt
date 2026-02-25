@@ -40,8 +40,16 @@ class GarminConnectUploader(private val context: Context) {
     companion object {
         private const val TAG = "GarminUploader"
 
-        // Token storage
-        private const val PREFS_NAME = "GarminConnectTokens"
+        // Token storage — dynamic per profile.
+        // Updated by ProfileManager on startup and profile switch.
+        @Volatile
+        @JvmStatic
+        var PREFS_NAME = "GarminConnectTokens"
+            private set
+
+        fun updatePrefsName(name: String) {
+            PREFS_NAME = name
+        }
 
         // Keys for encrypted storage
         private const val KEY_OAUTH1_TOKEN = "oauth1_token"

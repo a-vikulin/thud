@@ -56,7 +56,7 @@ class WorkoutEngineManager(
 
     private var workoutEngine: WorkoutExecutionEngine? = null
     private val repository: WorkoutRepository by lazy {
-        val database = TreadmillHudDatabase.getInstance(context)
+        val database = TreadmillHudDatabase.getActiveInstance(context)
         WorkoutRepository(database.workoutDao())
     }
 

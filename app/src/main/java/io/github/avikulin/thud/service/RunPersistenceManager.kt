@@ -82,7 +82,10 @@ data class PersistedRunState(
  * Manages persistence of run state to disk for crash recovery.
  * Uses atomic writes (temp file + rename) to prevent corruption.
  */
-class RunPersistenceManager(private val context: Context) {
+class RunPersistenceManager(
+    private val context: Context,
+    private val baseDir: File = context.filesDir
+) {
 
     companion object {
         private const val TAG = "RunPersistenceManager"
@@ -95,10 +98,10 @@ class RunPersistenceManager(private val context: Context) {
     }
 
     private val persistenceFile: File
-        get() = File(context.filesDir, PERSISTENCE_FILE)
+        get() = File(baseDir, PERSISTENCE_FILE)
 
     private val tempFile: File
-        get() = File(context.filesDir, PERSISTENCE_FILE_TEMP)
+        get() = File(baseDir, PERSISTENCE_FILE_TEMP)
 
     /**
      * Persist the current run state to disk.

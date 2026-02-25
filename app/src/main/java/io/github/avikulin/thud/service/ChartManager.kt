@@ -31,7 +31,6 @@ class ChartManager(
     companion object {
         private const val TAG = "ChartManager"
         private const val CHART_UPDATE_INTERVAL_MS = 1000L
-        private const val PREFS_NAME = "TreadmillHUD"
         private const val PREF_SHOW_SPEED = "chart_show_speed"
         private const val PREF_SHOW_INCLINE = "chart_show_incline"
         private const val PREF_SHOW_HR = "chart_show_hr"
@@ -39,7 +38,7 @@ class ChartManager(
         private const val PREF_CHART_ZOOM_MODE = "chart_zoom_mode"
     }
 
-    private val prefs: SharedPreferences = service.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = service.getSharedPreferences(SettingsManager.PREFS_NAME, Context.MODE_PRIVATE)
 
     private var containerView: LinearLayout? = null
     private var chartView: WorkoutChart? = null
