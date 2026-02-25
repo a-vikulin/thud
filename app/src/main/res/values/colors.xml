@@ -195,4 +195,11 @@
     <!-- Remote config column backgrounds (opaque, readable) -->
     <color name="remote_mode1_column">#2A4A2A</color>
     <color name="remote_mode2_column">#2A2A5A</color>
+
+    <!-- ==================== User Profile / Delete ==================== -->
+
+    <color name="delete_button_bg">#CC2222</color>
+    <color name="delete_button_text">#FFFFFF</color>
+    <color name="settings_section_header">#AAAAC8</color>
+    <color name="pin_dialog_background">#F8222240</color>
 </resources>

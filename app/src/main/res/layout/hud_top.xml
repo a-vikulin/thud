@@ -323,6 +323,35 @@
                 android:focusable="true"
                 android:contentDescription="@string/btn_remote" />
 
+            <LinearLayout
+                android:id="@+id/btnUser"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/service_button_height"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="4dp"
+                android:background="@drawable/service_button_border"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="@string/btn_user_content_description">
+
+                <ImageView
+                    android:layout_width="@dimen/hud_user_icon_size"
+                    android:layout_height="@dimen/hud_user_icon_size"
+                    android:src="@drawable/ic_user"
+                    android:scaleType="fitCenter" />
+
+                <TextView
+                    android:id="@+id/btnUserName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="@dimen/hud_user_name_text_size"
+                    android:textColor="@color/text_primary"
+                    android:text=""
+                    android:paddingEnd="8dp" />
+            </LinearLayout>
+
             <TextView
                 android:id="@+id/btnSettings"
                 android:text="@string/btn_settings"

@@ -13,7 +13,7 @@
         android:layout_height="wrap_content"
         android:text="@string/editor_add_step"
         android:textColor="@color/text_primary"
-        android:backgroundTint="@color/editor_button_primary"
+        android:backgroundTint="@color/button_secondary"
         android:paddingHorizontal="24dp"
         android:textAllCaps="false" />
 
@@ -24,7 +24,7 @@
         android:layout_marginStart="@dimen/editor_padding"
         android:text="@string/editor_add_repeat"
         android:textColor="@color/text_primary"
-        android:backgroundTint="@color/editor_button_secondary"
+        android:backgroundTint="@color/button_secondary"
         android:paddingHorizontal="24dp"
         android:textAllCaps="false" />
 

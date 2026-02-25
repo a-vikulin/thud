@@ -38,7 +38,7 @@
                 android:layout_height="@dimen/step_action_button_size"
                 android:text="@string/remote_close"
                 android:textColor="@color/text_primary"
-                android:backgroundTint="@color/editor_button_secondary"
+                android:backgroundTint="@color/button_secondary"
                 android:textAllCaps="false"
                 android:minWidth="0dp"
                 android:paddingHorizontal="@dimen/editor_padding" />
@@ -54,7 +54,7 @@
                 android:layout_height="@dimen/step_action_button_size"
                 android:text="@string/remote_add"
                 android:textColor="@color/text_primary"
-                android:backgroundTint="@color/editor_button_primary"
+                android:backgroundTint="@color/button_secondary"
                 android:textAllCaps="false"
                 android:minWidth="0dp"
                 android:paddingHorizontal="@dimen/editor_padding" />

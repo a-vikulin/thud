@@ -258,11 +258,8 @@ class HrSensorManager(
         }
         titleRow.addView(titleText)
 
-        val closeButton = Button(service).apply {
-            text = service.getString(R.string.btn_close)
-            setTextColor(ContextCompat.getColor(service, R.color.text_primary))
-            backgroundTintList = ContextCompat.getColorStateList(service, R.color.button_secondary)
-            setOnClickListener { removeDialog() }
+        val closeButton = OverlayHelper.createStyledButton(service, service.getString(R.string.btn_close)) {
+            removeDialog()
         }
         titleRow.addView(closeButton)
         container.addView(titleRow)
@@ -295,13 +292,11 @@ class HrSensorManager(
         }
         container.addView(deviceListContainer)
 
-        val disconnectButton = Button(service).apply {
-            text = service.getString(R.string.btn_disconnect)
-            setTextColor(ContextCompat.getColor(service, R.color.text_primary))
-            backgroundTintList = ContextCompat.getColorStateList(service, R.color.button_secondary)
+        val disconnectButton = OverlayHelper.createStyledButton(service, service.getString(R.string.btn_disconnect)) {
+            disconnectAll()
+        }.apply {
             visibility = View.GONE
             tag = "disconnectButton"
-            setOnClickListener { disconnectAll() }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -415,14 +410,9 @@ class HrSensorManager(
         }
         row.addView(nameText)
 
-        val connectButton = Button(service).apply {
-            text = service.getString(R.string.btn_connect)
-            setTextColor(ContextCompat.getColor(service, R.color.text_primary))
-            backgroundTintList = ContextCompat.getColorStateList(service, R.color.button_success)
-            setOnClickListener {
-                stopScan()
-                connectToDevice(device)
-            }
+        val connectButton = OverlayHelper.createStyledButton(service, service.getString(R.string.btn_connect), R.color.button_success) {
+            stopScan()
+            connectToDevice(device)
         }
         row.addView(connectButton)
 

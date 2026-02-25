@@ -14,8 +14,11 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import android.text.InputType
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.Toast
 import io.github.avikulin.thud.R
 import io.github.avikulin.thud.ui.components.OneKnobSlider
 import io.github.avikulin.thud.ui.components.ZoneSlider
@@ -251,6 +254,7 @@ class SettingsManager(
         fun onSettingsSaved()
         fun onGarminLoginRequested()
         fun isGarminAuthenticated(): Boolean
+        fun onProfileDeleteRequested(profileId: String)
     }
 
     var listener: Listener? = null
@@ -263,6 +267,7 @@ class SettingsManager(
 
     // Tab content containers
     private var dynamicsContent: View? = null
+    private var treadmillContent: View? = null
     private var zonesContent: View? = null
     private var autoAdjustContent: View? = null
     private var fitExportContent: View? = null
@@ -270,7 +275,11 @@ class SettingsManager(
     private var currentTabIndex = 0
     private val tabButtons = mutableListOf<Button>()
 
-    // Dynamics tab spinners
+    // User tab — username field
+    private var editUsername: EditText? = null
+    private var deleteUserDialogView: View? = null
+
+    // User tab — adjustment spinners
     private var spinnerInclineAdjustment: TouchSpinner? = null
     private var spinnerWeight: TouchSpinner? = null
     private var spinnerAge: TouchSpinner? = null
@@ -548,7 +557,8 @@ class SettingsManager(
 
         tabButtons.clear()
         val tabNames = listOf(
-            service.getString(R.string.settings_tab_dynamics),
+            service.getString(R.string.settings_tab_user),
+            service.getString(R.string.settings_tab_treadmill),
             service.getString(R.string.settings_tab_zones),
             service.getString(R.string.settings_tab_auto_adjust),
             service.getString(R.string.settings_tab_fit_export),
@@ -587,6 +597,7 @@ class SettingsManager(
 
         // Create tab contents
         dynamicsContent = createDynamicsContent()
+        treadmillContent = createTreadmillContent()
         zonesContent = createZonesContent()
         autoAdjustContent = createAutoAdjustContent()
         fitExportContent = createFitExportContent()
@@ -595,6 +606,7 @@ class SettingsManager(
         chartContent = createChartContent()
 
         contentContainer.addView(dynamicsContent)
+        contentContainer.addView(treadmillContent)
         contentContainer.addView(zonesContent)
         contentContainer.addView(autoAdjustContent)
         contentContainer.addView(fitExportContent)
@@ -611,18 +623,14 @@ class SettingsManager(
         buttonsRow.setPadding(0, buttonsTopMargin, 0, 0)
 
         // Cancel button
-        val cancelBtn = Button(service)
-        cancelBtn.text = service.getString(R.string.btn_cancel)
-        cancelBtn.setOnClickListener {
+        val cancelBtn = OverlayHelper.createStyledButton(service, service.getString(R.string.btn_cancel)) {
             Log.d(TAG, "Cancel clicked")
             removeDialog()
         }
         buttonsRow.addView(cancelBtn)
 
         // Save button
-        val saveBtn = Button(service)
-        saveBtn.text = service.getString(R.string.btn_save)
-        saveBtn.setOnClickListener {
+        val saveBtn = OverlayHelper.createStyledButton(service, service.getString(R.string.btn_save)) {
             Log.d(TAG, "Save clicked")
             saveSettings()
             removeDialog()
@@ -660,24 +668,45 @@ class SettingsManager(
 
         // Show/hide content
         dynamicsContent?.visibility = if (index == 0) View.VISIBLE else View.GONE
-        zonesContent?.visibility = if (index == 1) View.VISIBLE else View.GONE
-        autoAdjustContent?.visibility = if (index == 2) View.VISIBLE else View.GONE
-        fitExportContent?.visibility = if (index == 3) View.VISIBLE else View.GONE
-        ftmsContent?.visibility = if (index == 4) View.VISIBLE else View.GONE
-        dfaAlpha1Content?.visibility = if (index == 5) View.VISIBLE else View.GONE
-        chartContent?.visibility = if (index == 6) View.VISIBLE else View.GONE
+        treadmillContent?.visibility = if (index == 1) View.VISIBLE else View.GONE
+        zonesContent?.visibility = if (index == 2) View.VISIBLE else View.GONE
+        autoAdjustContent?.visibility = if (index == 3) View.VISIBLE else View.GONE
+        fitExportContent?.visibility = if (index == 4) View.VISIBLE else View.GONE
+        ftmsContent?.visibility = if (index == 5) View.VISIBLE else View.GONE
+        dfaAlpha1Content?.visibility = if (index == 6) View.VISIBLE else View.GONE
+        chartContent?.visibility = if (index == 7) View.VISIBLE else View.GONE
     }
 
     /**
-     * Create the Dynamics tab content.
-     * Contains pace coefficient slider and user profile settings in 2-column layout.
+     * Rebuild the User tab content in-place (e.g., after PIN set/remove changes button state).
+     */
+    private fun refreshUserTab() {
+        val parent = dynamicsContent?.parent as? android.view.ViewGroup ?: return
+        val index = parent.indexOfChild(dynamicsContent)
+        parent.removeView(dynamicsContent)
+        dynamicsContent = createDynamicsContent()
+        parent.addView(dynamicsContent, index)
+        selectTab(currentTabIndex)
+    }
+
+    /**
+     * Create the User tab content.
+     * Layout: username + PIN/Delete buttons at top, Personal section (weight/age/sex/HR rest/LT-pace).
      */
     private fun createDynamicsContent(): View {
         val textColor = ContextCompat.getColor(service, R.color.text_primary)
+        val secondaryColor = ContextCompat.getColor(service, R.color.text_secondary)
         val inputPadding = service.resources.getDimensionPixelSize(R.dimen.dialog_input_padding)
         val rowSpacing = service.resources.getDimensionPixelSize(R.dimen.settings_row_spacing)
         val labelWidth = service.resources.getDimensionPixelSize(R.dimen.settings_label_width)
         val spinnerWidth = service.resources.getDimensionPixelSize(R.dimen.settings_spinner_width)
+        val sectionHeaderPadTop = service.resources.getDimensionPixelSize(R.dimen.settings_section_header_padding_top)
+        val sectionHeaderSize = service.resources.getDimension(R.dimen.settings_section_header_size)
+        val usernameInputWidth = service.resources.getDimensionPixelSize(R.dimen.settings_username_input_width)
+        val sectionHeaderColor = ContextCompat.getColor(service, R.color.settings_section_header)
+
+        val activeProfile = ProfileManager.getActiveProfile(service)
+        val isGuest = activeProfile.id == ProfileManager.GUEST_PROFILE_ID
 
         // Helper to create a single row with label and control
         fun createSettingsRow(labelText: String, control: View): LinearLayout {
@@ -701,92 +730,120 @@ class SettingsManager(
             }
         }
 
+        fun createSectionHeader(text: String): TextView {
+            return TextView(service).apply {
+                this.text = text
+                setTextColor(sectionHeaderColor)
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, sectionHeaderSize)
+                setPadding(0, sectionHeaderPadTop, 0, rowSpacing)
+            }
+        }
+
         return LinearLayout(service).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
 
-            // Pace coefficient label
-            val paceLabel = TextView(service).apply {
-                text = String.format(service.getString(R.string.settings_pace_coefficient_label))
-                setTextColor(textColor)
-            }
-            addView(paceLabel)
-
-            // Pace coefficient slider
-            settingsOneKnobSlider = OneKnobSlider(service).apply {
-                setValue(state.paceCoefficient)
+            // ===== Username + PIN/Delete buttons =====
+            val topRow = LinearLayout(service).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    topMargin = inputPadding
-                }
+                )
             }
-            addView(settingsOneKnobSlider)
 
-            // Incline power coefficient label
-            val inclinePowerLabel = TextView(service).apply {
-                text = service.getString(R.string.settings_incline_power_coefficient_label)
+            // Username label
+            topRow.addView(TextView(service).apply {
+                text = service.getString(R.string.settings_username_label)
                 setTextColor(textColor)
                 layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    topMargin = rowSpacing
-                }
-            }
-            addView(inclinePowerLabel)
+                ).apply { marginEnd = rowSpacing }
+            })
 
-            // Incline power coefficient slider (0.0 to 1.0)
-            settingsInclinePowerSlider = OneKnobSlider(service).apply {
-                minValue = 0.0
-                maxValue = 1.0
-                setValue(state.inclinePowerCoefficient)
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    topMargin = inputPadding
-                }
-            }
-            addView(settingsInclinePowerSlider)
-
-            // Incline adjustment label
-            val inclineAdjLabel = TextView(service).apply {
-                text = service.getString(R.string.settings_incline_adjustment_label)
+            // Username EditText
+            editUsername = EditText(service).apply {
+                setText(activeProfile.name)
                 setTextColor(textColor)
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    topMargin = rowSpacing
+                setBackgroundColor(ContextCompat.getColor(service, R.color.editor_input_background))
+                setPadding(inputPadding, inputPadding, inputPadding, inputPadding)
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+                maxLines = 1
+                isSingleLine = true
+                imeOptions = EditorInfo.IME_ACTION_DONE
+                setOnEditorActionListener { view, actionId, _ ->
+                    if (actionId == EditorInfo.IME_ACTION_DONE) {
+                        val imm = service.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                        imm.hideSoftInputFromWindow(view.windowToken, 0)
+                        view.clearFocus()
+                        true
+                    } else false
                 }
-            }
-            addView(inclineAdjLabel)
-
-            // Incline adjustment spinner (0% to 2% at 0.5% step)
-            spinnerInclineAdjustment = TouchSpinner(service).apply {
-                minValue = 0.0
-                maxValue = 2.0
-                step = 0.5
-                format = TouchSpinner.Format.DECIMAL
-                suffix = "%"
-                value = state.inclineAdjustment
-                layoutParams = LinearLayout.LayoutParams(spinnerWidth, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = inputPadding
+                layoutParams = LinearLayout.LayoutParams(usernameInputWidth, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    marginEnd = rowSpacing
                 }
+                isEnabled = !isGuest
+                if (isGuest) setTextColor(secondaryColor)
             }
-            addView(spinnerInclineAdjustment)
+            topRow.addView(editUsername)
 
-            // ===== Two-column layout for user profile =====
+            // PIN buttons (not for Guest)
+            if (!isGuest) {
+                val hasPin = ProfileManager.hasPin(service, activeProfile.id)
+                if (hasPin) {
+                    // Change Pin button
+                    topRow.addView(OverlayHelper.createStyledButton(service, service.getString(R.string.btn_change_pin)) {
+                        showChangePinFlow(activeProfile)
+                    }.apply {
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply { marginEnd = rowSpacing / 2 }
+                    })
+                    // Remove Pin button
+                    topRow.addView(OverlayHelper.createStyledButton(service, service.getString(R.string.btn_remove_pin)) {
+                        showRemovePinFlow(activeProfile)
+                    }.apply {
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply { marginEnd = rowSpacing / 2 }
+                    })
+                } else {
+                    // Set Pin button
+                    topRow.addView(OverlayHelper.createStyledButton(service, service.getString(R.string.btn_set_pin)) {
+                        showSetPinFlow(activeProfile)
+                    }.apply {
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply { marginEnd = rowSpacing / 2 }
+                    })
+                }
+                // Spacer to push Delete button to the right
+                topRow.addView(View(service).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
+                })
+                // Delete User button
+                topRow.addView(OverlayHelper.createStyledButton(service, service.getString(R.string.btn_delete_user), R.color.delete_button_bg) {
+                    showDeleteUserDialog(activeProfile)
+                })
+            }
+
+            addView(topRow)
+
+            // ===== Section: Personal =====
+            addView(createSectionHeader(service.getString(R.string.settings_section_personal)))
+
+            // Two-column layout for personal fields
             val columnsContainer = LinearLayout(service).apply {
                 orientation = LinearLayout.HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    topMargin = rowSpacing * 2
-                }
+                )
             }
 
             // Left column: Weight, Age, Sex
@@ -795,11 +852,8 @@ class SettingsManager(
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
 
-            // Weight spinner
             spinnerWeight = TouchSpinner(service).apply {
-                minValue = 40.0
-                maxValue = 150.0
-                step = 0.1
+                minValue = 40.0; maxValue = 150.0; step = 0.1
                 format = TouchSpinner.Format.DECIMAL
                 suffix = service.getString(R.string.unit_kg)
                 value = state.userWeightKg
@@ -807,32 +861,21 @@ class SettingsManager(
             }
             leftColumn.addView(createSettingsRow(service.getString(R.string.settings_user_weight_label), spinnerWeight!!))
 
-            // Age spinner
             spinnerAge = TouchSpinner(service).apply {
-                minValue = 18.0
-                maxValue = 80.0
-                step = 1.0
-                format = TouchSpinner.Format.INTEGER
-                suffix = ""
+                minValue = 18.0; maxValue = 80.0; step = 1.0
+                format = TouchSpinner.Format.INTEGER; suffix = ""
                 value = state.userAge.toDouble()
                 layoutParams = LinearLayout.LayoutParams(spinnerWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
             }
             leftColumn.addView(createSettingsRow(service.getString(R.string.settings_user_age_label), spinnerAge!!))
 
-            // Sex buttons
-            val sexButtonContainer = LinearLayout(service).apply {
-                orientation = LinearLayout.HORIZONTAL
-            }
-            buttonMale = Button(service).apply {
-                text = service.getString(R.string.settings_sex_male)
-                setTextColor(ContextCompat.getColor(service, R.color.text_primary))
-                setOnClickListener { updateSexSelection(true) }
+            val sexButtonContainer = LinearLayout(service).apply { orientation = LinearLayout.HORIZONTAL }
+            buttonMale = OverlayHelper.createStyledButton(service, service.getString(R.string.settings_sex_male)) {
+                updateSexSelection(true)
             }
             sexButtonContainer.addView(buttonMale)
-            buttonFemale = Button(service).apply {
-                text = service.getString(R.string.settings_sex_female)
-                setTextColor(ContextCompat.getColor(service, R.color.text_primary))
-                setOnClickListener { updateSexSelection(false) }
+            buttonFemale = OverlayHelper.createStyledButton(service, service.getString(R.string.settings_sex_female)) {
+                updateSexSelection(false)
             }
             sexButtonContainer.addView(buttonFemale)
             leftColumn.addView(createSettingsRow(service.getString(R.string.settings_user_sex_label), sexButtonContainer))
@@ -845,11 +888,8 @@ class SettingsManager(
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
 
-            // HR Rest spinner
             spinnerHrRest = TouchSpinner(service).apply {
-                minValue = 30.0
-                maxValue = 100.0
-                step = 1.0
+                minValue = 30.0; maxValue = 100.0; step = 1.0
                 format = TouchSpinner.Format.INTEGER
                 suffix = service.getString(R.string.unit_bpm)
                 value = state.userHrRest.toDouble()
@@ -857,21 +897,33 @@ class SettingsManager(
             }
             rightColumn.addView(createSettingsRow(service.getString(R.string.settings_user_hr_rest_label), spinnerHrRest!!))
 
-            // Threshold Pace spinner (for pace-based TSS)
             spinnerThresholdPace = TouchSpinner(service).apply {
-                minValue = 180.0  // 3:00/km (very fast)
-                maxValue = 600.0  // 10:00/km (slow)
-                step = 5.0
-                format = TouchSpinner.Format.PACE_MMSS
-                suffix = "/km"
+                minValue = 180.0; maxValue = 600.0; step = 5.0
+                format = TouchSpinner.Format.PACE_MMSS; suffix = "/km"
                 value = PaceConverter.speedToPaceSeconds(state.thresholdPaceKph).toDouble()
                 layoutParams = LinearLayout.LayoutParams(spinnerWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
             }
             rightColumn.addView(createSettingsRow(service.getString(R.string.settings_threshold_pace_label), spinnerThresholdPace!!))
 
             columnsContainer.addView(rightColumn)
-
             addView(columnsContainer)
+
+            // Incline power coefficient (personal: how much incline affects user's power)
+            addView(TextView(service).apply {
+                text = service.getString(R.string.settings_incline_power_coefficient_label)
+                setTextColor(textColor)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = rowSpacing }
+            })
+            settingsInclinePowerSlider = OneKnobSlider(service).apply {
+                minValue = 0.0; maxValue = 1.0
+                setValue(state.inclinePowerCoefficient)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = inputPadding }
+            }
+            addView(settingsInclinePowerSlider)
 
             // Set initial sex selection
             updateSexSelection(state.userIsMale)
@@ -883,16 +935,309 @@ class SettingsManager(
      */
     private fun updateSexSelection(isMale: Boolean) {
         selectedIsMale = isMale
-        buttonMale?.setBackgroundColor(
-            ContextCompat.getColor(service,
-                if (isMale) R.color.spinner_button_pressed else R.color.spinner_value_background
-            )
+        buttonMale?.backgroundTintList = ContextCompat.getColorStateList(service,
+            if (isMale) R.color.spinner_button_pressed else R.color.button_secondary
         )
-        buttonFemale?.setBackgroundColor(
-            ContextCompat.getColor(service,
-                if (!isMale) R.color.spinner_button_pressed else R.color.spinner_value_background
-            )
+        buttonFemale?.backgroundTintList = ContextCompat.getColorStateList(service,
+            if (!isMale) R.color.spinner_button_pressed else R.color.button_secondary
         )
+    }
+
+    /**
+     * Create the Treadmill tab content.
+     * Contains pace coefficient slider and incline adjustment spinner.
+     */
+    private fun createTreadmillContent(): View {
+        val textColor = ContextCompat.getColor(service, R.color.text_primary)
+        val inputPadding = service.resources.getDimensionPixelSize(R.dimen.dialog_input_padding)
+        val rowSpacing = service.resources.getDimensionPixelSize(R.dimen.settings_row_spacing)
+        val spinnerWidth = service.resources.getDimensionPixelSize(R.dimen.settings_spinner_width)
+
+        return LinearLayout(service).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+
+            // Pace coefficient
+            addView(TextView(service).apply {
+                text = service.getString(R.string.settings_pace_coefficient_label)
+                setTextColor(textColor)
+            })
+            settingsOneKnobSlider = OneKnobSlider(service).apply {
+                setValue(state.paceCoefficient)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = inputPadding }
+            }
+            addView(settingsOneKnobSlider)
+
+            // Incline adjustment
+            addView(TextView(service).apply {
+                text = service.getString(R.string.settings_incline_adjustment_label)
+                setTextColor(textColor)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = rowSpacing }
+            })
+            spinnerInclineAdjustment = TouchSpinner(service).apply {
+                minValue = 0.0; maxValue = 2.0; step = 0.5
+                format = TouchSpinner.Format.DECIMAL; suffix = "%"
+                value = state.inclineAdjustment
+                layoutParams = LinearLayout.LayoutParams(spinnerWidth, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = inputPadding
+                }
+            }
+            addView(spinnerInclineAdjustment)
+        }
+    }
+
+    // ==================== PIN / Delete User Flows ====================
+
+    /**
+     * "Set Pin" flow: enter new PIN → repeat → save.
+     * Uses PinDialogManager for both steps. On mismatch, shows toast and starts over.
+     */
+    private fun showSetPinFlow(profile: UserProfile) {
+        val pinManager = PinDialogManager(service, windowManager)
+        pinManager.showPinDialog(
+            profileName = profile.name,
+            title = service.getString(R.string.pin_dialog_title_enter_new),
+            onPinEntered = { newPin ->
+                // Step 2: repeat PIN
+                pinManager.showPinDialog(
+                    profileName = profile.name,
+                    title = service.getString(R.string.pin_dialog_title_repeat),
+                    onPinEntered = { repeatPin ->
+                        if (newPin == repeatPin) {
+                            ProfileManager.setPin(service, profile.id, newPin)
+                            Toast.makeText(service, R.string.toast_pin_set, Toast.LENGTH_SHORT).show()
+                            Log.d(TAG, "PIN set for profile: ${profile.name}")
+                            refreshUserTab()
+                        } else {
+                            Toast.makeText(service, R.string.toast_pins_dont_match, Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onCancelled = {}
+                )
+            },
+            onCancelled = {}
+        )
+    }
+
+    /**
+     * "Change Pin" flow: verify current PIN → enter new → repeat → save.
+     */
+    private fun showChangePinFlow(profile: UserProfile) {
+        val pinManager = PinDialogManager(service, windowManager)
+        pinManager.showPinDialog(
+            profileName = profile.name,
+            title = service.getString(R.string.pin_dialog_title_enter_current),
+            onPinEntered = { currentPin ->
+                if (ProfileManager.verifyPin(service, profile.id, currentPin)) {
+                    // Current PIN correct → proceed with set flow
+                    showSetPinFlow(profile)
+                } else {
+                    Toast.makeText(service, R.string.toast_incorrect_pin, Toast.LENGTH_SHORT).show()
+                }
+            },
+            onCancelled = {}
+        )
+    }
+
+    /**
+     * "Remove Pin" flow: verify current PIN → clear PIN hash.
+     */
+    private fun showRemovePinFlow(profile: UserProfile) {
+        val pinManager = PinDialogManager(service, windowManager)
+        pinManager.showPinDialog(
+            profileName = profile.name,
+            title = service.getString(R.string.pin_dialog_title_enter_to_remove),
+            onPinEntered = { pin ->
+                if (ProfileManager.verifyPin(service, profile.id, pin)) {
+                    ProfileManager.setPin(service, profile.id, null)
+                    Toast.makeText(service, R.string.toast_pin_removed, Toast.LENGTH_SHORT).show()
+                    Log.d(TAG, "PIN removed for profile: ${profile.name}")
+                    refreshUserTab()
+                } else {
+                    Toast.makeText(service, R.string.toast_incorrect_pin, Toast.LENGTH_SHORT).show()
+                }
+            },
+            onCancelled = {}
+        )
+    }
+
+    /**
+     * "Delete User" dialog — dedicated destructive-action overlay.
+     * Requires typing the username to confirm. If profile has a PIN, also requires PIN entry.
+     * On success, deletes the profile and switches to Guest via listener callback.
+     */
+    private fun showDeleteUserDialog(profile: UserProfile) {
+        dismissDeleteUserDialog()
+
+        val resources = service.resources
+        val sectionSpacing = resources.getDimensionPixelSize(R.dimen.dialog_section_spacing)
+        val itemSpacing = resources.getDimensionPixelSize(R.dimen.dialog_item_spacing)
+        val inputHeight = resources.getDimensionPixelSize(R.dimen.pin_dialog_input_height)
+        val itemTextSize = resources.getDimension(R.dimen.dialog_item_text_size)
+        val buttonTextSize = resources.getDimension(R.dimen.dialog_button_text_size)
+        val buttonPadding = resources.getDimensionPixelSize(R.dimen.dialog_button_padding)
+        val textColor = ContextCompat.getColor(service, R.color.text_primary)
+        val warningColor = ContextCompat.getColor(service, R.color.delete_button_bg)
+        val inputBgColor = ContextCompat.getColor(service, R.color.editor_input_background)
+        val buttonSecondaryColor = ContextCompat.getColor(service, R.color.button_secondary)
+        val buttonTextColor = ContextCompat.getColor(service, R.color.popup_button_text)
+        val deleteBgColor = ContextCompat.getColor(service, R.color.delete_button_bg)
+        val deleteTextColor = ContextCompat.getColor(service, R.color.delete_button_text)
+        val screenWidth = windowManager.currentWindowMetrics.bounds.width()
+        val hasPin = ProfileManager.hasPin(service, profile.id)
+
+        val container = OverlayHelper.createDialogContainer(service)
+
+        // Title
+        container.addView(OverlayHelper.createDialogTitle(service, service.getString(R.string.delete_user_title)))
+
+        // Warning text
+        val warning = TextView(service).apply {
+            text = service.getString(R.string.delete_user_warning)
+            setTextColor(warningColor)
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, itemTextSize)
+            setPadding(0, 0, 0, sectionSpacing)
+        }
+        container.addView(warning)
+
+        // Username confirmation label
+        val usernameLabel = TextView(service).apply {
+            text = service.getString(R.string.delete_user_username_label)
+            setTextColor(textColor)
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, itemTextSize)
+            setPadding(0, 0, 0, itemSpacing)
+        }
+        container.addView(usernameLabel)
+
+        // Username input
+        val usernameInput = EditText(service).apply {
+            setTextColor(textColor)
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, itemTextSize)
+            setBackgroundColor(inputBgColor)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, inputHeight
+            ).apply { bottomMargin = sectionSpacing }
+            val inputPadding = resources.getDimensionPixelSize(R.dimen.dialog_input_padding)
+            setPadding(inputPadding, inputPadding, inputPadding, inputPadding)
+        }
+        container.addView(usernameInput)
+
+        // PIN fields (only if profile has PIN)
+        var pinInput: EditText? = null
+        if (hasPin) {
+            val pinLabel = TextView(service).apply {
+                text = service.getString(R.string.delete_user_pin_label)
+                setTextColor(textColor)
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, itemTextSize)
+                setPadding(0, 0, 0, itemSpacing)
+            }
+            container.addView(pinLabel)
+
+            pinInput = EditText(service).apply {
+                inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+                setTextColor(textColor)
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, itemTextSize)
+                setBackgroundColor(inputBgColor)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, inputHeight
+                ).apply { bottomMargin = sectionSpacing }
+                val inputPadding = resources.getDimensionPixelSize(R.dimen.dialog_input_padding)
+                setPadding(inputPadding, inputPadding, inputPadding, inputPadding)
+            }
+            container.addView(pinInput)
+        }
+
+        // Button row
+        val buttonRow = OverlayHelper.createDialogButtonRow(service)
+
+        // Cancel button
+        val cancelButton = TextView(service).apply {
+            text = service.getString(R.string.btn_cancel)
+            setTextColor(buttonTextColor)
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, buttonTextSize)
+            setBackgroundColor(buttonSecondaryColor)
+            setPadding(buttonPadding, buttonPadding, buttonPadding, buttonPadding)
+            setOnClickListener { dismissDeleteUserDialog() }
+        }
+        buttonRow.addView(cancelButton)
+
+        val spacer = View(service).apply {
+            layoutParams = LinearLayout.LayoutParams(itemSpacing, 1)
+        }
+        buttonRow.addView(spacer)
+
+        // Delete User button (RED)
+        val pinRef = pinInput  // Capture for lambda
+        val deleteButton = TextView(service).apply {
+            text = service.getString(R.string.delete_user_confirm_button)
+            setTextColor(deleteTextColor)
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, buttonTextSize)
+            setBackgroundColor(deleteBgColor)
+            setPadding(buttonPadding, buttonPadding, buttonPadding, buttonPadding)
+            setOnClickListener {
+                // Validate username match (case-sensitive)
+                val typedName = usernameInput.text.toString()
+                if (typedName != profile.name) {
+                    Toast.makeText(service, R.string.toast_username_doesnt_match, Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                // Validate PIN if required
+                if (hasPin) {
+                    val enteredPin = pinRef?.text?.toString() ?: ""
+                    if (!ProfileManager.verifyPin(service, profile.id, enteredPin)) {
+                        Toast.makeText(service, R.string.toast_incorrect_pin, Toast.LENGTH_SHORT).show()
+                        pinRef?.text?.clear()
+                        return@setOnClickListener
+                    }
+                }
+                // All checks passed — delete
+                dismissDeleteUserDialog()
+                removeDialog()
+                ProfileManager.deleteProfile(service, profile.id)
+                listener?.onProfileDeleteRequested(ProfileManager.GUEST_PROFILE_ID)
+                Log.d(TAG, "User deleted: ${profile.name}, switching to Guest")
+            }
+        }
+        buttonRow.addView(deleteButton)
+        container.addView(buttonRow)
+
+        // Show overlay
+        val dialogWidth = OverlayHelper.calculateWidth(
+            screenWidth,
+            resources.getFloat(R.dimen.pin_dialog_width_fraction)
+        )
+        val params = OverlayHelper.createOverlayParams(
+            width = dialogWidth,
+            focusable = true,
+            touchModal = true
+        )
+
+        try {
+            windowManager.addView(container, params)
+            deleteUserDialogView = container
+            usernameInput.requestFocus()
+            Log.d(TAG, "Delete user dialog shown for: ${profile.name}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to show delete user dialog: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Dismiss the delete user dialog if showing.
+     */
+    private fun dismissDeleteUserDialog() {
+        deleteUserDialogView?.let {
+            try {
+                windowManager.removeView(it)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removing delete user dialog: ${e.message}")
+            }
+            deleteUserDialogView = null
+        }
     }
 
     /**
@@ -1424,18 +1769,16 @@ class SettingsManager(
 
             // Sign in button
             val isLoggedIn = listener?.isGarminAuthenticated() ?: false
-            btnGarminLogin = Button(service).apply {
-                text = service.getString(
-                    if (isLoggedIn) R.string.garmin_logged_in else R.string.garmin_login
-                )
+            btnGarminLogin = OverlayHelper.createStyledButton(service, service.getString(
+                if (isLoggedIn) R.string.garmin_logged_in else R.string.garmin_login
+            )) {
+                listener?.onGarminLoginRequested()
+            }.apply {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply {
                     topMargin = rowSpacing
-                }
-                setOnClickListener {
-                    listener?.onGarminLoginRequested()
                 }
             }
             addView(btnGarminLogin)
@@ -1886,6 +2229,27 @@ class SettingsManager(
      * Save current slider values to SharedPreferences and state.
      */
     private fun saveSettings() {
+        // Save username if changed (non-Guest only)
+        editUsername?.let { field ->
+            val activeProfile = ProfileManager.getActiveProfile(service)
+            if (activeProfile.id != ProfileManager.GUEST_PROFILE_ID) {
+                val newName = field.text.toString().trim().replace(Regex("[/\\\\:*?\"<>|]"), "_")
+                if (newName.isNotBlank() && newName != activeProfile.name) {
+                    val existing = ProfileManager.getAllProfiles(service)
+                    val nameConflict = existing.any { it.id != activeProfile.id && it.name.equals(newName, ignoreCase = true) }
+                    if (!nameConflict) {
+                        ProfileManager.renameProfile(service, activeProfile.id, newName)
+                        io.github.avikulin.thud.util.FileExportHelper.activeProfileSubfolder =
+                            ProfileManager.downloadsSubfolder(newName)
+                        Log.d(TAG, "Username saved: ${activeProfile.name} → $newName")
+                    } else {
+                        Log.w(TAG, "Username conflict: $newName already exists")
+                        android.widget.Toast.makeText(service, R.string.toast_username_taken, android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+
         // Save pace coefficient from slider
         settingsOneKnobSlider?.getValue()?.let { value ->
             state.paceCoefficient = value
@@ -2097,6 +2461,7 @@ class SettingsManager(
      * Remove the settings dialog from the window.
      */
     fun removeDialog() {
+        dismissDeleteUserDialog()
         settingsDialogView?.let {
             try {
                 windowManager.removeView(it)
@@ -2112,6 +2477,7 @@ class SettingsManager(
 
         // Clean up tab-related references
         dynamicsContent = null
+        treadmillContent = null
         zonesContent = null
         autoAdjustContent = null
         fitExportContent = null
@@ -2120,7 +2486,8 @@ class SettingsManager(
         chartContent = null
         tabButtons.clear()
 
-        // Clean up dynamics tab controls
+        // Clean up dynamics/user tab controls
+        editUsername = null
         spinnerWeight = null
         spinnerAge = null
         spinnerHrRest = null

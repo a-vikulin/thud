@@ -23,16 +23,16 @@
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:background="@color/editor_step_background"
-            android:paddingHorizontal="@dimen/workout_list_item_padding">
+            android:paddingHorizontal="4dp">
 
             <!-- Close button -->
             <Button
                 android:id="@+id/btnClose"
                 android:layout_width="wrap_content"
-                android:layout_height="@dimen/step_action_button_size"
+                android:layout_height="match_parent"
                 android:text="@string/workout_close"
                 android:textColor="@color/text_primary"
-                android:backgroundTint="@color/editor_button_secondary"
+                android:backgroundTint="@color/button_secondary"
                 android:textAllCaps="false"
                 android:minWidth="0dp"
                 android:paddingHorizontal="@dimen/editor_padding" />
@@ -46,10 +46,10 @@
             <Button
                 android:id="@+id/btnAddWorkout"
                 android:layout_width="wrap_content"
-                android:layout_height="@dimen/step_action_button_size"
+                android:layout_height="match_parent"
                 android:text="@string/workout_add_new"
                 android:textColor="@color/text_primary"
-                android:backgroundTint="@color/editor_button_primary"
+                android:backgroundTint="@color/button_secondary"
                 android:textAllCaps="false"
                 android:minWidth="0dp"
                 android:paddingHorizontal="@dimen/editor_padding" />
@@ -111,7 +111,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:padding="@dimen/editor_padding"
+            android:paddingHorizontal="4dp"
             android:gravity="center_vertical"
             android:background="@color/editor_step_background">
 
@@ -133,7 +133,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:layout_marginStart="@dimen/editor_padding"
+                android:layout_marginStart="4dp"
                 android:hint="@string/editor_workout_name_hint"
                 android:textSize="@dimen/text_editor_title"
                 android:textColor="@color/text_primary"

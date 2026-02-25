@@ -17,6 +17,10 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import android.widget.LinearLayout
+import android.text.InputType
+import android.widget.EditText
+import android.widget.ImageView
+import android.widget.ScrollView
 import io.github.avikulin.thud.R
 import io.github.avikulin.thud.util.HeartRateZones
 import io.github.avikulin.thud.util.PaceConverter
@@ -50,7 +54,10 @@ class PopupManager(
     private val isStructuredWorkoutPaused: () -> Boolean = { false },
     private val onResumeWorkoutAtStepPace: () -> Unit = {},
     private val onPrimaryHrSelected: (value: String) -> Unit = {},
-    private val onDfaSensorSelected: (mac: String) -> Unit = {}
+    private val onDfaSensorSelected: (mac: String) -> Unit = {},
+    private val onProfileSwitchRequested: (profileId: String) -> Unit = {},
+    private val onEditProfileRequested: () -> Unit = {},
+    private val onProfileCreated: (profileId: String) -> Unit = {}
 ) {
     companion object {
         private const val TAG = "PopupManager"
@@ -71,6 +78,8 @@ class PopupManager(
     private var inclinePopupView: View? = null
     private var hrSensorPopupView: View? = null
     private var dfaSensorPopupView: View? = null
+    private var userPopupView: View? = null
+    private var addUserDialogView: View? = null
 
     // Zone colors cached for HR sensor popup (same as HUDDisplayManager)
     private val zoneColors = IntArray(6) { zone ->
@@ -815,6 +824,320 @@ class PopupManager(
         }
     }
 
+    // ==================== User Popup ====================
+
+    val isUserPopupVisible: Boolean
+        get() = userPopupView != null
+
+    fun toggleUserPopup(buttonBounds: IntArray? = null, closeButtonRightEdge: Int = 0) {
+        if (userPopupView != null) closeUserPopup() else showUserPopup(buttonBounds, closeButtonRightEdge)
+    }
+
+    fun closeUserPopup() {
+        userPopupView?.let {
+            try { windowManager.removeView(it) } catch (_: Exception) {}
+        }
+        userPopupView = null
+    }
+
+    private fun closeAddUserDialog() {
+        addUserDialogView?.let {
+            try { windowManager.removeView(it) } catch (_: Exception) {}
+        }
+        addUserDialogView = null
+    }
+
+    fun showUserPopup(buttonBounds: IntArray? = null, closeButtonRightEdge: Int = 0) {
+        if (userPopupView != null) { closeUserPopup(); return }
+        closeAllPopups()
+
+        val resources = service.resources
+        val itemPadding = resources.getDimensionPixelSize(R.dimen.user_popup_item_padding)
+        val itemSpacing = resources.getDimensionPixelSize(R.dimen.user_popup_item_spacing)
+        val iconSize = resources.getDimensionPixelSize(R.dimen.user_popup_icon_size)
+        val textSize = resources.getDimension(R.dimen.user_popup_text_size) / resources.displayMetrics.density
+        val textColor = ContextCompat.getColor(service, R.color.text_primary)
+        val bgColor = ContextCompat.getColor(service, R.color.popup_background)
+        val activeHighlightColor = ContextCompat.getColor(service, R.color.box_service)
+
+        val profiles = ProfileManager.getAllProfiles(service)
+        val activeId = ProfileManager.getActiveProfileId(service)
+        val activeProfile = profiles.firstOrNull { it.id == activeId }
+
+        val list = LinearLayout(service).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bgColor)
+            setPadding(0, 0, 0, itemPadding)
+        }
+
+        // Current user on top (with edit pencil icon, highlighted background)
+        if (activeProfile != null) {
+            list.addView(buildUserItem(activeProfile, isActive = true, showEditIcon = true,
+                itemPadding, itemSpacing, iconSize, textSize, textColor, activeHighlightColor))
+        }
+
+        // Remaining users sorted by name
+        profiles.filter { it.id != activeId }.sortedBy { it.name }.forEach { profile ->
+            list.addView(buildUserItem(profile, isActive = false, showEditIcon = false,
+                itemPadding, itemSpacing, iconSize, textSize, textColor, 0))
+        }
+
+        // "Add User" item at the bottom
+        list.addView(buildAddUserItem(itemPadding, itemSpacing, iconSize, textSize, textColor))
+
+        val scrollView = ScrollView(service).apply {
+            addView(list)
+        }
+
+        userPopupView = scrollView
+
+        // Position: left edge aligned with user button, right edge aligned with close button
+        val boxX = buttonBounds?.get(0) ?: 0
+        val boxY = buttonBounds?.get(1) ?: 0
+        val boxHeight = buttonBounds?.get(3) ?: 0
+        val popupWidth = if (closeButtonRightEdge > boxX) closeButtonRightEdge - boxX
+            else OverlayHelper.calculateWidth(
+                state.screenWidth, resources.getFloat(R.dimen.user_popup_width_fraction)
+            )
+        val params = OverlayHelper.createOverlayParams(popupWidth, focusable = true)
+        params.gravity = Gravity.TOP or Gravity.START
+        params.x = boxX
+        params.y = boxY + boxHeight
+        windowManager.addView(userPopupView, params)
+    }
+
+    private fun buildUserItem(
+        profile: UserProfile,
+        isActive: Boolean,
+        showEditIcon: Boolean,
+        itemPadding: Int,
+        itemSpacing: Int,
+        iconSize: Int,
+        textSize: Float,
+        textColor: Int,
+        highlightColor: Int
+    ): LinearLayout {
+        return LinearLayout(service).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(itemPadding, itemPadding, itemPadding, itemPadding)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                if (!isActive) bottomMargin = itemSpacing
+            }
+
+            // Highlight active user row
+            if (isActive && highlightColor != 0) {
+                setBackgroundColor(highlightColor)
+            }
+
+            // Username text (same color for all users)
+            val nameView = TextView(service).apply {
+                text = profile.name
+                setTextColor(textColor)
+                this.textSize = textSize
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }
+            addView(nameView)
+
+            // Lock icon right after username if profile has a PIN
+            if (profile.pinHash != null) {
+                val lockIcon = ImageView(service).apply {
+                    setImageResource(R.drawable.ic_lock_pin)
+                    setColorFilter(textColor, android.graphics.PorterDuff.Mode.SRC_IN)
+                    layoutParams = LinearLayout.LayoutParams(iconSize, iconSize).apply {
+                        marginStart = itemSpacing
+                    }
+                }
+                addView(lockIcon)
+            }
+
+            // Spacer pushes edit icon to the right edge
+            addView(View(service).apply {
+                layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
+            })
+
+            // Edit pencil icon for current user only
+            if (showEditIcon) {
+                val editIcon = ImageView(service).apply {
+                    setImageResource(R.drawable.ic_pencil_edit)
+                    setColorFilter(textColor, android.graphics.PorterDuff.Mode.SRC_IN)
+                    layoutParams = LinearLayout.LayoutParams(iconSize, iconSize).apply {
+                        marginStart = itemSpacing * 2
+                    }
+                    setOnClickListener {
+                        closeUserPopup()
+                        onEditProfileRequested()
+                    }
+                }
+                addView(editIcon)
+            }
+
+            // Tap behavior (only for non-active users)
+            if (!isActive) {
+                setOnClickListener {
+                    closeUserPopup()
+                    if (profile.pinHash != null) {
+                        // Has PIN → show PIN dialog
+                        showPinForProfileSwitch(profile)
+                    } else {
+                        // No PIN → switch directly
+                        onProfileSwitchRequested(profile.id)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun showPinForProfileSwitch(profile: UserProfile) {
+        val pinDialogManager = PinDialogManager(service, windowManager)
+        pinDialogManager.showPinDialog(
+            profileName = profile.name,
+            title = service.getString(R.string.pin_dialog_title_enter),
+            onPinEntered = { pin ->
+                if (ProfileManager.verifyPin(service, profile.id, pin)) {
+                    ProfileManager.setAuthenticatedSwitch(service)
+                    onProfileSwitchRequested(profile.id)
+                } else {
+                    Toast.makeText(service, R.string.toast_incorrect_pin, Toast.LENGTH_SHORT).show()
+                }
+            },
+            onCancelled = { /* Stay as current user */ }
+        )
+    }
+
+    private fun buildAddUserItem(
+        itemPadding: Int,
+        itemSpacing: Int,
+        iconSize: Int,
+        textSize: Float,
+        textColor: Int
+    ): LinearLayout {
+        return LinearLayout(service).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(itemPadding, itemPadding, itemPadding, itemPadding)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = itemSpacing }
+
+            val plusIcon = ImageView(service).apply {
+                setImageResource(R.drawable.ic_user_plus)
+                setColorFilter(textColor, android.graphics.PorterDuff.Mode.SRC_IN)
+                layoutParams = LinearLayout.LayoutParams(iconSize, iconSize).apply {
+                    marginEnd = itemSpacing * 2
+                }
+            }
+            addView(plusIcon)
+
+            val label = TextView(service).apply {
+                text = service.getString(R.string.user_popup_add_user)
+                setTextColor(textColor)
+                this.textSize = textSize
+            }
+            addView(label)
+
+            setOnClickListener {
+                closeUserPopup()
+                showAddUserDialog()
+            }
+        }
+    }
+
+    /**
+     * Show a small overlay for entering a new user's name.
+     */
+    private fun showAddUserDialog() {
+        closeAddUserDialog()
+
+        val resources = service.resources
+        val sectionSpacing = resources.getDimensionPixelSize(R.dimen.dialog_section_spacing)
+        val itemSpacing = resources.getDimensionPixelSize(R.dimen.dialog_item_spacing)
+        val inputHeight = resources.getDimensionPixelSize(R.dimen.pin_dialog_input_height)
+        val itemTextSize = resources.getDimension(R.dimen.dialog_item_text_size)
+        val textColor = ContextCompat.getColor(service, R.color.text_primary)
+        val inputBgColor = ContextCompat.getColor(service, R.color.editor_input_background)
+
+        val container = OverlayHelper.createDialogContainer(service)
+        container.addView(OverlayHelper.createDialogTitle(service, service.getString(R.string.add_user_title)))
+
+        // Name label
+        val nameLabel = TextView(service).apply {
+            text = service.getString(R.string.add_user_name_label)
+            setTextColor(textColor)
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, itemTextSize)
+            setPadding(0, 0, 0, itemSpacing)
+        }
+        container.addView(nameLabel)
+
+        // Name input
+        val nameInput = EditText(service).apply {
+            inputType = InputType.TYPE_CLASS_TEXT
+            setTextColor(textColor)
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, itemTextSize)
+            setBackgroundColor(inputBgColor)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, inputHeight
+            ).apply { bottomMargin = sectionSpacing }
+            val inputPadding = resources.getDimensionPixelSize(R.dimen.dialog_input_padding)
+            setPadding(inputPadding, inputPadding, inputPadding, inputPadding)
+        }
+        container.addView(nameInput)
+
+        // Buttons
+        val buttonRow = OverlayHelper.createDialogButtonRow(service)
+
+        val cancelButton = OverlayHelper.createStyledButton(service, service.getString(R.string.btn_cancel)) {
+            closeAddUserDialog()
+        }
+        buttonRow.addView(cancelButton)
+
+        buttonRow.addView(View(service).apply {
+            layoutParams = LinearLayout.LayoutParams(itemSpacing, 1)
+        })
+
+        val okButton = OverlayHelper.createStyledButton(service, service.getString(R.string.btn_ok)) {
+            val name = nameInput.text.toString().trim()
+            if (name.isBlank()) {
+                Toast.makeText(service, R.string.toast_username_empty, Toast.LENGTH_SHORT).show()
+                return@createStyledButton
+            }
+            // Sanitize filesystem-unsafe characters
+            val sanitized = name.replace(Regex("[/\\\\:*?\"<>|]"), "_")
+            // Check uniqueness
+            val existing = ProfileManager.getAllProfiles(service)
+            if (existing.any { it.name.equals(sanitized, ignoreCase = true) }) {
+                Toast.makeText(service, R.string.toast_username_taken, Toast.LENGTH_SHORT).show()
+                return@createStyledButton
+            }
+            val newProfile = ProfileManager.createProfile(service, sanitized, pin = null)
+            closeAddUserDialog()
+            onProfileCreated(newProfile.id)
+        }
+        buttonRow.addView(okButton)
+        container.addView(buttonRow)
+
+        addUserDialogView = container
+
+        val dialogWidth = OverlayHelper.calculateWidth(
+            state.screenWidth, resources.getFloat(R.dimen.pin_dialog_width_fraction)
+        )
+        val params = OverlayHelper.createOverlayParams(dialogWidth, focusable = true, touchModal = true)
+        try {
+            windowManager.addView(container, params)
+            nameInput.requestFocus()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to show add user dialog: ${e.message}", e)
+        }
+    }
+
     /**
      * Close all popups.
      */
@@ -823,6 +1146,8 @@ class PopupManager(
         closeInclinePopup()
         closeHrSensorPopup()
         closeDfaSensorPopup()
+        closeUserPopup()
+        closeAddUserDialog()
     }
 
     // ==================== Treadmill Control Helpers ====================
@@ -911,6 +1236,16 @@ class PopupManager(
             } catch (e: Exception) {
                 Log.e(TAG, "Error removing HR sensor popup: ${e.message}")
             }
+        }
+
+        userPopupView?.let {
+            userPopupView = null
+            try { windowManager.removeView(it) } catch (_: Exception) {}
+        }
+
+        addUserDialogView?.let {
+            addUserDialogView = null
+            try { windowManager.removeView(it) } catch (_: Exception) {}
         }
     }
 }

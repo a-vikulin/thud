@@ -244,9 +244,8 @@ class StrydManager(
         }
         titleRow.addView(title)
 
-        val closeBtn = Button(service).apply {
-            text = service.getString(R.string.btn_close)
-            setOnClickListener { removeDialog() }
+        val closeBtn = OverlayHelper.createStyledButton(service, service.getString(R.string.btn_close)) {
+            removeDialog()
         }
         titleRow.addView(closeBtn)
 
@@ -335,22 +334,19 @@ class StrydManager(
             }
             addView(nameText)
 
-            val actionBtn = Button(service).apply {
-                text = if (connected) {
-                    service.getString(R.string.btn_disconnect)
+            val actionBtn = OverlayHelper.createStyledButton(
+                service,
+                service.getString(if (connected) R.string.btn_disconnect else R.string.btn_connect),
+                if (connected) R.color.button_secondary else R.color.button_success
+            ) {
+                if (connected) {
+                    disconnect()
+                    updateDialogForDisconnected()
                 } else {
-                    service.getString(R.string.btn_connect)
-                }
-                setOnClickListener {
-                    if (connected) {
-                        disconnect()
-                        updateDialogForDisconnected()
-                    } else {
-                        // Find the device by name and connect
-                        discoveredDevices.find { it.name == name }?.let { device ->
-                            stopScan()
-                            connectToDevice(device)
-                        }
+                    // Find the device by name and connect
+                    discoveredDevices.find { it.name == name }?.let { device ->
+                        stopScan()
+                        connectToDevice(device)
                     }
                 }
             }

@@ -318,7 +318,16 @@ class HUDService : Service(),
         // CRITICAL: Must happen BEFORE any getSharedPreferences() or Room DB access,
         // because Android caches SharedPreferences on first open.
         ProfileManager.ensureRegistryExists(applicationContext)
-        val activeProfile = ProfileManager.getActiveProfile(applicationContext)
+        var activeProfile = ProfileManager.getActiveProfile(applicationContext)
+
+        // Guest auto-fallback: if last user had a PIN and didn't just authenticate,
+        // switch to Guest silently. Authenticated switches set a transient flag.
+        if (activeProfile.pinHash != null && !ProfileManager.consumeAuthenticatedSwitch(applicationContext)) {
+            Log.d(TAG, "Last user (${activeProfile.name}) has PIN — falling back to Guest")
+            ProfileManager.setActiveProfile(applicationContext, ProfileManager.GUEST_PROFILE_ID)
+            activeProfile = ProfileManager.getActiveProfile(applicationContext)
+        }
+
         SettingsManager.updatePrefsName(ProfileManager.prefsName(activeProfile.id))
         GarminConnectUploader.updatePrefsName(ProfileManager.garminPrefsName(activeProfile.id))
         FileExportHelper.activeProfileSubfolder = ProfileManager.downloadsSubfolder(activeProfile.name)
@@ -408,6 +417,17 @@ class HUDService : Service(),
             onDfaSensorSelected = { mac ->
                 setDfaSensor(mac)
                 popupManager.closeDfaSensorPopup()
+            },
+            onProfileSwitchRequested = { profileId ->
+                handleProfileSwitch(profileId)
+            },
+            onEditProfileRequested = {
+                popupManager.closeAllPopups()
+                hrSensorManager.removeDialog()
+                settingsManager.showDialog()
+            },
+            onProfileCreated = { profileId ->
+                handleProfileSwitch(profileId)
             }
         )
 
@@ -1189,6 +1209,7 @@ class HUDService : Service(),
         hudDisplayManager.updateHrSensorStatus(state.hrSensorConnected)
         hudDisplayManager.updateDfaSubtitle(activeDfaSubtitleLabel())
         hudDisplayManager.updateDfaSensorStatus(hrSensorManager.getRrCapableMacs().isNotEmpty())
+        hudDisplayManager.updateUserButton(ProfileManager.getActiveProfile(applicationContext).name)
         updateNotification()
 
         // Restore previously visible panels
@@ -1410,6 +1431,16 @@ class HUDService : Service(),
 
         // Set the new active profile — service will reinit with correct paths on restart
         ProfileManager.setActiveProfile(applicationContext, profileId)
+
+        // Schedule service restart — posted to main looper, executes after stopSelf() completes
+        val appContext = applicationContext
+        Handler(Looper.getMainLooper()).postDelayed({
+            val restartIntent = Intent(appContext, HUDService::class.java).apply {
+                action = ACTION_SHOW_HUD
+            }
+            appContext.startForegroundService(restartIntent)
+        }, 200)
+
         stopSelf()
     }
 
@@ -2438,6 +2469,10 @@ class HUDService : Service(),
 
     override fun isGarminAuthenticated(): Boolean = garminUploader.isAuthenticated()
 
+    override fun onProfileDeleteRequested(profileId: String) {
+        handleProfileSwitch(profileId)
+    }
+
     /**
      * Restart FTMS servers to apply new settings.
      * Stops servers that should be disabled, starts servers that should be enabled.
@@ -2593,6 +2628,12 @@ class HUDService : Service(),
             return
         }
         openRemoteConfig()
+    }
+
+    override fun onUserClicked() {
+        val bounds = hudDisplayManager.getUserButtonBounds()
+        val closeRightEdge = hudDisplayManager.getCloseButtonRightEdge()
+        popupManager.toggleUserPopup(bounds, closeRightEdge)
     }
 
     override fun onSettingsClicked() {

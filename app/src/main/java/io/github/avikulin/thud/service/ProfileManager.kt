@@ -11,6 +11,7 @@ import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
 import java.util.UUID
+import kotlin.concurrent.thread
 
 /**
  * Data class representing a user profile.
@@ -41,6 +42,7 @@ object ProfileManager {
     private const val REGISTRY_PREFS = "tHUD_profiles"
     private const val KEY_PROFILES_JSON = "profiles_json"
     private const val KEY_ACTIVE_ID = "active_profile_id"
+    private const val KEY_AUTHENTICATED_SWITCH = "authenticated_switch"
 
     const val GUEST_PROFILE_ID = "guest"
     const val GUEST_PROFILE_NAME = "Guest"
@@ -160,10 +162,13 @@ object ProfileManager {
         profiles[index] = profiles[index].copy(name = newName)
         saveProfiles(context, profiles)
 
-        // Rename Downloads subfolder via MediaStore
-        renameDownloadsFolder(context, oldName, newName)
-
         Log.i(TAG, "Renamed profile $profileId: $oldName → $newName")
+
+        // Rename Downloads subfolder via MediaStore (background — may be slow with many files)
+        val appContext = context.applicationContext
+        thread(name = "ProfileRenameDownloads") {
+            renameDownloadsFolder(appContext, oldName, newName)
+        }
     }
 
     fun deleteProfile(context: Context, profileId: String) {
@@ -198,6 +203,26 @@ object ProfileManager {
         val registry = context.getSharedPreferences(REGISTRY_PREFS, Context.MODE_PRIVATE)
         registry.edit().putString(KEY_ACTIVE_ID, profileId).apply()
         Log.d(TAG, "Active profile set to: $profileId")
+    }
+
+    /**
+     * Mark the next service startup as an authenticated switch (user entered PIN).
+     * Prevents the Guest auto-fallback from firing on restart.
+     */
+    fun setAuthenticatedSwitch(context: Context) {
+        val registry = context.getSharedPreferences(REGISTRY_PREFS, Context.MODE_PRIVATE)
+        registry.edit().putBoolean(KEY_AUTHENTICATED_SWITCH, true).apply()
+    }
+
+    /**
+     * Consume (read + clear) the authenticated switch flag.
+     * Returns true if the flag was set — meaning the user just authenticated.
+     */
+    fun consumeAuthenticatedSwitch(context: Context): Boolean {
+        val registry = context.getSharedPreferences(REGISTRY_PREFS, Context.MODE_PRIVATE)
+        val was = registry.getBoolean(KEY_AUTHENTICATED_SWITCH, false)
+        if (was) registry.edit().remove(KEY_AUTHENTICATED_SWITCH).apply()
+        return was
     }
 
     // ==================== PIN Operations ====================
@@ -366,6 +391,14 @@ object ProfileManager {
                 }
                 Log.d(TAG, "Migrated $count Downloads files to tHUD/$profileName/")
             }
+            // Clean up empty old directories (e.g. tHUD/screenshots/) left behind by MediaStore moves
+            val tHudDir = File(Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_DOWNLOADS), "tHUD")
+            tHudDir.listFiles()?.forEach { child ->
+                if (child.isDirectory && child.name != profileName) {
+                    deleteEmptyDirRecursively(child)
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to migrate Downloads folder: ${e.message}", e)
         }
@@ -399,6 +432,9 @@ object ProfileManager {
                 }
                 Log.d(TAG, "Renamed $count Downloads files: tHUD/$oldName/ → tHUD/$newName/")
             }
+            // Clean up empty old directories left behind by MediaStore moves
+            deleteEmptyDirRecursively(File(Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_DOWNLOADS), "tHUD/$oldName"))
         } catch (e: Exception) {
             Log.e(TAG, "Failed to rename Downloads folder: ${e.message}", e)
         }
@@ -416,9 +452,28 @@ object ProfileManager {
                 MediaStore.Downloads.EXTERNAL_CONTENT_URI,
                 selection, args
             )
+            // Clean up empty directories left behind by MediaStore deletes
+            deleteEmptyDirRecursively(File(Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_DOWNLOADS), "tHUD/$profileName"))
             Log.d(TAG, "Deleted $count Downloads files for profile: $profileName")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to delete Downloads folder: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Recursively delete empty directories bottom-up.
+     * Only deletes directories that are empty (or contain only empty subdirectories).
+     * Leaves non-empty directories and files untouched.
+     */
+    private fun deleteEmptyDirRecursively(dir: File) {
+        if (!dir.exists() || !dir.isDirectory) return
+        dir.listFiles()?.forEach { child ->
+            if (child.isDirectory) deleteEmptyDirRecursively(child)
+        }
+        // Delete this dir only if it's now empty
+        if (dir.listFiles()?.isEmpty() == true) {
+            dir.delete()
         }
     }
 

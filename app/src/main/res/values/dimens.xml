@@ -36,7 +36,7 @@
     <!-- ==================== Layout Fractions ==================== -->
     <!-- Used in HUDService.kt for programmatic sizing -->
 
-    <item name="hud_width_fraction" format="float" type="dimen">0.9</item>
+    <item name="hud_width_fraction" format="float" type="dimen">0.97</item>
     <item name="hud_height_fraction" format="float" type="dimen">0.09</item>
     <item name="popup_width_fraction" format="float" type="dimen">0.6</item>
     <item name="popup_height_fraction" format="float" type="dimen">0.7</item>
@@ -221,4 +221,25 @@
     <dimen name="remote_key_button_height">40dp</dimen>
     <dimen name="remote_spinner_width">120dp</dimen>
     <dimen name="remote_blink_duration_ms">200dp</dimen>
+
+    <!-- ==================== PIN Dialog ==================== -->
+
+    <item name="pin_dialog_width_fraction" format="float" type="dimen">0.35</item>
+    <dimen name="pin_dialog_input_height">48dp</dimen>
+
+    <!-- ==================== User Button &amp; Dropdown ==================== -->
+
+    <dimen name="hud_user_icon_size">40dp</dimen>
+    <dimen name="hud_user_name_text_size">28sp</dimen>
+    <dimen name="user_popup_item_padding">12dp</dimen>
+    <dimen name="user_popup_item_spacing">4dp</dimen>
+    <dimen name="user_popup_icon_size">18dp</dimen>
+    <dimen name="user_popup_text_size">18sp</dimen>
+    <item name="user_popup_width_fraction" format="float" type="dimen">0.2</item>
+
+    <!-- ==================== Settings Section Headers ==================== -->
+
+    <dimen name="settings_section_header_size">14sp</dimen>
+    <dimen name="settings_section_header_padding_top">16dp</dimen>
+    <dimen name="settings_username_input_width">200dp</dimen>
 </resources>

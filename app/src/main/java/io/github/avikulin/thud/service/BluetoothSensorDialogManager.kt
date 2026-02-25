@@ -183,11 +183,8 @@ class BluetoothSensorDialogManager(
         }
         titleRow.addView(titleText)
 
-        val closeButton = Button(service).apply {
-            text = service.getString(R.string.btn_close)
-            setTextColor(ContextCompat.getColor(service, R.color.text_primary))
-            backgroundTintList = ContextCompat.getColorStateList(service, R.color.button_secondary)
-            setOnClickListener { removeDialog() }
+        val closeButton = OverlayHelper.createStyledButton(service, service.getString(R.string.btn_close)) {
+            removeDialog()
         }
         titleRow.addView(closeButton)
         container.addView(titleRow)
@@ -277,7 +274,7 @@ class BluetoothSensorDialogManager(
         // Show reconnect all button if no devices are connected but we have saved devices
         val anyConnected = hrSensorManager.isAnyConnected || state.strydConnected
         if (!anyConnected && savedDevices.isNotEmpty()) {
-            val reconnectBtn = createButton(service.getString(R.string.btn_reconnect_all)) {
+            val reconnectBtn = OverlayHelper.createStyledButton(service, service.getString(R.string.btn_reconnect_all)) {
                 // Mark all devices as reconnecting
                 savedDevices.forEach { reconnectingMacs.add(it.mac) }
                 hrSensorManager.reconnect()
@@ -373,7 +370,7 @@ class BluetoothSensorDialogManager(
             // Action buttons
             if (isConnected) {
                 // Disconnect button
-                val disconnectBtn = createButton(service.getString(R.string.btn_disconnect)) {
+                val disconnectBtn = OverlayHelper.createStyledButton(service, service.getString(R.string.btn_disconnect)) {
                     when (device.type) {
                         SensorDeviceType.HR_SENSOR -> hrSensorManager.disconnect(device.mac)
                         SensorDeviceType.FOOT_POD -> strydManager.disconnect()
@@ -409,7 +406,7 @@ class BluetoothSensorDialogManager(
             }
 
             // Forget button (always shown)
-            val forgetBtn = createButton(service.getString(R.string.btn_forget)) {
+            val forgetBtn = OverlayHelper.createStyledButton(service, service.getString(R.string.btn_forget)) {
                 reconnectingMacs.remove(device.mac)
                 when (device.type) {
                     SensorDeviceType.HR_SENSOR -> hrSensorManager.forgetDevice(device.mac)
@@ -431,11 +428,9 @@ class BluetoothSensorDialogManager(
             orientation = LinearLayout.VERTICAL
 
             // Scan button
-            scanButton = Button(service).apply {
-                text = service.getString(R.string.btn_scan)
-                setTextColor(ContextCompat.getColor(service, R.color.text_primary))
-                backgroundTintList = ContextCompat.getColorStateList(service, R.color.button_success)
-                setOnClickListener { toggleScan() }
+            scanButton = OverlayHelper.createStyledButton(service, service.getString(R.string.btn_scan), R.color.button_success) {
+                toggleScan()
+            }.apply {
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
@@ -538,29 +533,6 @@ class BluetoothSensorDialogManager(
                 isAllCaps = refButton.isAllCaps
             }
             addView(textView)
-        }
-    }
-
-    /**
-     * Create a styled button.
-     * @param minWidthRes Optional dimension resource ID for minimum width
-     */
-    private fun createButton(text: String, minWidthRes: Int = 0, onClick: () -> Unit): Button {
-        val rowSpacing = service.resources.getDimensionPixelSize(R.dimen.settings_row_spacing)
-        return Button(service).apply {
-            this.text = text
-            setTextColor(ContextCompat.getColor(service, R.color.text_primary))
-            backgroundTintList = ContextCompat.getColorStateList(service, R.color.button_secondary)
-            setOnClickListener { onClick() }
-            if (minWidthRes != 0) {
-                minimumWidth = service.resources.getDimensionPixelSize(minWidthRes)
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                marginEnd = rowSpacing
-            }
         }
     }
 
@@ -745,13 +717,8 @@ class BluetoothSensorDialogManager(
         row.addView(nameLabel)
 
         // Connect button
-        val connectBtn = Button(service).apply {
-            text = service.getString(R.string.btn_connect)
-            setTextColor(ContextCompat.getColor(service, R.color.text_primary))
-            backgroundTintList = ContextCompat.getColorStateList(service, R.color.button_success)
-            setOnClickListener {
-                connectToDevice(device, deviceType)
-            }
+        val connectBtn = OverlayHelper.createStyledButton(service, service.getString(R.string.btn_connect), R.color.button_success) {
+            connectToDevice(device, deviceType)
         }
         row.addView(connectBtn)
 

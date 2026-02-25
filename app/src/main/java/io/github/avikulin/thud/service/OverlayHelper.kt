@@ -5,6 +5,7 @@ import android.graphics.PixelFormat
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.WindowManager
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
@@ -126,6 +127,30 @@ object OverlayHelper {
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END
+        }
+    }
+
+    /**
+     * Create a styled button with consistent dark theme appearance (white text, tinted
+     * background with Material rounding). Callers set their own layoutParams.
+     *
+     * @param context Context for creating views and accessing resources
+     * @param text Button label
+     * @param colorResId Background tint color resource (default: button_secondary)
+     * @param onClick Click handler
+     * @return Styled Button
+     */
+    fun createStyledButton(
+        context: Context,
+        text: String,
+        colorResId: Int = R.color.button_secondary,
+        onClick: () -> Unit
+    ): Button {
+        return Button(context).apply {
+            this.text = text
+            setTextColor(ContextCompat.getColor(context, R.color.text_primary))
+            backgroundTintList = ContextCompat.getColorStateList(context, colorResId)
+            setOnClickListener { onClick() }
         }
     }
 

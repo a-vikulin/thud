@@ -475,4 +475,47 @@
 
     <!-- User Profiles -->
     <string name="toast_cannot_switch_during_run">Cannot switch profiles during an active run</string>
+
+    <!-- PIN Dialog -->
+    <string name="pin_dialog_title_enter">Enter PIN</string>
+    <string name="pin_dialog_title_enter_current">Enter current PIN</string>
+    <string name="pin_dialog_title_enter_new">Enter new PIN</string>
+    <string name="pin_dialog_title_repeat">Repeat PIN</string>
+    <string name="pin_dialog_title_enter_to_remove">Enter PIN to remove</string>
+    <string name="pin_dialog_user_label">User: %1$s</string>
+    <string name="pin_dialog_pin_label">PIN:</string>
+    <string name="toast_incorrect_pin">Incorrect PIN</string>
+    <string name="toast_pins_dont_match">PINs don\'t match</string>
+    <string name="toast_pin_invalid_length">PIN must be 4–8 digits</string>
+    <string name="toast_pin_set">PIN set</string>
+    <string name="toast_pin_removed">PIN removed</string>
+
+    <!-- User Button &amp; Dropdown -->
+    <string name="btn_user_content_description">Switch user</string>
+    <string name="user_popup_add_user">Add User</string>
+    <string name="add_user_title">New User</string>
+    <string name="add_user_name_label">Name:</string>
+    <string name="toast_username_taken">A profile with this name already exists</string>
+    <string name="toast_username_empty">Username cannot be empty</string>
+    <string name="toast_username_folder_exists">A folder with this name already exists</string>
+
+    <!-- Settings User Tab -->
+    <string name="settings_tab_user">User</string>
+    <string name="settings_tab_treadmill">Treadmill</string>
+    <string name="settings_username_label">Username</string>
+    <string name="settings_section_personal">Personal</string>
+    <string name="settings_section_adjustments">Adjustments</string>
+    <string name="btn_set_pin">Set Pin</string>
+    <string name="btn_change_pin">Change Pin</string>
+    <string name="btn_remove_pin">Remove Pin</string>
+    <string name="btn_delete_user">Delete User</string>
+    <string name="guest_profile_name">Guest</string>
+
+    <!-- Delete User Dialog -->
+    <string name="delete_user_title">Delete User</string>
+    <string name="delete_user_warning">This cannot be undone. All workouts,\nsettings, and data will be deleted.</string>
+    <string name="delete_user_username_label">Type username to confirm:</string>
+    <string name="delete_user_pin_label">Enter PIN:</string>
+    <string name="delete_user_confirm_button">Delete User</string>
+    <string name="toast_username_doesnt_match">Username doesn\'t match</string>
 </resources>

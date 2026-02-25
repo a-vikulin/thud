@@ -1,0 +1,20 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="25"
+    android:viewportHeight="25">
+    <!-- Pencil edit icon -->
+    <path
+        android:pathData="M17.265,4.162L19.21,5.745C19.398,5.928 19.503,6.18 19.502,6.442C19.5,6.704 19.392,6.955 19.202,7.135L17.724,8.935L12.694,15.072C12.607,15.175 12.49,15.247 12.359,15.279L9.751,15.879C9.405,15.894 9.107,15.638 9.067,15.294L9.189,12.721C9.198,12.59 9.25,12.465 9.337,12.366L14.15,6.501L15.845,4.433C16.174,3.985 16.794,3.867 17.265,4.162Z"
+        android:strokeWidth="1.5"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M5.5,18.741H19.2"
+        android:strokeWidth="1.5"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round" />
+</vector>

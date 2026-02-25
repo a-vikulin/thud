@@ -33,6 +33,17 @@
 ### Android Resource Externalization
 **IMPORTANT**: Never use inline styling in Kotlin code. Use `R.dimen.*`, `R.string.*`, `R.color.*` instead of hardcoded values.
 
+### ⚠️ Button Styling — Use `OverlayHelper.createStyledButton()` ⚠️
+**NEVER create raw `Button(context)` without styling!** All programmatic buttons must use `OverlayHelper.createStyledButton(context, text, colorResId, onClick)`. Default color is `button_secondary` (#444466). Uses `backgroundTintList` (preserves Material rounding) — NEVER `setBackgroundColor` on buttons (kills rounded corners). XML buttons must set `android:textColor="@color/text_primary"` and `android:backgroundTint="@color/button_secondary"`.
+
+**Special colors (intentional exceptions only):**
+| Color | Resource | Use For |
+|-------|----------|---------|
+| Green | `button_success` | Connect, Scan (BLE actions) |
+| Green | `library_start_button` | RUN button |
+| Red | `delete_button_bg` | Delete User |
+| Red | `btn_close` | Delete Remote |
+
 ### SharedPreferences Name
 **CRITICAL**: Always use `SettingsManager.PREFS_NAME` (dynamic, `@Volatile var`) to open SharedPreferences — never hardcode `"TreadmillHUD"`. The name is set per-profile by `ProfileManager` on startup (e.g., `"TreadmillHUD_a1b2c3d4"`). Similarly, Garmin tokens use `GarminConnectUploader.PREFS_NAME` (`"GarminConnectTokens_<id>"`). The profile registry uses its own separate `"tHUD_profiles"` prefs.
 
@@ -198,6 +209,9 @@ When enabled (`state.calcHrEnabled`), `HUDService.onRrIntervalsReceived()` compu
 
 **Settings:** "HR" tab (formerly "DFA α1") has two sections — "HR-sensors" (checkbox + 3 spinners: EMA alpha, artifact threshold, median window) and "DFA-alpha1" (existing 4 spinners), separated by a divider.
 
+### OverlayHelper (`service/OverlayHelper.kt`)
+Overlay window and dialog utilities. `createOverlayParams(width, height, gravity, focusable, touchModal)`, `createDialogContainer(context)` (standard dark background + padding), `createDialogTitle(context, text)`, `createDialogMessage(context, text)`, `createDialogButtonRow(context)`, `createStyledButton(context, text, colorResId, onClick)` (standard button factory — see Button Styling rule above), `calculateWidth/Height(screenSize, fraction)`.
+
 ### FileExportHelper (`util/FileExportHelper.kt`)
 Exports to Downloads/tHUD/<profile>/ via MediaStore. `saveToDownloads(context, sourceFile, filename, mimeType, subfolder)`, `getTempFile(context, filename)`. `activeProfileSubfolder` (`@Volatile var`) is set by `HUDService.onCreate()` to the profile display name. Subfolders: `ROOT` (tHUD/<profile>/), `SCREENSHOTS` (tHUD/<profile>/screenshots/), `EXPORT` (tHUD/<profile>/export/), `IMPORT` (tHUD/<profile>/import/).
 
@@ -338,7 +352,7 @@ app/src/main/java/io/github/avikulin/thud/
 │   ├── ChartManager.kt            # Chart overlay
 │   ├── WorkoutPanelManager.kt     # Progress overlay
 │   ├── PopupManager.kt            # Adjustment popups
-│   ├── OverlayHelper.kt           # Overlay utilities
+│   ├── OverlayHelper.kt           # Overlay utilities + createStyledButton()
 │   ├── SettingsManager.kt         # Settings
 │   ├── HrSensorManager.kt         # HR sensor BLE connection
 │   ├── StrydManager.kt            # Stryd foot pod BLE

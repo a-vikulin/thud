@@ -47,6 +47,7 @@ class HUDDisplayManager(
         fun onCameraClicked()
         fun onBluetoothClicked()
         fun onRemoteClicked()
+        fun onUserClicked()
         fun onSettingsClicked()
         fun onCloseClicked()
     }
@@ -83,6 +84,8 @@ class HUDDisplayManager(
     private var btnCamera: ImageView? = null
     private var btnBluetooth: View? = null
     private var btnRemote: ImageView? = null
+    private var btnUser: View? = null
+    private var btnUserName: TextView? = null
     private var btnSettings: View? = null
     private var btnClose: View? = null
 
@@ -164,7 +167,7 @@ class HUDDisplayManager(
             val hudParams = OverlayHelper.createOverlayParams(
                 width = hudWidth,
                 height = hudHeight,
-                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                gravity = Gravity.TOP or Gravity.START
             )
 
             windowManager.addView(topView, hudParams)
@@ -198,6 +201,8 @@ class HUDDisplayManager(
             btnCamera = topView?.findViewById(R.id.btnCamera)
             btnBluetooth = topView?.findViewById(R.id.btnBluetooth)
             btnRemote = topView?.findViewById(R.id.btnRemote)
+            btnUser = topView?.findViewById(R.id.btnUser)
+            btnUserName = topView?.findViewById(R.id.btnUserName)
             btnSettings = topView?.findViewById(R.id.btnSettings)
             btnClose = topView?.findViewById(R.id.btnClose)
 
@@ -231,6 +236,7 @@ class HUDDisplayManager(
             btnCamera?.setOnClickListener { listener?.onCameraClicked() }
             btnBluetooth?.setOnClickListener { listener?.onBluetoothClicked() }
             btnRemote?.setOnClickListener { listener?.onRemoteClicked() }
+            btnUser?.setOnClickListener { listener?.onUserClicked() }
             btnSettings?.setOnClickListener { listener?.onSettingsClicked() }
             btnClose?.setOnClickListener { listener?.onCloseClicked() }
 
@@ -286,6 +292,8 @@ class HUDDisplayManager(
             btnCamera = null
             btnBluetooth = null
             btnRemote = null
+            btnUser = null
+            btnUserName = null
             btnSettings = null
             btnClose = null
 
@@ -687,6 +695,28 @@ class HUDDisplayManager(
         b.getLocationOnScreen(boxLoc)
         root.getLocationOnScreen(rootLoc)
         return intArrayOf(boxLoc[0], boxLoc[1] - rootLoc[1], b.width, b.height)
+    }
+
+    /**
+     * Update the user button to show the first 5 characters of the profile name.
+     */
+    fun updateUserButton(profileName: String) {
+        mainHandler.post {
+            btnUserName?.text = if (profileName.length > 5) profileName.take(5) else profileName
+        }
+    }
+
+    fun getUserButtonBounds(): IntArray? = getBoxBounds(btnUser)
+
+    /**
+     * Returns the absolute screen X of the close button's right edge,
+     * used by PopupManager to right-align the user dropdown.
+     */
+    fun getCloseButtonRightEdge(): Int {
+        val close = btnClose ?: return 0
+        val loc = IntArray(2)
+        close.getLocationOnScreen(loc)
+        return loc[0] + close.width
     }
 
     fun getFootPodBoxBounds(): IntArray? = getBoxBounds(footPodBox)
