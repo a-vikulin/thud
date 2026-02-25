@@ -116,6 +116,25 @@ object FileExportHelper {
     }
 
     /**
+     * Get the absolute filesystem directory for a subfolder.
+     * Returns: e.g. /storage/emulated/0/Download/tHUD/Alex/screenshots
+     *
+     * Use this when code needs a real File path (e.g., ScreenshotManager writing
+     * via MediaProjection, or HUDService scanning for files). For MediaStore
+     * operations, use getRelativePath() instead.
+     */
+    fun getAbsoluteDir(subfolder: String = Subfolder.ROOT): File {
+        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val profilePart = activeProfileSubfolder
+        val base = if (profilePart.isEmpty()) BASE_FOLDER else "$BASE_FOLDER/$profilePart"
+        return if (subfolder.isEmpty()) {
+            File(downloadsDir, base)
+        } else {
+            File(downloadsDir, "$base/$subfolder")
+        }
+    }
+
+    /**
      * Get a temporary file path for tools that need to write to a file first.
      * Caller is responsible for deleting the temp file after use.
      */

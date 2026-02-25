@@ -332,6 +332,7 @@ class HUDService : Service(),
 
         SettingsManager.updatePrefsName(ProfileManager.prefsName(activeProfile.id))
         GarminConnectUploader.updatePrefsName(ProfileManager.garminPrefsName(activeProfile.id))
+        GarminConnectUploader.migrateFromLegacy(applicationContext)
         FileExportHelper.activeProfileSubfolder = ProfileManager.downloadsSubfolder(activeProfile.name)
 
         // Initialize window manager and get screen dimensions
@@ -1127,10 +1128,7 @@ class HUDService : Service(),
      */
     private fun findLastScreenshot(workoutName: String, startTimeMs: Long): java.io.File? {
         return try {
-            val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(
-                android.os.Environment.DIRECTORY_DOWNLOADS
-            )
-            val screenshotsDir = java.io.File(downloadsDir, "tHUD/screenshots")
+            val screenshotsDir = FileExportHelper.getAbsoluteDir(FileExportHelper.Subfolder.SCREENSHOTS)
             if (!screenshotsDir.exists()) {
                 Log.d(TAG, "findLastScreenshot: screenshots dir does not exist: ${screenshotsDir.absolutePath}")
                 return null

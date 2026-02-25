@@ -58,6 +58,88 @@ class GarminConnectUploader(private val context: Context) {
         private const val KEY_OAUTH2_EXPIRES_AT = "oauth2_expires_at"
         private const val KEY_WEB_SESSION_COOKIES = "web_session_cookies"
 
+        /** Legacy prefs name (pre-profile). Used for migration only. */
+        private const val LEGACY_PREFS_NAME = "GarminConnectTokens"
+
+        /**
+         * Migrate OAuth tokens from legacy (non-profile) EncryptedSharedPreferences
+         * to the current profile-specific prefs. Called once on first startup after
+         * profile migration. Safe to call multiple times (no-op if legacy is empty).
+         *
+         * Must be called AFTER updatePrefsName() and BEFORE constructing GarminConnectUploader,
+         * because the lazy encryptedPrefs captures PREFS_NAME at init time.
+         */
+        fun migrateFromLegacy(context: Context) {
+            if (PREFS_NAME == LEGACY_PREFS_NAME) return // No migration needed (same name)
+
+            // Check if legacy file exists on disk
+            val sharedPrefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
+            val legacyFile = File(sharedPrefsDir, "$LEGACY_PREFS_NAME.xml")
+            // Also check for a file that was incorrectly renamed by old migration code
+            val renamedFile = File(sharedPrefsDir, "$PREFS_NAME.xml")
+
+            if (!legacyFile.exists() && !renamedFile.exists()) return // Nothing to migrate
+
+            try {
+                val masterKey = MasterKey.Builder(context)
+                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                    .build()
+
+                // If old migration code renamed the file, undo the rename first
+                // so EncryptedSharedPreferences can open it with the original name
+                if (!legacyFile.exists() && renamedFile.exists()) {
+                    renamedFile.renameTo(legacyFile)
+                    Log.d(TAG, "Restored incorrectly renamed Garmin prefs file")
+                }
+
+                // Open legacy prefs with the original name
+                val legacyPrefs = EncryptedSharedPreferences.create(
+                    context,
+                    LEGACY_PREFS_NAME,
+                    masterKey,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                )
+
+                val oauth1Token = legacyPrefs.getString(KEY_OAUTH1_TOKEN, null)
+                if (oauth1Token.isNullOrEmpty()) {
+                    Log.d(TAG, "Legacy Garmin prefs exist but have no tokens — skipping migration")
+                    return
+                }
+
+                // Read all tokens from legacy
+                val oauth1Secret = legacyPrefs.getString(KEY_OAUTH1_SECRET, null)
+                val oauth2Token = legacyPrefs.getString(KEY_OAUTH2_TOKEN, null)
+                val oauth2ExpiresAt = legacyPrefs.getLong(KEY_OAUTH2_EXPIRES_AT, 0)
+                val webCookies = legacyPrefs.getString(KEY_WEB_SESSION_COOKIES, null)
+
+                // Write to new profile-specific prefs
+                val newPrefs = EncryptedSharedPreferences.create(
+                    context,
+                    PREFS_NAME,
+                    masterKey,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                )
+
+                newPrefs.edit().apply {
+                    putString(KEY_OAUTH1_TOKEN, oauth1Token)
+                    if (oauth1Secret != null) putString(KEY_OAUTH1_SECRET, oauth1Secret)
+                    if (oauth2Token != null) putString(KEY_OAUTH2_TOKEN, oauth2Token)
+                    if (oauth2ExpiresAt != 0L) putLong(KEY_OAUTH2_EXPIRES_AT, oauth2ExpiresAt)
+                    if (webCookies != null) putString(KEY_WEB_SESSION_COOKIES, webCookies)
+                    apply()
+                }
+
+                // Clear legacy tokens (don't delete file — Android may still have it cached)
+                legacyPrefs.edit().clear().apply()
+
+                Log.i(TAG, "Migrated Garmin tokens from '$LEGACY_PREFS_NAME' to '$PREFS_NAME'")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to migrate Garmin tokens: ${e.message}", e)
+            }
+        }
+
         // Consumer key/secret source
         private const val CONSUMER_URL = "https://thegarth.s3.amazonaws.com/oauth_consumer.json"
 

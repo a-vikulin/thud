@@ -309,9 +309,10 @@ object ProfileManager {
         File(sharedPrefsDir, "TreadmillHUD.xml").let {
             if (it.exists()) it.renameTo(File(sharedPrefsDir, "${prefsName(userId)}.xml"))
         }
-        File(sharedPrefsDir, "GarminConnectTokens.xml").let {
-            if (it.exists()) it.renameTo(File(sharedPrefsDir, "${garminPrefsName(userId)}.xml"))
-        }
+        // NOTE: Garmin EncryptedSharedPreferences are NOT renamed here.
+        // EncryptedSharedPreferences may use the filename in key derivation,
+        // making raw file renames unsafe. Instead, GarminConnectUploader.migrateFromLegacy()
+        // handles token migration through the proper API on first access.
 
         // 5. Move Downloads/tHUD/ files into user's subfolder
         migrateDownloadsFolder(context, userProfile.name)

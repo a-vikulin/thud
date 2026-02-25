@@ -420,11 +420,10 @@ class ScreenshotManager(
     }
 
     /**
-     * Get the screenshot file in the Downloads/tHUD/screenshots folder.
+     * Get the screenshot file in the profile-aware Downloads/tHUD/<profile>/screenshots folder.
      */
     private fun getScreenshotFile(filename: String): File {
-        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        val screenshotsDir = File(downloadsDir, "tHUD/screenshots")
+        val screenshotsDir = FileExportHelper.getAbsoluteDir(FileExportHelper.Subfolder.SCREENSHOTS)
         return File(screenshotsDir, filename)
     }
 

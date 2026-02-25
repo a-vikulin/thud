@@ -219,7 +219,9 @@ When enabled (`state.calcHrEnabled`), `HUDService.onRrIntervalsReceived()` compu
 Overlay window and dialog utilities. `createOverlayParams(width, height, gravity, focusable, touchModal)`, `createDialogContainer(context)` (standard dark background + padding), `createDialogTitle(context, text)`, `createDialogMessage(context, text)`, `createDialogButtonRow(context)`, `createStyledButton(context, text, colorResId, onClick)` (standard button factory — see Button Styling rule above), `calculateWidth/Height(screenSize, fraction)`.
 
 ### FileExportHelper (`util/FileExportHelper.kt`)
-Exports to Downloads/tHUD/<profile>/ via MediaStore. `saveToDownloads(context, sourceFile, filename, mimeType, subfolder)`, `getTempFile(context, filename)`. `activeProfileSubfolder` (`@Volatile var`) is set by `HUDService.onCreate()` to the profile display name. Subfolders: `ROOT` (tHUD/<profile>/), `SCREENSHOTS` (tHUD/<profile>/screenshots/), `EXPORT` (tHUD/<profile>/export/), `IMPORT` (tHUD/<profile>/import/).
+Exports to Downloads/tHUD/<profile>/ via MediaStore. `saveToDownloads(context, sourceFile, filename, mimeType, subfolder)`, `getTempFile(context, filename)`, `getAbsoluteDir(subfolder)` (filesystem `File` path for direct file I/O). `activeProfileSubfolder` (`@Volatile var`) is set by `HUDService.onCreate()` to the profile display name. Subfolders: `ROOT` (tHUD/<profile>/), `SCREENSHOTS` (tHUD/<profile>/screenshots/), `EXPORT` (tHUD/<profile>/export/), `IMPORT` (tHUD/<profile>/import/).
+
+**⚠️ EncryptedSharedPreferences cannot be migrated by file rename!** The filename may be part of key derivation. Use `GarminConnectUploader.migrateFromLegacy()` which reads via the old name and writes via the new name through the API. Called in `HUDService.onCreate()` after `updatePrefsName()`.
 
 ### SavedBluetoothDevices (`service/SavedBluetoothDevices.kt`)
 Unified BT sensor storage. `getAll/getByType/save/remove/isSaved/getSavedMacs`. Types: `HR_SENSOR`, `FOOT_POD`.
