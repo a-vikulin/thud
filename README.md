@@ -17,9 +17,8 @@ treadmill's speed or incline. I prefer watching videos while running.
 ![ss-6.jpg](screenshots/ss-6.jpg)
 
 ## Foreword
-Every line of code in this repo was written by Claude Code Opus 4.5 under my close supervision.
-It took about 5M tokens. At times this was a frustrating experience, but overall I am absolutely
-blown away by Claude's capabilities!
+Every line of code in this repo was written by Claude Code (Opus 4.5-4.6) under my close supervision.
+At times this was a frustrating experience, but overall I am absolutely blown away by Claude's capabilities!
 
 ## Compatibility
 
@@ -44,6 +43,9 @@ blown away by Claude's capabilities!
 - Stryd pace for comparison and treadmill speed calibration
 - Configurable speed coefficient adjuster. In my tests with Stryd foot pods, your actual running speed is about 10% slower than what treadmill reports.
 - Incline adjuster. Set to 1% to emulate flat outdoor running effort
+
+### User Profiles
+- Multiple user profiles with full data isolation — each user gets their own settings, workouts, Garmin Connect credentials, FIT exports, and screenshots
 
 ### Live Run Chart
 - Speed, Incline, HR, and Power lines can be toggled on/off
@@ -95,7 +97,7 @@ blown away by Claude's capabilities!
 - When taking a screen while watching Netflix or other DRM-protected content, the resulting black background is nicely replaced with the Home wallpaper
 - Toggle screenshot mode with the camera button in HUD
 - Automatic screenshots on workout step transitions and pause
-- Screenshots saved to Downloads/tHUD/screenshots/
+- Screenshots saved to `Downloads/tHUD/<ProfileName>/screenshots/`
 - Filename matches FIT file naming for easy correlation
 - The last screenshot of the run is auto-uploaded to Garmin Connect with the FIT file
 
@@ -109,7 +111,7 @@ blown away by Claude's capabilities!
 - HRV data: RR intervals exported as FIT HrvMesg (message 78) for analysis in Runalyze, Kubios, Intervals.icu
 - Multi-FIT file export: when multiple RR-capable HR sensors are connected, one FIT file per sensor is exported (identical workout data, sensor-specific HRV stream). Only the file that includes HRV data from the sensor selected as DFA-primary sensor is uploaded to Garmin Connect
 - TSS (Training Stress Score) calculation with 3-tier fallback: Power → HR → Pace
-- Files saved to Downloads/tHUD/
+- Files saved to `Downloads/tHUD/<ProfileName>/`
 - Settings for device parameters in FIT Export tab
    - **IMPORTANT for Garmin Acute/Chronic Training Load calculation:**
       1. **Device serial in FIT settings MUST be different from your main Garmin watch** (otherwise the watch won't sync the file - it thinks it already has it)
@@ -119,7 +121,7 @@ blown away by Claude's capabilities!
 ### Garmin Connect Auto-Upload
 - Automatic upload to Garmin Connect after FIT export (opt-in)
 - Sign in via embedded Garmin SSO WebView (supports MFA)
-- OAuth tokens stored securely in encrypted storage on-device
+- OAuth tokens stored securely in encrypted storage on-device (per-profile)
 - Screenshot auto-attachment as activity photo
 - Automatic token refresh (~1 hour OAuth2 lifecycle, ~1 year OAuth1)
 - Re-authentication prompt on token expiry
@@ -188,11 +190,15 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 2. Grant overlay permission when prompted
 3. Grant notification permission (required for foreground service)
 4. When first using the screenshot feature, grant screen recording permission when prompted (used for capturing screenshots only, not video)
-5. Open Settings (gear icon) to configure:
+5. On first launch, tHUD creates a default "User" profile. Open Settings (gear icon) → User tab to:
+   - Set your name (used for file organization under `Downloads/tHUD/<Name>/`)
+   - Optionally set a PIN to protect your profile
+   - Create additional profiles for family members sharing the treadmill
+6. Open Settings → Treadmill tab to configure:
    - Pace Coefficient: 1.0 is "same as treadmill". Adjust to match your Foot pod pace readings
    - Incline Power Coefficient: 0.85 seems right to me
    - Incline Adjustment - set to 1%, meaning when treadmill is at 1% the HUD will call that 0% and will calculate elevation gain based on 0% incline for saving in FIT files
-   - Set other parameters if you want to see realisting TSS load calculation
+   - Set other parameters if you want to see realistic TSS load calculation
 
 ### HR/Power Zones
 ![ss-2.jpg](screenshots/ss-2.jpg)
@@ -245,7 +251,7 @@ Verify that auto-adjustment parameters are sensible
 1. Use physical Stop button to pause your run
 2. When paused, press the physical Stop button again to end the run
 3. FIT file exports automatically
-4. Find your file in Downloads/tHUD/
+4. Find your file in `Downloads/tHUD/<ProfileName>/`
 
 ### Setting Up a BLE Remote
 
