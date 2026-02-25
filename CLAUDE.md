@@ -90,7 +90,8 @@
 | Calculated HR data | `HUDService.calcHrEmaValues` (EMA state) | `state.connectedHrSensors["CALC:<mac>"]` → popup, recording, FIT export |
 | Profile registry | `ProfileManager` (`tHUD_profiles` SharedPrefs) | `HUDService.onCreate()` → all managers |
 | Active profile paths | `ProfileManager.prefsName/dbPath/profileDir` | `SettingsManager.PREFS_NAME`, `GarminConnectUploader.PREFS_NAME`, `FileExportHelper.activeProfileSubfolder`, `RunPersistenceManager.baseDir`, `TreadmillHudDatabase.getActiveInstance()` |
-| Profile switch | `HUDService.ACTION_SWITCH_PROFILE` | `ProfileManager.setActiveProfile()` → `stopSelf()` → caller restarts service |
+| Profile switch | `HUDService.handleProfileSwitch()` | `setActiveProfile()` → `stopSelf()` → self-restart via `postDelayed(200ms)` |
+| PIN auth flag | `ProfileManager` (`tHUD_profiles` SharedPrefs) | `setAuthenticatedSwitch()` before switch → `consumeAuthenticatedSwitch()` on start |
 
 ### ⚠️ SPEED - ABSOLUTE RULES ⚠️
 
@@ -162,6 +163,11 @@ workoutEngineManager.resetWorkout()  // Clears data before export runs!
 | `createRunSnapshot(name)` | Capture data immutably | Before any cleanup |
 | `exportWorkoutToFit(snapshot)` | Export from snapshot | After snapshot captured |
 
+### ⚠️ PIN Auth & Guest Fallback ⚠️
+PIN-protected profiles require authentication before switch. `ProfileManager.setAuthenticatedSwitch()` is set before `stopSelf()`, then `consumeAuthenticatedSwitch()` is checked on `HUDService.onCreate()`. If a PIN-protected profile starts **without** the flag (reboot, crash, manual restart), the profile data is loaded optimistically but `pendingPinChallenge` blocks `showHud()`. The PIN dialog is shown as a **gate** — no HUD panels, activities, or overlays are visible until authenticated. Correct PIN → `showHud()`. Wrong PIN → re-prompt. Cancel → `handleProfileSwitch(Guest)` (service restarts).
+
+`PinDialogManager` is the reusable PIN entry overlay — used by `PopupManager` (profile switch), `SettingsManager` (set/change/remove PIN, delete user), and `HUDService` (startup challenge). PIN format: 4-8 digits, SHA-256 hashed via `ProfileManager.hashPin()`.
+
 ### GlassOS Reconnection
 Run data preserved in memory during reconnection. Key: `TelemetryManager.hasEverConnected` distinguishes initial vs reconnection. On reconnection, `state.isReconnecting` is set → post-reconnection IDLE from GlassOS is **ignored** → run state preserved. Persisted run check is skipped (data is in memory).
 
@@ -219,7 +225,7 @@ Exports to Downloads/tHUD/<profile>/ via MediaStore. `saveToDownloads(context, s
 Unified BT sensor storage. `getAll/getByType/save/remove/isSaved/getSavedMacs`. Types: `HR_SENSOR`, `FOOT_POD`.
 
 ### SettingsManager (`service/SettingsManager.kt`)
-All SharedPreferences keys as constants. Key groups: `pace_coefficient` (calibration), `hr_zone*_max` (HR zones), `threshold_pace_kph`, `default_incline`, treadmill min/max ranges (from GlassOS), `fit_*` (FIT Export device ID), `ftms_*` (FTMS server settings), `garmin_auto_upload` (Garmin Connect), `remote_bindings` (BLE remote control config JSON), `calc_hr_enabled`/`calc_hr_ema_alpha`/`calc_hr_artifact_threshold`/`calc_hr_median_window` (Calculated HR from RR intervals), `dfa_window_duration_sec`/`dfa_artifact_threshold`/`dfa_median_window`/`dfa_ema_alpha` (DFA alpha1 algorithm config), `dfa_sensor_mac` (DFA alpha1 primary sensor), `chart_zoom_timeframe_minutes` (Chart zoom window). Settings dialog has 7 tabs: Dynamics, Zones, Auto-Adjust, FIT Export, FTMS, HR (calc HR + DFA α1), Chart.
+All SharedPreferences keys as constants. Key groups: `pace_coefficient` (calibration), `hr_zone*_max` (HR zones), `threshold_pace_kph`, `default_incline`, treadmill min/max ranges (from GlassOS), `fit_*` (FIT Export device ID), `ftms_*` (FTMS server settings), `garmin_auto_upload` (Garmin Connect), `remote_bindings` (BLE remote control config JSON), `calc_hr_enabled`/`calc_hr_ema_alpha`/`calc_hr_artifact_threshold`/`calc_hr_median_window` (Calculated HR from RR intervals), `dfa_window_duration_sec`/`dfa_artifact_threshold`/`dfa_median_window`/`dfa_ema_alpha` (DFA alpha1 algorithm config), `dfa_sensor_mac` (DFA alpha1 primary sensor), `chart_zoom_timeframe_minutes` (Chart zoom window). Settings dialog has 8 tabs: User (username, PIN, delete, personal metrics), Treadmill (pace coefficient, incline adjustment), Zones, Auto-Adjust, FIT Export, FTMS, HR (calc HR + DFA α1), Chart. Guest profile: User tab has disabled username, no PIN/Delete buttons.
 
 ### ⚠️ HR/Power Targets: Percentage-Based ⚠️
 All HR/Power targets stored as **% of threshold** (LTHR/FTP) so workouts survive threshold changes.
@@ -282,8 +288,10 @@ System workouts identified by `systemWorkoutType` column (`"WARMUP"`/`"COOLDOWN"
 ProfileManager (Singleton, initialized first in HUDService.onCreate)
 ├── Profile registry        → tHUD_profiles SharedPrefs (separate from user prefs)
 ├── Path derivation         → prefsName(), garminPrefsName(), dbPath(), profileDir()
+├── CRUD                    → createProfile(), renameProfile(), deleteProfile()
 ├── Migration               → Moves existing data into "User" profile on first upgrade
-└── PIN utilities           → hashPin(), verifyPin(), isValidPinFormat()
+├── PIN utilities           → hashPin(), verifyPin(), isValidPinFormat()
+└── Auth switch flag        → setAuthenticatedSwitch(), consumeAuthenticatedSwitch()
 
 HUDService (Orchestrator)
 ├── TelemetryManager        → GlassOS gRPC connection + subscriptions
@@ -303,7 +311,7 @@ HUDService (Orchestrator)
     ├── HUDDisplayManager   → Main HUD metrics display
     ├── ChartManager        → Speed/incline/HR chart
     ├── WorkoutPanelManager → Workout progress panel
-    ├── PopupManager        → Speed/incline adjustment popups
+    ├── PopupManager        → Speed/incline popups + user profile dropdown
     └── BluetoothSensorDialogManager → BT sensor connection dialog
 
 Data Layer
@@ -351,8 +359,9 @@ app/src/main/java/io/github/avikulin/thud/
 │   ├── HUDDisplayManager.kt       # Main HUD overlay
 │   ├── ChartManager.kt            # Chart overlay
 │   ├── WorkoutPanelManager.kt     # Progress overlay
-│   ├── PopupManager.kt            # Adjustment popups
+│   ├── PopupManager.kt            # Adjustment popups + user profile dropdown
 │   ├── OverlayHelper.kt           # Overlay utilities + createStyledButton()
+│   ├── PinDialogManager.kt       # Reusable PIN entry overlay dialog
 │   ├── SettingsManager.kt         # Settings
 │   ├── HrSensorManager.kt         # HR sensor BLE connection
 │   ├── StrydManager.kt            # Stryd foot pod BLE

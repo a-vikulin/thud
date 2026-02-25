@@ -38,6 +38,7 @@ import io.github.avikulin.thud.service.ChartManager
 import io.github.avikulin.thud.service.HUDDisplayManager
 import io.github.avikulin.thud.service.HrSensorManager
 import io.github.avikulin.thud.service.OverlayHelper
+import io.github.avikulin.thud.service.PinDialogManager
 import io.github.avikulin.thud.service.PopupManager
 import io.github.avikulin.thud.service.ProfileManager
 import io.github.avikulin.thud.service.ServiceStateHolder
@@ -275,6 +276,7 @@ class HUDService : Service(),
     private lateinit var remoteControlManager: RemoteControlManager
     private var accessibilityDialogView: LinearLayout? = null
     private var resumeRunDialogView: LinearLayout? = null
+    private var pendingPinChallenge = false
     private val persistenceHandler = Handler(Looper.getMainLooper())
     private val persistenceInterval = 15_000L  // 15 seconds
 
@@ -320,12 +322,12 @@ class HUDService : Service(),
         ProfileManager.ensureRegistryExists(applicationContext)
         var activeProfile = ProfileManager.getActiveProfile(applicationContext)
 
-        // Guest auto-fallback: if last user had a PIN and didn't just authenticate,
-        // switch to Guest silently. Authenticated switches set a transient flag.
+        // PIN challenge on startup: if last user had a PIN and didn't just authenticate
+        // via the user dropdown, defer a PIN prompt until the HUD is visible.
+        // Profile data is loaded optimistically; on Cancel we switch to Guest.
         if (activeProfile.pinHash != null && !ProfileManager.consumeAuthenticatedSwitch(applicationContext)) {
-            Log.d(TAG, "Last user (${activeProfile.name}) has PIN — falling back to Guest")
-            ProfileManager.setActiveProfile(applicationContext, ProfileManager.GUEST_PROFILE_ID)
-            activeProfile = ProfileManager.getActiveProfile(applicationContext)
+            Log.d(TAG, "Last user (${activeProfile.name}) has PIN — will prompt after HUD shown")
+            pendingPinChallenge = true
         }
 
         SettingsManager.updatePrefsName(ProfileManager.prefsName(activeProfile.id))
@@ -535,8 +537,14 @@ class HUDService : Service(),
                 Log.d(TAG, "Service started (no HUD)")
             }
             ACTION_SHOW_HUD -> {
-                Log.d(TAG, "Showing HUD")
-                showHud()
+                if (pendingPinChallenge) {
+                    Log.d(TAG, "PIN challenge required before showing HUD")
+                    pendingPinChallenge = false
+                    showStartupPinChallenge()
+                } else {
+                    Log.d(TAG, "Showing HUD")
+                    showHud()
+                }
             }
             ACTION_HIDE_HUD -> {
                 Log.d(TAG, "Hiding HUD")
@@ -592,8 +600,14 @@ class HUDService : Service(),
             }
             else -> {
                 // Default: show HUD (for backwards compatibility)
-                Log.d(TAG, "Default action: showing HUD")
-                showHud()
+                if (pendingPinChallenge) {
+                    Log.d(TAG, "PIN challenge required before showing HUD")
+                    pendingPinChallenge = false
+                    showStartupPinChallenge()
+                } else {
+                    Log.d(TAG, "Default action: showing HUD")
+                    showHud()
+                }
             }
         }
         return START_STICKY
@@ -1442,6 +1456,41 @@ class HUDService : Service(),
         }, 200)
 
         stopSelf()
+    }
+
+    /**
+     * Show a PIN dialog on startup when the active profile is PIN-protected
+     * but no authenticated switch was performed (e.g., after reboot).
+     * No HUD panels are visible — the PIN dialog is the gate.
+     * Correct PIN → showHud(). Wrong PIN → re-prompt. Cancel → Guest.
+     */
+    private fun showStartupPinChallenge() {
+        val profile = ProfileManager.getActiveProfile(applicationContext)
+        if (profile.pinHash == null) { showHud(); return }
+
+        val pinDialog = PinDialogManager(this, windowManager)
+
+        fun promptPin() {
+            pinDialog.showPinDialog(
+                profileName = profile.name,
+                title = getString(R.string.pin_dialog_title_enter),
+                onPinEntered = { pin ->
+                    if (ProfileManager.verifyPin(applicationContext, profile.id, pin)) {
+                        Log.d(TAG, "Startup PIN challenge passed for ${profile.name}")
+                        showHud()
+                    } else {
+                        Toast.makeText(this, R.string.toast_incorrect_pin, Toast.LENGTH_SHORT).show()
+                        promptPin()
+                    }
+                },
+                onCancelled = {
+                    Log.d(TAG, "Startup PIN challenge cancelled — falling back to Guest")
+                    handleProfileSwitch(ProfileManager.GUEST_PROFILE_ID)
+                }
+            )
+        }
+
+        promptPin()
     }
 
     // ==================== Free Run Confirmation Dialog ====================
