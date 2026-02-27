@@ -40,8 +40,19 @@ class ServiceStateHolder {
     @Volatile var activePrimaryHrMac: String = ""  // currently active primary (may differ during fallback)
 
     // ==================== Settings State ====================
-    // Pace adjustment coefficient (actual pace = treadmill pace * coefficient)
+    // Speed calibration linear model: adjusted = paceCoefficient * raw + speedCalibrationB
+    // paceCoefficient is the slope (a), speedCalibrationB is the intercept (b)
+    // When b=0, this is identical to the legacy multiplicative model.
     @Volatile var paceCoefficient = 1.0
+    @Volatile var speedCalibrationB = 0.0           // intercept (default 0 = backward compatible)
+    @Volatile var speedCalibrationAuto = false       // true = auto from Stryd regression
+    @Volatile var speedCalibrationRunWindow = 30     // how many recent runs for regression
+
+    /** Convert raw treadmill speed to adjusted (perceived) speed. Single source of truth. */
+    fun rawToAdjustedSpeed(rawKph: Double): Double = rawKph * paceCoefficient + speedCalibrationB
+
+    /** Convert adjusted (perceived) speed back to raw treadmill speed. Single source of truth. */
+    fun adjustedToRawSpeed(adjustedKph: Double): Double = (adjustedKph - speedCalibrationB) / paceCoefficient
 
     // Incline adjustment (effective incline = treadmill incline - adjustment)
     // Default 1.0 means 1% treadmill incline = flat outdoor running
@@ -146,6 +157,9 @@ class ServiceStateHolder {
     @Volatile var fitProductId: Int = 4565             // Forerunner 970
     @Volatile var fitDeviceSerial: Long = 1234567890L
     @Volatile var fitSoftwareVersion: Int = 1552       // 15.52
+
+    // ==================== FIT Export Speed Source ====================
+    @Volatile var fitUseStrydSpeed = true   // default ON: use Stryd speed when available
 
     // ==================== Garmin Connect Upload ====================
     @Volatile var garminAutoUploadEnabled = false

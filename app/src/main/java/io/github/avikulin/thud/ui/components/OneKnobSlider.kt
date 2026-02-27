@@ -86,6 +86,13 @@ class OneKnobSlider(context: Context) : View(context) {
 
     // Dragging state
     private var isDragging = false
+    private var sliderEnabled = true
+
+    // Disabled overlay paint (pre-allocated)
+    private val disabledOverlayPaint = Paint().apply {
+        color = 0x50000000  // semi-transparent black
+        style = Paint.Style.FILL
+    }
 
     // Listener for value changes
     var onValueChangedListener: ((Double) -> Unit)? = null
@@ -93,6 +100,14 @@ class OneKnobSlider(context: Context) : View(context) {
     init {
         minimumHeight = (handleHeight + 30 * resources.displayMetrics.density).toInt()
     }
+
+    override fun setEnabled(enabled: Boolean) {
+        super.setEnabled(enabled)
+        sliderEnabled = enabled
+        invalidate()
+    }
+
+    override fun isEnabled(): Boolean = sliderEnabled
 
     fun setValue(newValue: Double) {
         value = newValue.coerceIn(minValue, maxValue)
@@ -189,9 +204,15 @@ class OneKnobSlider(context: Context) : View(context) {
         // Draw value text on handle (from cache)
         val textY = handleTop + (handleBottom - handleTop) / 2 + textPaint.textSize / 3
         canvas.drawText(valueLabel, x, textY, textPaint)
+
+        // Draw disabled overlay
+        if (!sliderEnabled) {
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), disabledOverlayPaint)
+        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (!sliderEnabled) return false
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 val x = valueToX(value)

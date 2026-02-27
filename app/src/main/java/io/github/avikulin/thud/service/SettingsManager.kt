@@ -20,10 +20,23 @@ import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.Toast
 import io.github.avikulin.thud.R
+import io.github.avikulin.thud.data.db.TreadmillHudDatabase
+import io.github.avikulin.thud.data.entity.SpeedCalibrationPoint
 import io.github.avikulin.thud.ui.components.OneKnobSlider
+import io.github.avikulin.thud.ui.components.SpeedCalibrationChart
 import io.github.avikulin.thud.ui.components.ZoneSlider
 import io.github.avikulin.thud.ui.components.TouchSpinner
 import io.github.avikulin.thud.util.PaceConverter
+import io.github.avikulin.thud.util.SpeedCalibrationManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Locale
+import kotlin.math.abs
 
 /**
  * Manages the settings dialog UI and preference persistence.
@@ -50,6 +63,10 @@ class SettingsManager(
 
         // SharedPreferences keys
         const val PREF_PACE_COEFFICIENT = "pace_coefficient"
+        const val PREF_SPEED_CALIBRATION_B = "speed_calibration_b"
+        const val PREF_SPEED_CALIBRATION_AUTO = "speed_calibration_auto"
+        const val PREF_SPEED_CALIBRATION_RUN_WINDOW = "speed_calibration_run_window"
+        const val PREF_FIT_USE_STRYD_SPEED = "fit_use_stryd_speed"
         const val PREF_INCLINE_ADJUSTMENT = "incline_adjustment"
         const val PREF_INCLINE_POWER_COEFFICIENT = "incline_power_coefficient"
         const val PREF_CHART_VISIBLE = "chart_visible"
@@ -260,7 +277,6 @@ class SettingsManager(
     var listener: Listener? = null
 
     private var settingsDialogView: View? = null
-    private var settingsOneKnobSlider: OneKnobSlider? = null
     private var settingsInclinePowerSlider: OneKnobSlider? = null
     private var settingsHrZoneSlider: ZoneSlider? = null
     private var settingsPowerZoneSlider: ZoneSlider? = null
@@ -279,7 +295,15 @@ class SettingsManager(
     private var editUsername: EditText? = null
     private var deleteUserDialogView: View? = null
 
-    // User tab — adjustment spinners
+    // Treadmill tab — speed calibration UI
+    private var checkAutoCalibrate: CheckBox? = null
+    private var spinnerRunWindow: TouchSpinner? = null
+    private var calibrationChart: SpeedCalibrationChart? = null
+    private var sliderSlopeA: OneKnobSlider? = null
+    private var sliderOffsetB: OneKnobSlider? = null
+    private var tvCalibrationEquation: TextView? = null
+    private var cachedCalibrationPoints: List<SpeedCalibrationPoint> = emptyList()
+    private var calibrationScope: CoroutineScope? = null
     private var spinnerInclineAdjustment: TouchSpinner? = null
     private var spinnerWeight: TouchSpinner? = null
     private var spinnerAge: TouchSpinner? = null
@@ -320,6 +344,7 @@ class SettingsManager(
     private var spinnerPowerMaxInclineAdj: TouchSpinner? = null
 
     // FIT Export tab fields - Garmin Connect
+    private var checkFitUseStrydSpeed: CheckBox? = null
     private var checkGarminAutoUpload: CheckBox? = null
     private var btnGarminLogin: Button? = null
 
@@ -362,6 +387,10 @@ class SettingsManager(
      */
     fun loadSettings() {
         state.paceCoefficient = prefs.getFloat(PREF_PACE_COEFFICIENT, DEFAULT_PACE_COEFFICIENT.toFloat()).toDouble()
+        state.speedCalibrationB = prefs.getFloat(PREF_SPEED_CALIBRATION_B, 0f).toDouble()
+        state.speedCalibrationAuto = prefs.getBoolean(PREF_SPEED_CALIBRATION_AUTO, false)
+        state.speedCalibrationRunWindow = prefs.getInt(PREF_SPEED_CALIBRATION_RUN_WINDOW, 30)
+        state.fitUseStrydSpeed = prefs.getBoolean(PREF_FIT_USE_STRYD_SPEED, true)
         state.inclineAdjustment = prefs.getFloat(PREF_INCLINE_ADJUSTMENT, DEFAULT_INCLINE_ADJUSTMENT.toFloat()).toDouble()
         state.inclinePowerCoefficient = prefs.getFloat(PREF_INCLINE_POWER_COEFFICIENT, DEFAULT_INCLINE_POWER_COEFFICIENT.toFloat()).toDouble()
         state.thresholdPaceKph = prefs.getFloat(PREF_THRESHOLD_PACE_KPH, DEFAULT_THRESHOLD_PACE_KPH.toFloat()).toDouble()
@@ -945,48 +974,258 @@ class SettingsManager(
 
     /**
      * Create the Treadmill tab content.
-     * Contains pace coefficient slider and incline adjustment spinner.
+     * Contains speed calibration UI (auto-calibrate checkbox, run window spinner,
+     * scatter chart, slope/offset sliders, equation text) and incline adjustment spinner.
      */
     private fun createTreadmillContent(): View {
         val textColor = ContextCompat.getColor(service, R.color.text_primary)
         val inputPadding = service.resources.getDimensionPixelSize(R.dimen.dialog_input_padding)
         val rowSpacing = service.resources.getDimensionPixelSize(R.dimen.settings_row_spacing)
         val spinnerWidth = service.resources.getDimensionPixelSize(R.dimen.settings_spinner_width)
+        val labelWidth = service.resources.getDimensionPixelSize(R.dimen.settings_label_width)
+        val isAutoMode = state.speedCalibrationAuto
 
         return LinearLayout(service).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
 
-            // Pace coefficient
-            addView(TextView(service).apply {
-                text = service.getString(R.string.settings_pace_coefficient_label)
+            // Auto-calibrate checkbox + run window spinner on one row
+            checkAutoCalibrate = CheckBox(service).apply {
+                text = service.getString(R.string.settings_auto_calibrate_label)
                 setTextColor(textColor)
-            })
-            settingsOneKnobSlider = OneKnobSlider(service).apply {
-                setValue(state.paceCoefficient)
+                isChecked = isAutoMode
+                setOnCheckedChangeListener { _, checked ->
+                    sliderSlopeA?.isEnabled = !checked
+                    sliderOffsetB?.isEnabled = !checked
+                    if (checked) recomputeCalibrationFromDb()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+            spinnerRunWindow = TouchSpinner(service).apply {
+                minValue = 5.0; maxValue = 90.0; step = 5.0
+                format = TouchSpinner.Format.INTEGER
+                value = state.speedCalibrationRunWindow.toDouble()
+                layoutParams = LinearLayout.LayoutParams(spinnerWidth, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    marginStart = inputPadding; marginEnd = inputPadding
+                }
+                onValueChanged = { recomputeCalibrationFromDb() }
+            }
+            addView(LinearLayout(service).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                addView(checkAutoCalibrate)
+                addView(spinnerRunWindow)
+                addView(TextView(service).apply {
+                    text = service.getString(R.string.settings_calibration_runs_label)
+                    setTextColor(textColor)
+                })
+            })
+
+            // Scatter chart
+            calibrationChart = SpeedCalibrationChart(service).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    service.resources.getDimensionPixelSize(R.dimen.calibration_chart_height)
                 ).apply { topMargin = inputPadding }
             }
-            addView(settingsOneKnobSlider)
+            addView(calibrationChart)
 
-            // Incline adjustment
-            addView(TextView(service).apply {
-                text = service.getString(R.string.settings_incline_adjustment_label)
+            // Equation text (centered, just below chart)
+            tvCalibrationEquation = TextView(service).apply {
                 setTextColor(textColor)
+                textSize = 12f
+                gravity = Gravity.CENTER_HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = rowSpacing }
+                )
+            }
+            addView(tvCalibrationEquation)
+            updateCalibrationEquation()  // initial text before data loads
+
+            // Slope (a) slider — label and slider in one row
+            sliderSlopeA = OneKnobSlider(service).apply {
+                minValue = 0.50; maxValue = 1.50
+                setValue(state.paceCoefficient)
+                isEnabled = !isAutoMode
+                layoutParams = LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                )
+                onValueChangedListener = { refreshCalibrationDisplay() }
+            }
+            addView(LinearLayout(service).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                addView(TextView(service).apply {
+                    text = service.getString(R.string.settings_calibration_slope_label)
+                    setTextColor(textColor)
+                    layoutParams = LinearLayout.LayoutParams(labelWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
+                })
+                addView(sliderSlopeA)
             })
+
+            // Offset (b) slider — label and slider in one row
+            sliderOffsetB = OneKnobSlider(service).apply {
+                minValue = -5.0; maxValue = 5.0
+                setValue(state.speedCalibrationB)
+                isEnabled = !isAutoMode
+                layoutParams = LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                )
+                onValueChangedListener = { refreshCalibrationDisplay() }
+            }
+            addView(LinearLayout(service).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                addView(TextView(service).apply {
+                    text = service.getString(R.string.settings_calibration_intercept_label)
+                    setTextColor(textColor)
+                    layoutParams = LinearLayout.LayoutParams(labelWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
+                })
+                addView(sliderOffsetB)
+            })
+
+            // Separator
+            addView(View(service).apply {
+                setBackgroundColor(ContextCompat.getColor(service, R.color.chart_grid))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 1
+                ).apply { topMargin = rowSpacing; bottomMargin = rowSpacing }
+            })
+
+            // Incline adjustment — label, spinner, and hint in one row
             spinnerInclineAdjustment = TouchSpinner(service).apply {
                 minValue = 0.0; maxValue = 2.0; step = 0.5
                 format = TouchSpinner.Format.DECIMAL; suffix = "%"
                 value = state.inclineAdjustment
                 layoutParams = LinearLayout.LayoutParams(spinnerWidth, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = inputPadding
+                    marginStart = inputPadding; marginEnd = inputPadding
                 }
             }
-            addView(spinnerInclineAdjustment)
+            addView(LinearLayout(service).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                addView(TextView(service).apply {
+                    text = service.getString(R.string.settings_incline_adjustment_label)
+                    setTextColor(textColor)
+                    layoutParams = LinearLayout.LayoutParams(labelWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
+                })
+                addView(spinnerInclineAdjustment)
+                addView(TextView(service).apply {
+                    text = service.getString(R.string.settings_incline_adjustment_hint)
+                    setTextColor(ContextCompat.getColor(service, R.color.text_label))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                })
+            })
+
+            // Load calibration chart data from DB (async)
+            calibrationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+            loadCalibrationChartData()
+        }
+    }
+
+    /**
+     * Query Room DB for calibration points, cache them, and refresh display.
+     * Called on tab creation and when run window spinner changes.
+     */
+    private fun loadCalibrationChartData() {
+        val runWindow = spinnerRunWindow?.value?.toInt() ?: state.speedCalibrationRunWindow
+        calibrationScope?.launch {
+            try {
+                val points = withContext(Dispatchers.IO) {
+                    TreadmillHudDatabase.getActiveInstance(service)
+                        .speedCalibrationDao().getPointsForLastRuns(runWindow)
+                }
+                cachedCalibrationPoints = points
+                refreshCalibrationDisplay()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load calibration data: ${e.message}", e)
+            }
+        }
+    }
+
+    /**
+     * Recompute regression from DB data and update chart/sliders.
+     * In auto mode, runs regression and updates slider values.
+     * In manual mode, just reloads data (run window may have changed).
+     */
+    private fun recomputeCalibrationFromDb() {
+        val runWindow = spinnerRunWindow?.value?.toInt() ?: state.speedCalibrationRunWindow
+        val isAuto = checkAutoCalibrate?.isChecked ?: false
+        calibrationScope?.launch {
+            try {
+                val points = withContext(Dispatchers.IO) {
+                    TreadmillHudDatabase.getActiveInstance(service)
+                        .speedCalibrationDao().getPointsForLastRuns(runWindow)
+                }
+                cachedCalibrationPoints = points
+
+                if (isAuto) {
+                    val result = SpeedCalibrationManager.computeRegression(points)
+                    if (result != null) {
+                        sliderSlopeA?.setValue(result.a)
+                        sliderOffsetB?.setValue(result.b)
+                    }
+                }
+                refreshCalibrationDisplay()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to recompute calibration: ${e.message}", e)
+            }
+        }
+    }
+
+    /**
+     * Refresh chart and equation text from cached calibration points + current slider values.
+     * Pure UI update — no DB access, no recursion. Safe to call from slider listeners.
+     */
+    private fun refreshCalibrationDisplay() {
+        val a = sliderSlopeA?.getValue() ?: state.paceCoefficient
+        val b = sliderOffsetB?.getValue() ?: state.speedCalibrationB
+        val points = cachedCalibrationPoints
+        val n = points.size
+        val r2 = if (n >= 10) SpeedCalibrationManager.computeR2(points, a, b) else 0.0
+        calibrationChart?.setData(points, a, b, r2, n, state.minSpeedKph, state.maxSpeedKph)
+        updateCalibrationEquation(r2, n)
+    }
+
+    /**
+     * Update the equation text display. Pure text — no side effects.
+     */
+    private fun updateCalibrationEquation(r2: Double? = null, n: Int? = null) {
+        val a = sliderSlopeA?.getValue() ?: state.paceCoefficient
+        val b = sliderOffsetB?.getValue() ?: state.speedCalibrationB
+        val bSign = if (b >= 0) "+" else "−"
+        val bAbs = abs(b)
+        val r2Str = if (r2 != null) String.format(Locale.US, "  (R²=%.2f)", r2) else ""
+        val nStr = if (n != null && n > 0) "  N=$n" else ""
+        tvCalibrationEquation?.text = String.format(
+            Locale.US, "y = %.3fx %s %.2f%s%s", a, bSign, bAbs, r2Str, nStr
+        )
+    }
+
+    /**
+     * Save calibration coefficients to SharedPreferences.
+     * Called by HUDService after auto-regression update.
+     */
+    fun saveCalibrationCoefficients(state: ServiceStateHolder) {
+        prefs.edit {
+            putFloat(PREF_PACE_COEFFICIENT, state.paceCoefficient.toFloat())
+            putFloat(PREF_SPEED_CALIBRATION_B, state.speedCalibrationB.toFloat())
         }
     }
 
@@ -1739,6 +1978,20 @@ class SettingsManager(
             editFitSoftwareVersion = createNumericEditText(state.fitSoftwareVersion.toString())
             addView(createInputRow(service.getString(R.string.fit_software_version), editFitSoftwareVersion!!))
 
+            // Stryd speed checkbox
+            checkFitUseStrydSpeed = CheckBox(service).apply {
+                text = service.getString(R.string.fit_use_stryd_speed)
+                setTextColor(textColor)
+                isChecked = state.fitUseStrydSpeed
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = rowSpacing * 2
+                }
+            }
+            addView(checkFitUseStrydSpeed)
+
             // ===== Garmin Connect Section =====
             val garminHeader = TextView(service).apply {
                 text = service.getString(R.string.garmin_upload_section)
@@ -2250,11 +2503,16 @@ class SettingsManager(
             }
         }
 
-        // Save pace coefficient from slider
-        settingsOneKnobSlider?.getValue()?.let { value ->
-            state.paceCoefficient = value
-            Log.d(TAG, "Pace coefficient saved: ${state.paceCoefficient}")
+        // Save speed calibration from sliders
+        sliderSlopeA?.getValue()?.let { a ->
+            state.paceCoefficient = a
         }
+        sliderOffsetB?.getValue()?.let { b ->
+            state.speedCalibrationB = b
+        }
+        state.speedCalibrationAuto = checkAutoCalibrate?.isChecked ?: state.speedCalibrationAuto
+        spinnerRunWindow?.let { state.speedCalibrationRunWindow = it.value.toInt() }
+        Log.d(TAG, "Speed calibration saved: a=${state.paceCoefficient}, b=${state.speedCalibrationB}, auto=${state.speedCalibrationAuto}, window=${state.speedCalibrationRunWindow}")
 
         // Save incline adjustment from spinner
         spinnerInclineAdjustment?.let { spinner ->
@@ -2329,6 +2587,9 @@ class SettingsManager(
         spinnerPowerMaxSpeedAdj?.let { state.powerMaxSpeedAdjustmentKph = it.value }
         spinnerPowerMaxInclineAdj?.let { state.powerMaxInclineAdjustmentPercent = it.value }
 
+        // Save FIT Stryd speed setting
+        state.fitUseStrydSpeed = checkFitUseStrydSpeed?.isChecked ?: state.fitUseStrydSpeed
+
         // Save Garmin Connect upload setting
         state.garminAutoUploadEnabled = checkGarminAutoUpload?.isChecked ?: state.garminAutoUploadEnabled
 
@@ -2363,6 +2624,10 @@ class SettingsManager(
 
         prefs.edit {
             putFloat(PREF_PACE_COEFFICIENT, state.paceCoefficient.toFloat())
+            putFloat(PREF_SPEED_CALIBRATION_B, state.speedCalibrationB.toFloat())
+            putBoolean(PREF_SPEED_CALIBRATION_AUTO, state.speedCalibrationAuto)
+            putInt(PREF_SPEED_CALIBRATION_RUN_WINDOW, state.speedCalibrationRunWindow)
+            putBoolean(PREF_FIT_USE_STRYD_SPEED, state.fitUseStrydSpeed)
             putFloat(PREF_INCLINE_ADJUSTMENT, state.inclineAdjustment.toFloat())
             putFloat(PREF_INCLINE_POWER_COEFFICIENT, state.inclinePowerCoefficient.toFloat())
             putFloat(PREF_USER_WEIGHT_KG, state.userWeightKg.toFloat())
@@ -2470,8 +2735,17 @@ class SettingsManager(
             }
         }
         settingsDialogView = null
-        settingsOneKnobSlider = null
         settingsInclinePowerSlider = null
+        calibrationScope?.cancel()
+        calibrationScope = null
+        checkAutoCalibrate = null
+        spinnerRunWindow = null
+        calibrationChart = null
+        sliderSlopeA = null
+        sliderOffsetB = null
+        tvCalibrationEquation = null
+        cachedCalibrationPoints = emptyList()
+        checkFitUseStrydSpeed = null
         settingsHrZoneSlider = null
         settingsPowerZoneSlider = null
 

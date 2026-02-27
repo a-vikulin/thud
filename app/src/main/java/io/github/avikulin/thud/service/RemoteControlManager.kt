@@ -122,9 +122,9 @@ class RemoteControlManager(
     private fun adjustSpeed(deltaKph: Double) {
         val fromPending = pendingSpeedAdjusted != null
         val currentAdjusted = pendingSpeedAdjusted
-            ?: (state.currentSpeedKph * state.paceCoefficient)
+            ?: state.rawToAdjustedSpeed(state.currentSpeedKph)
         val newAdjusted = (currentAdjusted + deltaKph)
-            .coerceIn(state.minSpeedKph * state.paceCoefficient, state.maxSpeedKph * state.paceCoefficient)
+            .coerceIn(state.rawToAdjustedSpeed(state.minSpeedKph), state.rawToAdjustedSpeed(state.maxSpeedKph))
         pendingSpeedAdjusted = newAdjusted
         Log.d(TAG, "adjustSpeed: delta=$deltaKph, from=${if (fromPending) "pending" else "state"}=$currentAdjusted, target=$newAdjusted")
         scope.launch(Dispatchers.IO) {

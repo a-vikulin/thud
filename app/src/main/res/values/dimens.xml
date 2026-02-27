@@ -56,6 +56,9 @@
     <dimen name="chart_power_stripe_width">2dp</dimen>
     <dimen name="chart_top_padding">10dp</dimen>
 
+    <!-- ==================== Speed Calibration Chart ==================== -->
+    <dimen name="calibration_chart_height">180dp</dimen>
+
     <!-- ==================== Settings Dialog ==================== -->
 
     <dimen name="dialog_padding_horizontal">50dp</dimen>

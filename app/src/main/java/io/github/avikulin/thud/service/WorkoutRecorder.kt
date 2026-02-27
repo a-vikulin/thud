@@ -87,10 +87,10 @@ class WorkoutRecorder {
      * Calculates distance and elevation based on time since last record.
      * Only records if _isRecording is true (use forceRecord=true to bypass).
      *
-     * @param speedKph Raw speed from treadmill
+     * @param adjustedSpeedKph Adjusted speed (already converted via state.rawToAdjustedSpeed)
+     * @param rawSpeedKph Raw treadmill speed before calibration (for calibration data collection)
      * @param inclinePercent Current incline
      * @param heartRateBpm Current heart rate
-     * @param paceCoefficient Pace adjustment coefficient
      * @param treadmillElapsedSeconds Current treadmill elapsed time (for chart alignment)
      * @param forceRecord If true, bypasses _isRecording check (for robust telemetry recording)
      * @param powerWatts Running power from foot pod (0 if not available)
@@ -101,10 +101,10 @@ class WorkoutRecorder {
      * @param stepName Current workout step name (empty if no structured workout)
      */
     fun recordDataPoint(
-        speedKph: Double,
+        adjustedSpeedKph: Double,
+        rawSpeedKph: Double,
         inclinePercent: Double,
         heartRateBpm: Double,
-        paceCoefficient: Double,
         treadmillElapsedSeconds: Int = -1,
         forceRecord: Boolean = false,
         powerWatts: Double = 0.0,
@@ -147,9 +147,6 @@ class WorkoutRecorder {
             // Fallback to wall clock time
             now - workoutStartTimeMs
         }
-
-        // Use adjusted speed (with pace coefficient)
-        val adjustedSpeedKph = speedKph * paceCoefficient
 
         // Calculate distance, elevation, and calories traveled since last record
         if (timeDeltaMs > 0 && lastRecordTimeMs > 0) {
@@ -208,6 +205,7 @@ class WorkoutRecorder {
             inclinePowerWatts = inclinePowerWatts,
             cadenceSpm = cadenceSpm,
             strydSpeedKph = strydSpeedKph,
+            rawTreadmillSpeedKph = rawSpeedKph,
             stepIndex = stepIndex,
             stepName = stepName,
             allHrSensors = indexedHr,
@@ -229,10 +227,10 @@ class WorkoutRecorder {
      * @return true if a record was made, false otherwise
      */
     fun ensurePeriodicRecord(
-        speedKph: Double,
+        adjustedSpeedKph: Double,
+        rawSpeedKph: Double,
         inclinePercent: Double,
         heartRateBpm: Double,
-        paceCoefficient: Double,
         treadmillElapsedSeconds: Int = -1,
         powerWatts: Double = 0.0,
         cadenceSpm: Int = 0,
@@ -253,8 +251,8 @@ class WorkoutRecorder {
         // If more than 900ms since last record, record now
         if (timeSinceLastRecord >= PERIODIC_RECORD_THRESHOLD_MS) {
             recordDataPoint(
-                speedKph, inclinePercent, heartRateBpm, paceCoefficient, treadmillElapsedSeconds,
-                forceRecord = false,
+                adjustedSpeedKph, rawSpeedKph, inclinePercent, heartRateBpm,
+                treadmillElapsedSeconds, forceRecord = false,
                 powerWatts = powerWatts,
                 cadenceSpm = cadenceSpm,
                 rawPowerWatts = rawPowerWatts,

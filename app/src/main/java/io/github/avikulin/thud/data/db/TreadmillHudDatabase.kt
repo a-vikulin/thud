@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import io.github.avikulin.thud.data.entity.SpeedCalibrationPoint
 import io.github.avikulin.thud.data.entity.Workout
 import io.github.avikulin.thud.data.entity.WorkoutStep
 import io.github.avikulin.thud.service.ProfileManager
@@ -16,14 +17,15 @@ import java.io.File
  * Room database for tHUD app.
  */
 @Database(
-    entities = [Workout::class, WorkoutStep::class],
-    version = 9,
+    entities = [Workout::class, WorkoutStep::class, SpeedCalibrationPoint::class],
+    version = 10,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
 abstract class TreadmillHudDatabase : RoomDatabase() {
 
     abstract fun workoutDao(): WorkoutDao
+    abstract fun speedCalibrationDao(): SpeedCalibrationDao
 
     companion object {
         private const val DATABASE_NAME = "treadmillhud.db"
@@ -246,6 +248,24 @@ abstract class TreadmillHudDatabase : RoomDatabase() {
         }
 
         /**
+         * Migration from version 9 to 10:
+         * - Add speed_calibration_points table for Stryd auto-calibration data
+         */
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE speed_calibration_points (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        runId INTEGER NOT NULL,
+                        treadmillKph REAL NOT NULL,
+                        strydKph REAL NOT NULL
+                    )
+                """)
+                db.execSQL("CREATE INDEX index_speed_calibration_points_runId ON speed_calibration_points(runId)")
+            }
+        }
+
+        /**
          * Get a database instance for a specific absolute path.
          * Each profile has its own DB at files/profiles/<id>/treadmillhud.db.
          */
@@ -289,7 +309,7 @@ abstract class TreadmillHudDatabase : RoomDatabase() {
                 TreadmillHudDatabase::class.java,
                 dbPath
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                 .build()
         }
     }

@@ -58,60 +58,51 @@
 | HR data for adjustments | `onHeartRateUpdate()` | `WorkoutExecutionEngine.onHeartRateUpdate()` only |
 | Speed/incline commands | `TelemetryManager.setTreadmillSpeed/Incline()` | THE ONLY PATH to GlassOsClient |
 | Elapsed time | Treadmill via `onElapsedTimeUpdate()` | `WorkoutExecutionEngine.treadmillElapsedSeconds` |
-| Workout state | `WorkoutExecutionEngine.state` | Collected by `WorkoutEngineManager` |
-| Adjustment coefficients | `WorkoutExecutionEngine` | Chart via `WorkoutEngineManager` |
-| Saved BT devices | `SavedBluetoothDevices` | Sensor managers, BT dialog |
-| Run data for export | `WorkoutRecorder` | `createRunSnapshot()` → `FitFileExporter` |
-| Execution steps for export | `WorkoutExecutionEngine` | `createRunSnapshot()` → `FitFileExporter` |
+| Workout state + coefficients | `WorkoutExecutionEngine` | `WorkoutEngineManager` → Chart |
+| Run data + execution steps | `WorkoutRecorder` / `WorkoutExecutionEngine` | `createRunSnapshot()` → `FitFileExporter` |
 | GlassOS connection state | `TelemetryManager.hasEverConnected` | `isReconnecting` flag |
-| FIT device identification | `ServiceStateHolder` (SharedPrefs) | `UserExportSettings` → `FitFileExporter` |
-| Treadmill name | `GlassOsClient.treadmillName` | `ServiceStateHolder` → FTMS device names |
+| System workouts + phases | `WorkoutRepository` (DB) / `WorkoutExecutionEngine` | Engine stitching, chart, panel, coefficient reset |
+| HR sensors + RR intervals | `HrSensorManager` → `state.connectedHrSensors` | `WorkoutRecorder` → `WorkoutDataPoint` → `FitFileExporter` |
+| DFA alpha1 (per-sensor) | `dfaCalculators[mac]` → `state.dfaResults[mac]` | HUD box, popup, `WorkoutDataPoint`, FIT dev fields |
+| Calculated HR | `HUDService.calcHrEmaValues` | Synthetic `CALC:<mac>` sensor → full pipeline |
+| Per-sensor RR for FIT | `WorkoutRecorder.rrIntervalsBySensor` | `RunSnapshot` → `FitFileExporter` (one HrvMesg per file) |
+| Pace progression | `WorkoutStep.paceEndTargetKph` | Engine ticking → `SpeedAdjusted` event → Treadmill |
+| Garmin upload | `ServiceStateHolder` (SharedPrefs) | `HUDService` → `GarminConnectUploader` (OAuth + FIT/photo) |
+| Remote control | `RemoteControlManager` (SharedPrefs JSON) | `RemoteControlBridge` → `AccessibilityService` |
+| Profile registry + paths | `ProfileManager` (`tHUD_profiles` SharedPrefs) | `SettingsManager.PREFS_NAME`, `GarminConnectUploader.PREFS_NAME`, DB, exports |
+| Profile switch + PIN auth | `HUDService.handleProfileSwitch()` | `setActiveProfile()` → `stopSelf()` → restart; PIN via `setAuthenticatedSwitch()` |
+| Speed calibration | `WorkoutDataPoint` (raw + Stryd) | `SpeedCalibrationDao` → `SpeedCalibrationManager` → `state.paceCoefficient` + `state.speedCalibrationB` |
+| FIT Stryd speed flag | `ServiceStateHolder` (SharedPrefs) | `HUDService` → `FitFileExporter.exportWorkout(useStrydSpeed)` |
+| Saved BT devices | `SavedBluetoothDevices` | Sensor managers, BT dialog |
 | FTMS server settings | `ServiceStateHolder` (SharedPrefs) | `HUDService` → server start/stop |
-| System workouts | `WorkoutRepository` (DB, `systemWorkoutType`) | Engine stitching, editor sentinels |
-| Phase boundaries | `WorkoutExecutionEngine` (phase step counts) | Chart, panel, coefficient reset |
-| Per-step coefficients | `WorkoutExecutionEngine` (`stepCoefficients` map) | Chart via `WorkoutEngineManager` (ONE_STEP mode only) |
-| Garmin auto-upload flag | `ServiceStateHolder` (SharedPrefs) | `HUDService` → export flow |
-| Garmin OAuth tokens | `GarminConnectUploader` (EncryptedSharedPrefs) | Upload flow only |
-| FIT bytes for upload | `FitFileExporter.FitExportResult` | `HUDService` → `GarminConnectUploader` |
-| Remote control config | `RemoteControlManager` (SharedPrefs JSON) | `RemoteControlBridge` → AccessibilityService |
-| Remote key events (tHUD) | `RemoteControlAccessibilityService` | `RemoteControlBridge` → `RemoteControlManager` |
-| Remote key events (Android) | `RemoteControlAccessibilityService` | Executed directly (AudioManager / performGlobalAction) |
-| Panel save/restore | `HUDService` static helpers | Any full-screen activity via `notifyActivity{Foreground,Background,Closed}` |
-| Chart zoom settings | `ServiceStateHolder` (SharedPrefs) | `ChartManager` → `WorkoutChart` (zoom mode persisted in ChartManager's own prefs) |
-| Multi-HR sensor data | `state.connectedHrSensors` (MAC→(name,BPM)) | `WorkoutRecorder` (lazy index registry) → `WorkoutDataPoint` → `FitFileExporter` |
-| Primary HR selection | `state.activePrimaryHrMac` | `HUDService` → `WorkoutRecorder` → `WorkoutDataPoint.primaryHrIndex` |
-| RR intervals (BLE) | `HrSensorManager.onRrIntervalsReceived()` | `HUDService` → `WorkoutRecorder` (per-sensor buffer) + per-sensor `DfaAlpha1Calculator` |
-| DFA alpha1 (per-sensor) | `dfaCalculators[mac]` | `state.dfaResults[mac]` → HUD box (primary) + popup (all) + `WorkoutDataPoint` (per-second) |
-| DFA sensor selection | `state.savedDfaSensorMac` (SharedPrefs) | `HUDService` → HUD box display + Garmin upload file selection |
-| DFA algorithm config | `ServiceStateHolder` (SharedPrefs) | `HUDService` → `DfaAlpha1Calculator` constructor (reset on settings change) |
-| Per-sensor RR for FIT | `WorkoutRecorder.rrIntervalsBySensor` | `RunSnapshot` → `FitFileExporter` (one HrvMesg stream per file) |
-| Pace progression | `WorkoutStep.paceEndTargetKph` | `ExecutionStep` → Engine (ticking) → `SpeedAdjusted` event → Treadmill |
-| Calculated HR config | `ServiceStateHolder` (SharedPrefs) | `HUDService.onRrIntervalsReceived()` → synthetic `CALC:<mac>` sensor; retroactive recalc on change |
-| Calculated HR data | `HUDService.calcHrEmaValues` (EMA state) | `state.connectedHrSensors["CALC:<mac>"]` → popup, recording, FIT export |
-| Profile registry | `ProfileManager` (`tHUD_profiles` SharedPrefs) | `HUDService.onCreate()` → all managers |
-| Active profile paths | `ProfileManager.prefsName/dbPath/profileDir` | `SettingsManager.PREFS_NAME`, `GarminConnectUploader.PREFS_NAME`, `FileExportHelper.activeProfileSubfolder`, `RunPersistenceManager.baseDir`, `TreadmillHudDatabase.getActiveInstance()` |
-| Profile switch | `HUDService.handleProfileSwitch()` | `setActiveProfile()` → `stopSelf()` → self-restart via `postDelayed(200ms)` |
-| PIN auth flag | `ProfileManager` (`tHUD_profiles` SharedPrefs) | `setAuthenticatedSwitch()` before switch → `consumeAuthenticatedSwitch()` on start |
 
 ### ⚠️ SPEED - ABSOLUTE RULES ⚠️
 
-**SETTING speed:** NEVER call `glassOsClient.setSpeed()` directly! ALL speed commands go through `TelemetryManager.setTreadmillSpeed(adjustedKph)` which divides by `paceCoefficient` to get raw treadmill speed.
+**Linear calibration model:** `adjustedSpeed = a * rawSpeed + b` where `a` = `paceCoefficient` (slope) and `b` = `speedCalibrationB` (intercept). When `b = 0` (default), this reduces to the legacy multiplicative model.
 
-**READING speed:** NEVER use raw treadmill speed for internal logic! Always convert: `adjustedSpeed = state.currentSpeedKph * state.paceCoefficient`. All internal components work with adjusted speed.
+**Conversion methods (SINGLE SOURCE OF TRUTH):**
+- `state.rawToAdjustedSpeed(rawKph)` → `rawKph * paceCoefficient + speedCalibrationB`
+- `state.adjustedToRawSpeed(adjustedKph)` → `(adjustedKph - speedCalibrationB) / paceCoefficient`
+
+**NEVER multiply/divide by `paceCoefficient` directly!** Always use `rawToAdjustedSpeed()` / `adjustedToRawSpeed()`.
+
+**SETTING speed:** NEVER call `glassOsClient.setSpeed()` directly! ALL speed commands go through `TelemetryManager.setTreadmillSpeed(adjustedKph)` which calls `state.adjustedToRawSpeed()` to get raw treadmill speed.
+
+**READING speed:** NEVER use raw treadmill speed for internal logic! Always convert: `adjustedSpeed = state.rawToAdjustedSpeed(state.currentSpeedKph)`. All internal components work with adjusted speed.
 
 **Flow OUT (setting):**
 ```
 Engine event → WorkoutEngineManager → listener.onSetTreadmillSpeed(adjustedKph)
-→ TelemetryManager.setTreadmillSpeed() ← COEFFICIENT APPLIED → glassOsClient.setSpeed(rawKph)
+→ TelemetryManager.setTreadmillSpeed() ← adjustedToRawSpeed() → glassOsClient.setSpeed(rawKph)
 ```
 
 **Flow IN (reading):**
 ```
 TelemetryManager receives rawSpeed → state.currentSpeedKph = rawSpeed
-→ HUDService: adjustedSpeed = raw * paceCoefficient → WorkoutEngineManager/Engine
+→ HUDService: adjustedSpeed = state.rawToAdjustedSpeed(raw) → WorkoutEngineManager/Engine
 ```
 
-**Raw speed used ONLY for:** HUD pace box lower text `(X.X kph)` display, and `TelemetryManager.setTreadmillSpeed()` conversion.
+**Raw speed used ONLY for:** HUD pace box lower text `(X.X kph)` display, `TelemetryManager.setTreadmillSpeed()` conversion, and `WorkoutDataPoint.rawTreadmillSpeedKph` (for calibration data collection).
 
 ### ⚠️ INCLINE - ABSOLUTE RULE ⚠️
 **ALL incline throughout the app uses EFFECTIVE incline (outdoor equivalent)!**
@@ -125,17 +116,11 @@ TelemetryManager receives rawSpeed → state.currentSpeedKph = rawSpeed
 All stored/displayed values (`state.currentInclinePercent`, popup menu, min/max, editor, StrydManager`) are effective incline.
 
 ### ⚠️ PACE PROGRESSION (Gradual Speed Change Within a Step) ⚠️
-`WorkoutStep.paceEndTargetKph` (nullable, DB version 9) enables gradual pace change from `paceTargetKph` to `paceEndTargetKph` over a step's duration. Pace-only (no incline progression).
+`WorkoutStep.paceEndTargetKph` (nullable, since DB version 9) enables gradual pace change from `paceTargetKph` to `paceEndTargetKph` over a step's duration. Pace-only (no incline progression).
 
-**Engine:** `WorkoutExecutionEngine` tracks `currentProgressionBaseSpeed` (0 = inactive). On each `onElapsedTimeUpdate()`, computes progress (time-based for TIME, distance-based for DISTANCE), rounds to 0.1 kph (treadmill resolution), and emits `SpeedAdjusted` events.
+**Engine:** `WorkoutExecutionEngine` tracks `currentProgressionBaseSpeed` (0 = inactive). Computes progress on each tick (time-based for TIME, distance-based for DISTANCE), rounds to 0.1 kph, emits `SpeedAdjusted` events.
 
-**Coefficient interaction:** `getEffectiveSpeed()` returns `currentProgressionBaseSpeed * speedAdjustmentCoefficient`. Manual adjustments and HR/Power auto-adjust scale the progression proportionally — consistent with flat steps. `updateAdjustmentCoefficients()` uses the dynamic base (not the static `paceTargetKph`).
-
-**Chart:** `PlannedSegment.paceEndKph` renders as a straight diagonal line in `drawWorkoutOutline()`. Scale calculations include both start and end pace. `calculateAdjustedSegmentDurationMs()` uses average pace for distance-based progression steps.
-
-**Persistence:** `currentProgressionBaseSpeed` persisted in `EnginePersistenceState` (key `"cpbs"`). Restored on crash recovery.
-
-**Editor:** Checkbox "→" toggles progression. When checked, shows end pace spinner. Default end pace = start pace (user adjusts from there). Hidden for REPEAT steps.
+**Coefficient interaction:** `getEffectiveSpeed()` returns `currentProgressionBaseSpeed * speedAdjustmentCoefficient`. `updateAdjustmentCoefficients()` uses the dynamic base (not the static `paceTargetKph`).
 
 ### ⚠️ FIT EXPORT - CRITICAL RULES ⚠️
 **ALWAYS use the RunSnapshot pattern!** Export is async — snapshot captures data immutably before cleanup.
@@ -189,45 +174,38 @@ Cross-calc: `calculateDistanceMeters(seconds, kph)`, `calculateDurationSeconds(m
 Same pattern as HeartRateZones but with `ftpWatts`: `getZone()`, `getZoneColorResId()`, `percentToWatts()`
 
 ### DfaAlpha1Calculator (`util/DfaAlpha1Calculator.kt`)
-Real-time DFA (Detrended Fluctuation Analysis) alpha1 from RR intervals. Thread-safe (`@Synchronized`).
-Constructor accepts configuration: `windowDurationMs` (default 120s), `artifactThresholdPercent` (default 20%), `medianWindowSize` (default 11), `emaAlpha` (default 0.2).
-`addRrIntervals(intervalsMs, currentHrBpm)` — artifact-filtered (configurable % median deviation, 200–2000ms range). Time-based buffer eviction (adapts to HR: ~360 beats at 180 BPM, ~240 at 120 BPM).
-`computeIfReady()` → `DfaResult(alpha1, rawAlpha1, artifactPercent, sampleCount, isValid)` or null if buffer hasn't filled time window. `alpha1` is EMA-smoothed; `rawAlpha1` is unsmoothed.
-`reset()` — clears all state including EMA history.
-Algorithm: cumulative sum integration → box-size detrending (n=4..16) → log-log regression → alpha1 slope.
-Thresholds: >0.75 aerobic, 0.5–0.75 transition, <0.5 anaerobic.
-**Artifact filter:** ALL physiologically valid intervals (200-2000ms) update the median baseline — the median is inherently robust to outliers and including all intervals prevents baseline staleness during rapid HR transitions. Windowed artifact % tracks accept/reject over the same time window as the analysis buffer.
+Real-time DFA alpha1 from RR intervals. Thread-safe. Constructor: `windowDurationMs`, `artifactThresholdPercent`, `medianWindowSize`, `emaAlpha`. Methods: `addRrIntervals()`, `computeIfReady()` → `DfaResult`, `reset()`. Thresholds: >0.75 aerobic, 0.5–0.75 transition, <0.5 anaerobic.
+**Artifact filter:** ALL physiologically valid intervals (200-2000ms) update the median baseline — prevents staleness during rapid HR transitions.
 
 ### ⚠️ Calculated HR from RR Intervals ⚠️
-When enabled (`state.calcHrEnabled`), `HUDService.onRrIntervalsReceived()` computes HR directly from RR intervals (`60000/mean_RR`) and injects it as a **synthetic sensor** with key `"CALC:<original_mac>"` into `state.connectedHrSensors`. Artifact filter (`state.calcHrArtifactThreshold`, 0-50%, default 20%, 0=disabled) rejects RR intervals deviating too far from a rolling all-inclusive median of configurable size (`state.calcHrMedianWindow`, 3–21 odd, default 11). EMA smoothing (`state.calcHrEmaAlpha`, 0.01–1.0, default 0.1) controls responsiveness.
+When enabled (`state.calcHrEnabled`), `HUDService.onRrIntervalsReceived()` computes HR from RR intervals and injects it as a **synthetic sensor** `"CALC:<mac>"` into `state.connectedHrSensors`. Params: `calcHrArtifactThreshold` (0-50%, default 20%), `calcHrMedianWindow` (3-21 odd, default 11), `calcHrEmaAlpha` (0.01-1.0, default 0.1).
 
-**Shared filter method:** `HUDService.processCalcHrBatch()` — pure artifact filter + EMA in one call. Used by both the real-time path (`onRrIntervalsReceived`) and retroactive recalculation. Takes median window, threshold, EMA state as parameters (no hidden `state.*` reads).
+**Synthetic MAC convention:** `CALC:<mac>` keys reuse the entire multi-sensor pipeline (WorkoutRecorder, FIT export, popup). UUID v3 from `"tHUD-HR:CALC:<mac>"` produces valid FIT developer field IDs.
 
-**Retroactive recalculation:** When CALC HR parameters change in settings, `recalculateAllCalcHr()` replays ALL stored RR intervals (from `WorkoutRecorder.getRrIntervalsBySensor()`) through `processCalcHrBatch()` with new params, rebuilds a BPM timeline per sensor, calls `WorkoutRecorder.updateSensorBpmInHistory()` to patch data points in-place, rebinds primary HR if needed, and forces a chart update. Change detection uses snapshot fields (`lastCalcHrEmaAlpha`, `lastCalcHrArtifactThreshold`, `lastCalcHrMedianWindow`) — same pattern as DFA config change detection.
+**AVERAGE excludes CALC:** `computeAverageHrBpm()` and PopupManager average rows filter out `CALC:` entries to prevent double-counting. `hrSensorConnected` checked against non-CALC entries only.
 
-**Synthetic MAC convention:** `CALC:<mac>` keys reuse the entire multi-sensor pipeline (WorkoutRecorder, FIT export, popup) without changes. UUID v3 from `"tHUD-HR:CALC:<mac>"` produces valid FIT developer field IDs automatically.
+**Cleanup:** CALC entries removed on real sensor disconnect, on feature disable, and EMA state + filter buffers cleared in both cases.
 
-**AVERAGE excludes CALC:** `computeAverageHrBpm()` and PopupManager average rows filter out `CALC:` entries to prevent double-counting.
+**Retroactive recalc:** On param change, `recalculateAllCalcHr()` replays stored RR through `processCalcHrBatch()` (shared pure filter method), patches `WorkoutDataPoint`s in-place.
 
-**`hrSensorConnected` correctness:** Checked against non-CALC entries only (CALC sensors are virtual, not real BLE connections).
+### SpeedCalibrationManager (`util/SpeedCalibrationManager.kt`)
+Stateless utility — filtering + OLS regression math. `extractPairs(dataPoints, runStartMs)` → valid calibration pairs. `computeRegression(points)` → `RegressionResult(a, b, r2, n)` or null if < 10 points. `computeR2(points, a, b)` → R² for manual mode feedback.
 
-**Cleanup:** CALC entries removed on real sensor disconnect (`onHrSensorDisconnected`), on feature disable (`onSettingsSaved`), and EMA state (`calcHrEmaValues`) + artifact filter buffers (`calcHrRecentRr`) cleared in both cases.
-
-**Settings:** "HR" tab (formerly "DFA α1") has two sections — "HR-sensors" (checkbox + 3 spinners: EMA alpha, artifact threshold, median window) and "DFA-alpha1" (existing 4 spinners), separated by a divider.
+**Data pipeline:** `WorkoutDataPoint` → `extractPairs()` → `SpeedCalibrationDao.insertAll()` → `getPointsForLastRuns(N)` → `computeRegression()` → `state.paceCoefficient` + `state.speedCalibrationB`. DB retention: 90 runs max (trimmed on insert).
 
 ### OverlayHelper (`service/OverlayHelper.kt`)
-Overlay window and dialog utilities. `createOverlayParams(width, height, gravity, focusable, touchModal)`, `createDialogContainer(context)` (standard dark background + padding), `createDialogTitle(context, text)`, `createDialogMessage(context, text)`, `createDialogButtonRow(context)`, `createStyledButton(context, text, colorResId, onClick)` (standard button factory — see Button Styling rule above), `calculateWidth/Height(screenSize, fraction)`.
+Overlay window and dialog utilities. `createOverlayParams()`, `createDialogContainer/Title/Message/ButtonRow()`, `createStyledButton()` (see Button Styling rule), `calculateWidth/Height()`.
 
 ### FileExportHelper (`util/FileExportHelper.kt`)
-Exports to Downloads/tHUD/<profile>/ via MediaStore. `saveToDownloads(context, sourceFile, filename, mimeType, subfolder)`, `getTempFile(context, filename)`, `getAbsoluteDir(subfolder)` (filesystem `File` path for direct file I/O). `activeProfileSubfolder` (`@Volatile var`) is set by `HUDService.onCreate()` to the profile display name. Subfolders: `ROOT` (tHUD/<profile>/), `SCREENSHOTS` (tHUD/<profile>/screenshots/), `EXPORT` (tHUD/<profile>/export/), `IMPORT` (tHUD/<profile>/import/).
+Exports to Downloads/tHUD/<profile>/ via MediaStore. `saveToDownloads()`, `getTempFile()`, `getAbsoluteDir()`. `activeProfileSubfolder` (`@Volatile var`) set by `HUDService.onCreate()`. Subfolders: `ROOT`, `SCREENSHOTS`, `EXPORT`, `IMPORT`.
 
-**⚠️ EncryptedSharedPreferences cannot be migrated by file rename!** The filename may be part of key derivation. Use `GarminConnectUploader.migrateFromLegacy()` which reads via the old name and writes via the new name through the API. Called in `HUDService.onCreate()` after `updatePrefsName()`.
+**⚠️ EncryptedSharedPreferences cannot be migrated by file rename!** Use `GarminConnectUploader.migrateFromLegacy()` (reads old name, writes new name via API). Called in `HUDService.onCreate()` after `updatePrefsName()`.
 
 ### SavedBluetoothDevices (`service/SavedBluetoothDevices.kt`)
 Unified BT sensor storage. `getAll/getByType/save/remove/isSaved/getSavedMacs`. Types: `HR_SENSOR`, `FOOT_POD`.
 
 ### SettingsManager (`service/SettingsManager.kt`)
-All SharedPreferences keys as constants. Key groups: `pace_coefficient` (calibration), `hr_zone*_max` (HR zones), `threshold_pace_kph`, `default_incline`, treadmill min/max ranges (from GlassOS), `fit_*` (FIT Export device ID), `ftms_*` (FTMS server settings), `garmin_auto_upload` (Garmin Connect), `remote_bindings` (BLE remote control config JSON), `calc_hr_enabled`/`calc_hr_ema_alpha`/`calc_hr_artifact_threshold`/`calc_hr_median_window` (Calculated HR from RR intervals), `dfa_window_duration_sec`/`dfa_artifact_threshold`/`dfa_median_window`/`dfa_ema_alpha` (DFA alpha1 algorithm config), `dfa_sensor_mac` (DFA alpha1 primary sensor), `chart_zoom_timeframe_minutes` (Chart zoom window). Settings dialog has 8 tabs: User (username, PIN, delete, personal metrics), Treadmill (pace coefficient, incline adjustment), Zones, Auto-Adjust, FIT Export, FTMS, HR (calc HR + DFA α1), Chart. Guest profile: User tab has disabled username, no PIN/Delete buttons.
+All SharedPreferences keys as constants. Key groups: `pace_coefficient`/`speed_calibration_b`/`speed_calibration_auto`/`speed_calibration_run_window` (calibration), `hr_zone*_max`, `threshold_pace_kph`, `default_incline`, treadmill min/max, `fit_*`/`fit_use_stryd_speed`, `ftms_*`, `garmin_auto_upload`, `remote_bindings`, `calc_hr_*` (4 keys), `dfa_*` (5 keys), `chart_zoom_timeframe_minutes`. Settings dialog: 8 tabs (User, Treadmill, Zones, Auto-Adjust, FIT Export, FTMS, HR, Chart). Guest profile: User tab has disabled username, no PIN/Delete.
 
 ### ⚠️ HR/Power Targets: Percentage-Based ⚠️
 All HR/Power targets stored as **% of threshold** (LTHR/FTP) so workouts survive threshold changes.
@@ -239,36 +217,31 @@ ExecutionStep convenience: `step.getHrTargetMinBpm(lthrBpm)`, `step.getPowerTarg
 
 | Coefficient | Location | Purpose | Changed By |
 |-------------|----------|---------|------------|
-| `paceCoefficient` | `ServiceStateHolder` | **CALIBRATION** — treadmill→actual speed (foot pod) | User only, Settings |
+| `paceCoefficient` | `ServiceStateHolder` | **CALIBRATION slope `a`** — linear model `adjusted = a * raw + b` | User (Settings slider) or auto-regression from Stryd |
+| `speedCalibrationB` | `ServiceStateHolder` | **CALIBRATION intercept `b`** — linear model offset | User (Settings slider) or auto-regression from Stryd |
 | `speedAdjustmentCoefficient` | `WorkoutExecutionEngine` | **DYNAMIC** — HR auto-adjust / manual buttons | Code, from telemetry |
 | `inclineAdjustmentCoefficient` | `WorkoutExecutionEngine` | **DYNAMIC** — incline auto-adjust / manual buttons | Code, from telemetry |
 
-**paceCoefficient is NEVER changed by code!** AdjustmentController is stateless for values — WorkoutExecutionEngine owns coefficients, calculates from telemetry, provides `getEffectiveSpeed(step)`.
+**paceCoefficient + speedCalibrationB:** When `speedCalibrationAuto = true`, both are updated automatically after each run via `SpeedCalibrationManager.computeRegression()`. When `false`, user sets them manually via sliders. Default `a=1.0, b=0.0` = legacy behavior (pure multiplication). **NEVER multiply/divide by `paceCoefficient` directly** — use `state.rawToAdjustedSpeed()` / `state.adjustedToRawSpeed()`.
+
+AdjustmentController is stateless for values — WorkoutExecutionEngine owns coefficients, calculates from telemetry, provides `getEffectiveSpeed(step)`.
 
 ### ⚠️ Zone Boundary Caches — MUST INVALIDATE ⚠️
 `ServiceStateHolder.hrZone2Start..hrZone5Start` and `powerZone2Start..powerZone5Start` are **cached** (not computed on access). After writing `userLthrBpm`, `userFtpWatts`, or any `hrZone*StartPercent` / `powerZone*StartPercent`, you **MUST** call `invalidateHrZoneCaches()` / `invalidatePowerZoneCaches()`. Currently only `SettingsManager` writes these (loadSettings + save callback).
 
 ### ⚠️ Adjustment Scope (Per-Workout Setting) ⚠️
-`Workout.adjustmentScope`: `ALL_STEPS` (default) or `ONE_STEP`.
-
-**ALL_STEPS:** Coefficients are global within a phase. All steps share the same speed/incline coefficient. "I'm tired today, scale everything down."
-
-**ONE_STEP:** Each step position has its own coefficient pair. On step transitions, the engine saves the current step's coefficients to a `Map<String, Pair<Double, Double>>` keyed by `stepIdentityKey`, then loads the next step's. Within repeat blocks, same-position children share keys across iterations (e.g., Run 1/4 through Run 4/4 all use key `r0_c0`).
+`Workout.adjustmentScope`: `ALL_STEPS` (default, coefficients global within phase) or `ONE_STEP` (per-step coefficient map keyed by `stepIdentityKey`, saved/loaded on step transitions; repeat children share keys across iterations e.g. `r0_c0`).
 
 **Phase boundaries always clear the map** (warmup→main, main→cooldown) regardless of scope.
 
-**Chart rendering:** In ONE_STEP mode, the per-step coefficient map is passed through `WorkoutEngineManager` → `ChartManager` → `WorkoutChart`. The chart's `getSegmentCoefficients()` resolves each segment's coefficients by identity key. **CRITICAL:** ALL call sites of `setAdjustmentCoefficients()` (both `WorkoutEngineManager.updateChartCoefficients()` AND `HUDService.onWorkoutStateChanged()`) must pass the `perStepCoefficients` parameter — omitting it defaults to `null` which reverts to global mode.
+**CRITICAL:** ALL call sites of `setAdjustmentCoefficients()` (both `WorkoutEngineManager.updateChartCoefficients()` AND `HUDService.onWorkoutStateChanged()`) must pass the `perStepCoefficients` parameter — omitting it defaults to `null` which reverts to global mode.
 
 ### ⚠️ System Workouts & Phase Stitching ⚠️
-System workouts identified by `systemWorkoutType` column (`"WARMUP"`/`"COOLDOWN"`), NOT name. Permanent, cannot be deleted/duplicated. Created by `WorkoutRepository.ensureSystemWorkoutsExist()` at startup. Regular workouts opt in via `useDefaultWarmup`/`useDefaultCooldown`.
+System workouts identified by `systemWorkoutType` column (`"WARMUP"`/`"COOLDOWN"`), NOT name. Permanent, cannot be deleted/duplicated. Created by `WorkoutRepository.ensureSystemWorkoutsExist()`. Regular workouts opt in via `useDefaultWarmup`/`useDefaultCooldown`.
 
-**Stitching:** `WorkoutEngineManager.loadWorkoutStitched()` → loads main + warmup/cooldown → `WorkoutExecutionEngine.loadStitchedWorkout()` → flattens each phase → concatenates → stores phase counts.
+**Stitching:** `WorkoutEngineManager.loadWorkoutStitched()` → flattens phases → concatenates → stores phase counts. Coefficient reset at phase boundaries prevents cross-phase contamination.
 
-**Coefficient reset** at phase boundaries (warmup→main, main→cooldown) prevents cross-phase contamination.
-
-**Prev button is phase-limited:** Once in main phase, Prev cannot go back to warmup. Once in cooldown, Prev cannot go back to main. At a phase boundary, Prev restarts the first step of the current phase. Auto-cooldown also restarts in place.
-
-**Editor:** Sentinel rows with checkbox + summary. System workouts always visible regardless of search filter. Preview chart shows main only; live chart shows full stitched outline. Editor auto-selects the most recently used/edited regular workout on open (skips system workouts).
+**Prev button is phase-limited:** Cannot cross phase boundaries backward. At boundary, restarts first step of current phase.
 
 ---
 
@@ -281,6 +254,7 @@ System workouts identified by `systemWorkoutType` column (`"WARMUP"`/`"COOLDOWN"
 | **DualKnobZoneSlider** | `ui/components/DualKnobZoneSlider.kt` | 2-handle HR/Power min/max |
 | **ZoneSlider** | `ui/components/ZoneSlider.kt` | Multi-handle zone boundaries |
 | **OneKnobSlider** | `ui/components/OneKnobSlider.kt` | Single-handle slider |
+| **SpeedCalibrationChart** | `ui/components/SpeedCalibrationChart.kt` | Speed calibration scatter plot |
 
 ---
 
@@ -317,7 +291,7 @@ HUDService (Orchestrator)
     └── BluetoothSensorDialogManager → BT sensor connection dialog
 
 Data Layer
-├── TreadmillHudDatabase    → Room DB (version 9), multi-instance map keyed by absolute path
+├── TreadmillHudDatabase    → Room DB (version 10), multi-instance map keyed by absolute path
 │                              Use getActiveInstance(context), NOT getInstance(context, path) directly
 ├── WorkoutRepository       → Clean CRUD API (use this, not DAO directly)
 ├── Workout                 → Entity: metadata + systemWorkoutType, useDefaultWarmup/Cooldown, adjustmentScope
@@ -335,85 +309,42 @@ Domain Layer
 
 ```
 app/src/main/java/io/github/avikulin/thud/
-├── HUDService.kt              # Main foreground service
-├── MainActivity.kt            # Main activity
-├── BootReceiver.kt            # Auto-start on boot
-├── RemoteControlAccessibilityService.kt  # BLE remote key interception
-│
+├── HUDService.kt, MainActivity.kt, BootReceiver.kt
+├── RemoteControlAccessibilityService.kt
 ├── data/
-│   ├── db/TreadmillHudDatabase.kt, WorkoutDao.kt, Converters.kt
-│   ├── entity/Workout.kt, WorkoutStep.kt
-│   ├── model/WorkoutDataPoint.kt
-│   └── repository/WorkoutRepository.kt
-│
+│   ├── db/         TreadmillHudDatabase, WorkoutDao, SpeedCalibrationDao, Converters
+│   ├── entity/     Workout, WorkoutStep, SpeedCalibrationPoint
+│   ├── model/      WorkoutDataPoint
+│   └── repository/ WorkoutRepository
 ├── domain/
-│   ├── model/StepType.kt, DurationType.kt, AdjustmentType.kt, AutoAdjustMode.kt, EarlyEndCondition.kt, AdjustmentScope.kt, RemoteAction.kt
-│   └── engine/
-│       ├── WorkoutExecutionEngine.kt, ExecutionStep.kt, AdjustmentController.kt
-│       ├── WorkoutStepFlattener.kt, WorkoutEvent.kt, WorkoutExecutionState.kt
-│
+│   ├── model/      StepType, DurationType, AdjustmentType, AutoAdjustMode,
+│   │               EarlyEndCondition, AdjustmentScope, RemoteAction
+│   └── engine/     WorkoutExecutionEngine, ExecutionStep, AdjustmentController,
+│                   WorkoutStepFlattener, WorkoutEvent, WorkoutExecutionState
 ├── service/
-│   ├── ProfileManager.kt          # User profile registry + file isolation
-│   ├── GlassOsClient.kt           # gRPC client (mTLS, localhost:54321)
-│   ├── ServiceStateHolder.kt      # Shared volatile state
-│   ├── TelemetryManager.kt        # GlassOS comms
-│   ├── WorkoutEngineManager.kt    # Workout control
-│   ├── HUDDisplayManager.kt       # Main HUD overlay
-│   ├── ChartManager.kt            # Chart overlay
-│   ├── WorkoutPanelManager.kt     # Progress overlay
-│   ├── PopupManager.kt            # Adjustment popups + user profile dropdown
-│   ├── OverlayHelper.kt           # Overlay utilities + createStyledButton()
-│   ├── PinDialogManager.kt       # Reusable PIN entry overlay dialog
-│   ├── SettingsManager.kt         # Settings
-│   ├── HrSensorManager.kt         # HR sensor BLE connection
-│   ├── StrydManager.kt            # Stryd foot pod BLE
-│   ├── SavedBluetoothDevices.kt   # Unified BT device storage
-│   ├── BluetoothSensorDialogManager.kt  # BT sensor dialog
-│   ├── RemoteControlManager.kt    # BLE remote bindings + action dispatch
-│   ├── RemoteControlBridge.kt     # Singleton connecting AccessibilityService ↔ HUDService
-│   ├── RunPersistenceManager.kt   # Crash recovery persistence
-│   ├── WorkoutRecorder.kt         # Thread-safe metrics recording
-│   ├── ScreenshotManager.kt       # Auto-screenshot via MediaProjection API
-│   ├── garmin/
-│   │   └── GarminConnectUploader.kt # Garmin Connect OAuth + upload
-│   ├── ble/
-│   │   └── BleFtmsServer.kt       # BLE FTMS server for external apps
-│   └── dircon/
-│       ├── DirConServer.kt        # Direct connection protocol server
-│       ├── ClientHandler.kt       # DirCon client handler
-│       ├── DirConPacket.kt        # DirCon packet format
-│       └── FtmsCharacteristics.kt # FTMS BLE characteristics
-│
+│   ├── ProfileManager, GlassOsClient, ServiceStateHolder, TelemetryManager
+│   ├── WorkoutEngineManager, SettingsManager, RunPersistenceManager
+│   ├── HUDDisplayManager, ChartManager, WorkoutPanelManager, PopupManager
+│   ├── OverlayHelper, PinDialogManager, ScreenshotManager
+│   ├── HrSensorManager, StrydManager, SavedBluetoothDevices
+│   ├── BluetoothSensorDialogManager, WorkoutRecorder
+│   ├── RemoteControlManager, RemoteControlBridge
+│   ├── garmin/     GarminConnectUploader
+│   ├── ble/        BleFtmsServer
+│   └── dircon/     DirConServer, ClientHandler, DirConPacket, FtmsCharacteristics
 ├── ui/
-│   ├── ScreenshotPermissionActivity.kt  # Transparent activity for MediaProjection permission
-│   ├── components/
-│   │   ├── WorkoutChart.kt        # Reusable chart component
-│   │   ├── TouchSpinner.kt        # Touch-friendly numeric input
-│   │   ├── DualKnobZoneSlider.kt  # 2-handle slider for HR/Power min/max
-│   │   ├── ZoneSlider.kt          # Multi-handle slider for zone boundaries
-│   │   └── OneKnobSlider.kt       # Single-handle slider
-│   ├── editor/
-│   │   ├── WorkoutEditorActivityNew.kt, WorkoutEditorViewModel.kt
-│   │   ├── InlineStepAdapter.kt, WorkoutListAdapter.kt
-│   │   └── UndoRedoManager.kt     # Undo/redo for editor
-│   ├── remote/
-│   │   ├── RemoteControlActivity.kt       # Split-panel remote config (two columns)
-│   │   ├── RemoteListAdapter.kt           # Left-pane remote list
-│   │   ├── ActionBindingAdapter.kt        # tHUD actions column (Mode 1)
-│   │   └── AndroidActionBindingAdapter.kt # Android actions column (Mode 2)
-│   └── panel/WorkoutPanelView.kt
-│
+│   ├── ScreenshotPermissionActivity
+│   ├── components/ WorkoutChart, TouchSpinner, DualKnobZoneSlider, ZoneSlider,
+│   │               OneKnobSlider, SpeedCalibrationChart
+│   ├── editor/     WorkoutEditorActivityNew, WorkoutEditorViewModel,
+│   │               InlineStepAdapter, WorkoutListAdapter, UndoRedoManager
+│   ├── remote/     RemoteControlActivity, RemoteListAdapter,
+│   │               ActionBindingAdapter, AndroidActionBindingAdapter
+│   └── panel/      WorkoutPanelView
 └── util/
-    ├── HeartRateZones.kt          # HR zones + step type colors
-    ├── PowerZones.kt              # Power zone utilities
-    ├── PaceConverter.kt           # Pace/speed conversions
-    ├── FileExportHelper.kt        # Centralized Downloads/tHUD file saving
-    ├── FitFileExporter.kt         # FIT file generation for Garmin
-
-    ├── TrainingMetricsCalculator.kt # Training load calculations
-    ├── TssCalculator.kt           # TSS calculation (Power → HR → Pace fallback)
-    ├── DfaAlpha1Calculator.kt     # Real-time DFA alpha1 from RR intervals
-    └── StepBoundaryParser.kt      # Workout step parsing
+    ├── HeartRateZones, PowerZones, PaceConverter, FileExportHelper
+    ├── FitFileExporter, TrainingMetricsCalculator, TssCalculator
+    ├── DfaAlpha1Calculator, SpeedCalibrationManager, StepBoundaryParser
 ```
 
 ---
@@ -444,27 +375,18 @@ adb logcat -s HUDService TelemetryManager WorkoutExecutionEngine
 
 ### ⚠️ BLE Remote Control — Key Architecture ⚠️
 
-**AccessibilityService** (`RemoteControlAccessibilityService`) intercepts `KeyEvent`s globally via `flagRequestFilterKeyEvents`. It runs in the same app process as `HUDService` — no IPC needed.
+**AccessibilityService** (`RemoteControlAccessibilityService`) intercepts `KeyEvent`s globally. Runs in same process as `HUDService` — no IPC. **RemoteControlBridge** singleton connects the two services.
 
-**RemoteControlBridge** is a plain `object` singleton connecting the two services. Volatile fields ensure thread-safe reads without synchronization overhead.
+**Device filtering is the FIRST check** in `onKeyEvent()`. Only explicitly configured remotes are intercepted. All other input devices always pass through.
 
-**Device filtering is the FIRST check** in `onKeyEvent()`. Only devices whose `event.device.name` matches an explicitly configured remote are ever intercepted. All other input devices (BT keyboards, phone volume buttons, treadmill hardware keys) always pass through untouched.
+**TOGGLE_MODE always works** regardless of `isActive` state. Two modes with fallback: Mode 1 (take-over): tHUD first → android fallback. Mode 2 (pass-through): android first → tHUD fallback. Same key CAN be bound in both columns.
 
-**TOGGLE_MODE always works** regardless of `isActive` state — otherwise users couldn't switch back to take-over mode without touching the phone. Toggle Mode lives in a universal row above both columns in the config UI.
+**Android actions** execute in `RemoteControlAccessibilityService` (not Manager) — `performGlobalAction()` only available there. Config is JSON in SharedPreferences (key: `PREF_REMOTE_BINDINGS`), parsing duplicated across 3 classes (each may run independently).
 
-**Two modes with fallback-both-ways dispatch:**
-- **Mode 1 (take-over, `isActive=true`):** tHUD bindings fire first. If no tHUD binding for this key, android bindings fire as fallback.
-- **Mode 2 (pass-through, `isActive=false`):** Android bindings fire first. If no android binding, tHUD bindings fire as fallback.
-- Same physical key CAN be bound in both columns — mode determines priority.
-
-**Android action execution** happens directly in `RemoteControlAccessibilityService` (not in `RemoteControlManager`) because `performGlobalAction()` is only available on AccessibilityService. Media keys use `AudioManager.dispatchMediaKeyEvent()`, volume uses `AudioManager.adjustStreamVolume()`, navigation uses `performGlobalAction()`.
-
-**Config is JSON in SharedPreferences** (key: `PREF_REMOTE_BINDINGS`), not Room DB. Structure: `{ "remotes": [{ "deviceName", "alias", "enabled", "bindings": [{ "action", "keyCode", "keyLabel", "value" }], "androidBindings": [{ "action", "keyCode", "keyLabel" }] }] }`. The `androidBindings` array is optional for backward compatibility. Parsing is duplicated across `RemoteControlManager`, `RemoteControlActivity`, and `RemoteControlAccessibilityService` because each may run independently.
-
-**Speed/incline actions** call `TelemetryManager.setTreadmillSpeed()`/`setTreadmillIncline()` (respecting the speed/incline absolute rules). Speed is read as `state.currentSpeedKph * state.paceCoefficient` (adjusted), clamped to `[minSpeed * paceCoefficient, maxSpeed * paceCoefficient]`. Incline is read as `state.currentInclinePercent` (already effective), clamped to effective bounds.
+**Speed/incline actions** use `TelemetryManager.setTreadmillSpeed()`/`setTreadmillIncline()` (respecting absolute rules). Speed clamped to `[rawToAdjustedSpeed(min), rawToAdjustedSpeed(max)]`.
 
 ### ⚠️ Full-Screen Activity Panel Lifecycle ⚠️
-Any activity that opens from the HUD (workout editor, remote config) must manage overlay panel visibility. Use the static helpers — do NOT send raw intents:
+Any activity that opens from the HUD must manage overlay panel visibility. Use the static helpers — do NOT send raw intents:
 ```kotlin
 override fun onResume() { super.onResume(); HUDService.notifyActivityForeground(this) }
 override fun onPause() { super.onPause(); HUDService.notifyActivityBackground(this) }
@@ -474,81 +396,45 @@ override fun onDestroy() { HUDService.notifyActivityClosed(this); super.onDestro
 
 ---
 
-## Garmin FIT Import Notes
+## Garmin FIT Export & Upload
 
-**Watch sync required:** Garmin Connect does NOT calculate Training Status — the watch does. After uploading FIT: sync watch (downloads file) → watch processes → sync again (uploads metrics). Without this, no acute/chronic load contribution.
+**Watch sync required:** Upload → sync watch (downloads) → watch processes → sync again (uploads metrics). **Device serial MUST differ from user's watch** (dedup skip).
 
-**Device serial MUST differ from user's watch** — matching serial causes watch to skip the file (dedup). Use any different serial.
+### FIT Manufacturer & Stryd Dev Fields
+**Manufacturer=1 (Garmin)** works everywhere. **Do NOT use manufacturer=95 (Stryd)** — rejected. Product=4565 (Forerunner 970).
+Stryd dev fields (UUID `18fb2cf0-1a4b-430d-ad66-988c847421f4`, app v158): Record Power (field 0, uint16, native 7), Lap Power (field 10, uint16, native 7), Session CP (field 99, uint16).
+**CRITICAL:** `setApplicationId(int, Byte)` corrupts bytes > 127. Use `setFieldValue(..., byteValue.toInt() and 0xFF)`.
 
-### FIT Manufacturer & Stryd Developer Fields
+### Multi-HR Sensor Dev Fields
+Each HR sensor gets `DeveloperDataIdMesg` with **UUID v3** from `"tHUD-HR:<MAC>"`. Lazy registration via `WorkoutRecorder.resolveOrRegister()`. Per-data-point storage uses integer indices: `allHrSensors: Map<Int, Int>`, `primaryHrIndex: Int`, `dfaAlpha1BySensor: Map<Int, Double>`.
 
-**Manufacturer=1 (Garmin)** works with all platforms: Garmin Connect, Strava (Run), and Stryd PowerCenter.
+### FIT HRV Export (Multi-File)
+FIT supports one RR stream per file. `HrvMesg` holds up to 5 RR values (seconds, Float). **MUST be interleaved with Record messages** (not batched). When 2+ RR-capable sensors → one FIT file per sensor (identical workout, different HRV). Only DFA-primary sensor's file uploaded to Garmin. DFA alpha1 written as dev field 1 (UINT16, scale 1000).
 
-Stryd PowerCenter acceptance requires developer fields mimicking the Stryd Connect IQ app format. `FitFileExporter` writes these automatically when power data exists:
-- `DeveloperDataIdMesg` with Stryd UUID `18fb2cf0-1a4b-430d-ad66-988c847421f4`, app version 158
-- Record-level Power (field 0, uint16, nativeFieldNum=7)
-- Lap-level Lap Power (field 10, uint16, nativeFieldNum=7)
-- Session-level CP (field 99, uint16, value=user FTP)
+### FIT Stryd Speed Preprocessing + Treadmill Dev Fields
+**"Use Stryd speed" flag** (`state.fitUseStrydSpeed`, default ON): `recalculateWithStrydSpeed()` preprocesses data points — picks `strydSpeedKph` (if > 0) else `speedKph`, recalculates cumulative distance/elevation. Modified list cascades through all downstream code.
 
-**CRITICAL:** `DeveloperDataIdMesg.setApplicationId(int, Byte)` corrupts bytes > 127 (signed Byte → 0xFF). Use `setFieldValue(ApplicationIdFieldNum, index, byteValue.toInt() and 0xFF)` instead.
+**Treadmill speed dev fields** (UUID v3 from `"tHUD-SpeedCalibration"`):
+- Field 0: **Raw Treadmill Speed** (UINT16, "m/s", scale 1000)
+- Field 1: **Calibrated Treadmill Speed** (UINT16, "m/s", scale 1000)
 
-**Do NOT use manufacturer=95 (Stryd)** — rejected everywhere. Keep `product=4565` (Forerunner 970) for device icon.
+4 speed streams per record: native `enhancedSpeed`, dev Raw, dev Calibrated, dev Stryd.
 
-### Multi-HR Sensor Developer Fields in FIT
-
-When multiple HR sensors are connected, each gets a `DeveloperDataIdMesg` with a **UUID v3** ApplicationId derived from `"tHUD-HR:<MAC>"`. This produces valid 16-byte UUIDs that Garmin Connect accepts (raw MAC bytes as ApplicationId are rejected). Each sensor's BPM is written as a developer field on every record.
-
-**Lazy sensor registration:** `WorkoutRecorder.resolveOrRegister()` auto-registers sensors on first data point encounter. No external registration calls needed — just pass `state.connectedHrSensors` and `state.activePrimaryHrMac` to `recordDataPoint()`/`ensurePeriodicRecord()`.
-
-**Per-data-point storage uses integer indices** (not MAC strings) for compact storage: `WorkoutDataPoint.allHrSensors: Map<Int, Int>` (sensorIndex→BPM), `primaryHrIndex: Int` (-1 = none/average), `dfaAlpha1BySensor: Map<Int, Double>` (sensorIndex→alpha1, -1.0 = no data).
-
-### FIT HRV Export (RR Intervals + Multi-File)
-
-**HrvMesg (message 78):** FIT supports only one RR stream per file. Each `HrvMesg` holds up to 5 RR interval values (in seconds, Float). **MUST be interleaved with Record messages** (not batched at end) — Runalyze and other HRV tools require this Garmin-standard ordering. Written by `writeInterleavedHrv()` inside the record-writing loop, draining pending RR intervals before each Record.
-
-**Multi-file export:** When multiple RR-capable sensors are connected, `exportWorkoutToFit()` generates one FIT file per sensor — identical workout data but different `HrvMesg` streams. Filename suffix identifies the sensor (e.g., `Run_2026-02-20_PolarH10.fit`). Only the DFA-primary sensor's file is uploaded to Garmin Connect.
-
-| RR-capable sensors | FIT files | Garmin upload |
-|---|---|---|
-| 0 | 1 file (no HrvMesg) | That file |
-| 1 | 1 file WITH HrvMesg | That file |
-| 2+ | N files (same workout, different HRV) | DFA-primary sensor's file |
-
-**DFA alpha1 developer fields:** Each HR sensor's `HrSensorDevField` has an optional `dfaFieldDesc` (field 1, UINT16, scale 1000: alpha1=0.750 stored as 750). Written on every Record alongside the BPM field. Only created for sensors that have at least one valid DFA data point.
-
-**RunSnapshot captures:** `rrIntervalsBySensor` (per-sensor RR data) and `activeDfaSensorMac` (which file to upload).
-
-### FIT Grade/Incline Fields
-
-FIT export writes incline data at three levels:
-- **Per-record:** `record.setGrade(%)` — every data point
-- **Per-lap:** `lap.setAvgGrade(%)` — average incline for that lap
-- **Per-session:** `session.setAvgGrade(%)` — average incline for entire run
-
-Note: `maxGrade` does NOT exist on `LapMesg`/`SessionMesg` in the FIT SDK — only `avgGrade` and `totalAscent`.
+### FIT Grade/Incline
+Per-record `setGrade(%)`, per-lap `setAvgGrade(%)`, per-session `setAvgGrade(%)`. Note: `maxGrade` does NOT exist on `LapMesg`/`SessionMesg` — only `avgGrade` and `totalAscent`.
 
 ### ⚠️ Garmin Connect Upload — API Endpoints ⚠️
-**FIT upload:** `POST connectapi.garmin.com/upload-service/upload/.fit` — OAuth2 Bearer, multipart field `userfile`.
+**FIT:** `POST connectapi.garmin.com/upload-service/upload/.fit` — Bearer, multipart `userfile`.
+**Photo:** `POST connectapi.garmin.com/activity-service/activity/{id}/image` — Bearer, multipart `file`.
+**CRITICAL:** Use **direct API** (`connectapi.garmin.com`) with `Authorization: Bearer`, `DI-Backend: connectapi.garmin.com`, `NK: NT`. Do NOT use `connect.garmin.com/gc-api/` (web proxy).
+**Auth:** SSO WebView → ticket → OAuth1 (~1yr) → OAuth2 (~1hr, auto-refreshed). Tokens in `EncryptedSharedPreferences("GarminConnectTokens")`.
 
-**Photo upload:** `POST connectapi.garmin.com/activity-service/activity/{id}/image` — OAuth2 Bearer, multipart field `file`.
-
-**CRITICAL:** Both use the **direct API** (`connectapi.garmin.com`) with `Authorization: Bearer`, `DI-Backend: connectapi.garmin.com`, `NK: NT`. Do NOT use `connect.garmin.com/gc-api/` (web proxy) — it requires session cookies + CSRF tokens and is fragile. The web proxy fallback exists in code but is not needed.
-
-**Auth flow:** SSO WebView → ticket → OAuth1 (long-lived ~1yr) → OAuth2 (short-lived ~1hr, auto-refreshed). Tokens in `EncryptedSharedPreferences("GarminConnectTokens")` — separate from app's `"TreadmillHUD"` SharedPreferences.
-
-**Consumer key/secret:** Fetched from `thegarth.s3.amazonaws.com/oauth_consumer.json` with hardcoded fallback.
+### FIT Time in Zone (mesg 216)
+**Garmin uses 7 zones (0-6)**, not 5. Convert % to BPM first, THEN subtract 1:
+```kotlin
+val z1MaxBpm = (HeartRateZones.percentToBpm(z2StartPercent.toDouble(), userLthr) - 1).toShort() // CORRECT
+```
+Power zones: same 7-zone pattern. Time values in milliseconds.
 
 ### FTMS Settings
 BLE/DirCon Broadcast + Control toggles (all default OFF). Control requires Broadcast. Custom device names. Servers restart on save.
-
-### FIT Time in Zone (mesg 216)
-**Garmin uses 7 zones (0-6)**, not 5. Zone boundaries: convert % to BPM first, THEN subtract 1 (not the reverse).
-
-```kotlin
-// CORRECT: convert to BPM first, then -1
-val z1MaxBpm = (HeartRateZones.percentToBpm(z2StartPercent.toDouble(), userLthr) - 1).toShort()
-// WRONG: subtract percent first
-val z1MaxBpm = HeartRateZones.percentToBpm(z2StartPercent - 1, userLthr)  // ❌
-```
-
-Power zones follow the same 7-zone pattern. Time values in milliseconds.

@@ -118,8 +118,8 @@ class PopupManager(
         val rawMaxKph = client?.maxSpeedKph ?: 20.0
         val treadmillMinKph = if (rawMinKph > 0) max(rawMinKph, 1.6) else 1.6
         val treadmillMaxKph = if (rawMaxKph > treadmillMinKph) rawMaxKph else 20.0
-        val adjustedMinKph = treadmillMinKph * state.paceCoefficient
-        val adjustedMaxKph = treadmillMaxKph * state.paceCoefficient
+        val adjustedMinKph = state.rawToAdjustedSpeed(treadmillMinKph)
+        val adjustedMaxKph = state.rawToAdjustedSpeed(treadmillMaxKph)
 
         // Generate ADJUSTED speeds at 0.5 kph steps
         var adjustedSpeeds = ServiceStateHolder.generateSpeedValues(adjustedMinKph, adjustedMaxKph)
@@ -138,7 +138,7 @@ class PopupManager(
         val gridRows = floor(sqrt(itemCount.toDouble())).toInt().coerceAtLeast(1)
         val gridColumns = ceil(itemCount.toDouble() / gridRows).toInt().coerceAtLeast(1)
 
-        Log.d(TAG, "Pace popup: treadmill=${treadmillMinKph}-${treadmillMaxKph}, adjusted=${adjustedMinKph}-${adjustedMaxKph}, coef=${state.paceCoefficient}")
+        Log.d(TAG, "Pace popup: treadmill=${treadmillMinKph}-${treadmillMaxKph}, adjusted=${adjustedMinKph}-${adjustedMaxKph}, a=${state.paceCoefficient}, b=${state.speedCalibrationB}")
         Log.d(TAG, "Pace popup: $itemCount items (${adjustedSpeeds.size} speeds + ${if (showResumeButton) "resume" else "no resume"}), grid=${gridColumns}x${gridRows}")
 
         val popupWidthFraction = resources.getFloat(R.dimen.popup_width_fraction)
@@ -150,7 +150,7 @@ class PopupManager(
         val buttonTextSize = resources.getDimension(R.dimen.text_popup_button) / TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 1f, resources.displayMetrics)
 
         // Current adjusted speed rounded to nearest 0.5 for highlighting
-        val currentAdjustedKph = state.currentSpeedKph * state.paceCoefficient
+        val currentAdjustedKph = state.rawToAdjustedSpeed(state.currentSpeedKph)
         val roundedCurrentAdjustedKph = round(currentAdjustedKph * 2) / 2
 
         // Create popup container with dynamic grid size

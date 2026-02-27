@@ -68,6 +68,7 @@ import io.github.avikulin.thud.util.HeartRateZones
 
 import io.github.avikulin.thud.util.DfaAlpha1Calculator
 import io.github.avikulin.thud.util.PaceConverter
+import io.github.avikulin.thud.util.SpeedCalibrationManager
 import io.github.avikulin.thud.util.TssCalculator
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
@@ -637,6 +638,7 @@ class HUDService : Service(),
             // Reset AFTER snapshot captures executionSteps
             workoutEngineManager.resetWorkout()
             if (snapshot != null) {
+                extractAndSaveCalibrationData(snapshot)
                 exportWorkoutToFit(snapshot)
             }
         }
@@ -729,11 +731,47 @@ class HUDService : Service(),
         if (dataCount > 0 && !workoutDataExported) {
             val snapshot = createRunSnapshot(workoutName)
             if (snapshot != null) {
+                extractAndSaveCalibrationData(snapshot)
                 exportWorkoutToFit(snapshot)
             }
         }
 
         resetRunState()
+    }
+
+    /**
+     * Extract calibration pairs from a run snapshot and save to Room DB.
+     * If auto-calibration is enabled, recomputes regression and updates coefficients.
+     */
+    private fun extractAndSaveCalibrationData(snapshot: RunSnapshot) {
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                val pairs = SpeedCalibrationManager.extractPairs(snapshot.workoutData, snapshot.startTimeMs)
+                Log.d(TAG, "Calibration extracted ${pairs.size} pairs from ${snapshot.workoutData.size} data points")
+                if (pairs.isEmpty()) {
+                    Log.d(TAG, "No valid calibration pairs from this run (Stryd not connected or no matching data)")
+                    return@launch
+                }
+
+                val dao = TreadmillHudDatabase.getActiveInstance(this@HUDService).speedCalibrationDao()
+                dao.insertAll(pairs)
+                dao.trimOldRuns(90)  // keep max 90 runs in DB regardless of display window
+                Log.d(TAG, "Saved ${pairs.size} calibration pairs, runs in DB: ${dao.getRunCount()}")
+
+                // Auto-update regression if enabled
+                if (state.speedCalibrationAuto) {
+                    val points = dao.getPointsForLastRuns(state.speedCalibrationRunWindow)
+                    SpeedCalibrationManager.computeRegression(points)?.let { result ->
+                        state.paceCoefficient = result.a
+                        state.speedCalibrationB = result.b
+                        settingsManager.saveCalibrationCoefficients(state)
+                        Log.d(TAG, "Auto-calibration updated: a=${result.a}, b=${result.b}, R²=${result.r2}, N=${result.n}")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to extract/save calibration data: ${e.message}", e)
+            }
+        }
     }
 
     /**
@@ -872,7 +910,10 @@ class HUDService : Service(),
                     fitSoftwareVersion = snapshot.userSettings.fitSoftwareVersion,
                     hrSensors = snapshot.hrSensors,
                     rrIntervals = task.rrIntervals,
-                    filenameSuffix = task.filenameSuffix
+                    filenameSuffix = task.filenameSuffix,
+                    useStrydSpeed = state.fitUseStrydSpeed,
+                    paceCoefficient = state.paceCoefficient,
+                    speedCalibrationB = state.speedCalibrationB
                 )
                 if (fitResult != null) {
                     exportedCount++
@@ -2163,10 +2204,10 @@ class HUDService : Service(),
         val (stepIndex, stepName) = getCurrentStepInfo()
 
         workoutRecorder.recordDataPoint(
+            state.rawToAdjustedSpeed(state.currentSpeedKph),
             state.currentSpeedKph,
             state.currentInclinePercent,
             state.currentHeartRateBpm,
-            state.paceCoefficient,
             state.currentElapsedSeconds,
             forceRecord = shouldForceRecord,
             powerWatts = state.currentPowerWatts,
@@ -2195,8 +2236,8 @@ class HUDService : Service(),
         }
 
         // IMPORTANT: Pass ADJUSTED speed to workout engine, never raw treadmill speed.
-        // All workout logic uses adjusted speed (actual pace = treadmill * coefficient).
-        val adjustedSpeedKph = state.currentSpeedKph * state.paceCoefficient
+        // All workout logic uses adjusted speed (linear model: a*raw + b).
+        val adjustedSpeedKph = state.rawToAdjustedSpeed(state.currentSpeedKph)
         workoutEngineManager.onTelemetryUpdate(
             adjustedSpeedKph,
             state.currentInclinePercent,
@@ -2346,6 +2387,7 @@ class HUDService : Service(),
         if (isSecondStop) {
             // Double-stop: export from snapshot and clean up
             if (snapshot != null) {
+                extractAndSaveCalibrationData(snapshot)
                 exportWorkoutToFit(snapshot)
             }
             // Reset state (data already captured in snapshot)
@@ -2417,10 +2459,10 @@ class HUDService : Service(),
         val (stepIndex, stepName) = getCurrentStepInfo()
 
         workoutRecorder.ensurePeriodicRecord(
+            state.rawToAdjustedSpeed(state.currentSpeedKph),
             state.currentSpeedKph,
             state.currentInclinePercent,
             state.currentHeartRateBpm,
-            state.paceCoefficient,
             seconds,
             powerWatts = state.currentPowerWatts,
             cadenceSpm = state.currentCadenceSpm,
@@ -3324,7 +3366,7 @@ class HUDService : Service(),
 
     override fun getCurrentSpeedKph(): Double {
         // Return adjusted speed (what user perceives)
-        return state.currentSpeedKph * state.paceCoefficient
+        return state.rawToAdjustedSpeed(state.currentSpeedKph)
     }
 
     override fun getCurrentInclinePercent(): Double {
@@ -3362,8 +3404,7 @@ class HUDService : Service(),
     override fun getAverageSpeedKph(): Double {
         val data = workoutRecorder.getWorkoutData()
         if (data.isEmpty()) return 0.0
-        val avgSpeed = data.map { it.speedKph }.average()
-        return avgSpeed * state.paceCoefficient  // Apply pace coefficient for adjusted speed
+        return data.map { it.speedKph }.average()  // speedKph is already adjusted in WorkoutRecorder
     }
 
     override fun getPositiveElevationGainMeters(): Double {
