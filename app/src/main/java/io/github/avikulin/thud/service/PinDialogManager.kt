@@ -6,6 +6,7 @@ import android.util.Log
 import android.util.TypedValue
 import android.view.View
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -143,7 +144,9 @@ class PinDialogManager(
             width = dialogWidth,
             focusable = true,
             touchModal = true
-        )
+        ).apply {
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE
+        }
 
         try {
             windowManager.addView(container, params)
@@ -151,6 +154,10 @@ class PinDialogManager(
 
             // Auto-focus the PIN field and show keyboard
             pinInput.requestFocus()
+            pinInput.post {
+                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.showSoftInput(pinInput, InputMethodManager.SHOW_FORCED)
+            }
 
             Log.d(TAG, "PIN dialog shown for profile: $profileName")
         } catch (e: Exception) {
@@ -162,9 +169,12 @@ class PinDialogManager(
      * Dismiss the currently shown PIN dialog, if any.
      */
     fun dismissDialog() {
-        dialogView?.let {
+        dialogView?.let { view ->
             try {
-                windowManager.removeView(it)
+                // Hide keyboard before removing the view (SHOW_FORCED doesn't auto-dismiss)
+                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.hideSoftInputFromWindow(view.windowToken, 0)
+                windowManager.removeView(view)
             } catch (e: Exception) {
                 Log.e(TAG, "Error removing PIN dialog: ${e.message}")
             }
