@@ -467,8 +467,8 @@ class HUDService : Service(),
             serviceScope,
             state,
             { telemetryManager.getClient() },
-            { workoutRecorder.getWorkoutData().map { MetricDataPoint(it.elapsedMs, it.heartRateBpm) } },
-            { workoutRecorder.getWorkoutData().map { MetricDataPoint(it.elapsedMs, it.powerWatts) } }
+            { workoutRecorder.getRecentData(state.hrTrendWindowSeconds * 1000L).map { MetricDataPoint(it.elapsedMs, it.heartRateBpm) } },
+            { workoutRecorder.getRecentData(state.powerTrendWindowSeconds * 1000L).map { MetricDataPoint(it.elapsedMs, it.powerWatts) } }
         )
         workoutEngineManager.listener = this
         workoutEngineManager.chartManager = chartManager
@@ -1212,18 +1212,15 @@ class HUDService : Service(),
             return
         }
 
-        // Extract samples for 3-tier TSS calculation (Power → HR → Pace)
-        val powerSamples = workoutData
-            .filter { it.powerWatts > 0 }
-            .map { Pair(it.elapsedMs, it.powerWatts) }
-
-        val hrSamples = workoutData
-            .filter { it.heartRateBpm > 0 }
-            .map { Pair(it.elapsedMs, it.heartRateBpm) }
-
-        val speedSamples = workoutData
-            .filter { it.speedKph > 0 }
-            .map { Pair(it.elapsedMs, it.speedKph) }
+        // Extract samples for 3-tier TSS calculation (Power → HR → Pace) in single pass
+        val powerSamples = mutableListOf<Pair<Long, Double>>()
+        val hrSamples = mutableListOf<Pair<Long, Double>>()
+        val speedSamples = mutableListOf<Pair<Long, Double>>()
+        for (dp in workoutData) {
+            if (dp.powerWatts > 0) powerSamples.add(Pair(dp.elapsedMs, dp.powerWatts))
+            if (dp.heartRateBpm > 0) hrSamples.add(Pair(dp.elapsedMs, dp.heartRateBpm))
+            if (dp.speedKph > 0) speedSamples.add(Pair(dp.elapsedMs, dp.speedKph))
+        }
 
         // Calculate TSS (Power > HR > Pace priority)
         val tssResult = TssCalculator.calculateFromSamples(

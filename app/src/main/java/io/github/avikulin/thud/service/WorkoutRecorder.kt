@@ -51,6 +51,10 @@ class WorkoutRecorder {
     @Volatile private var _isRecording = false
     val isRecording: Boolean get() = _isRecording
 
+    // Mutation counter — callers can cheaply check if data changed since last snapshot
+    @Volatile private var _dataVersion = 0L
+    val dataVersion: Long get() = _dataVersion
+
     // Timing
     private var workoutStartTimeMs = 0L
     private var lastRecordTimeMs = 0L
@@ -218,6 +222,7 @@ class WorkoutRecorder {
             dfaAlpha1BySensor = indexedDfa
         )
         workoutData.add(dataPoint)
+        _dataVersion++
 
         // Notify UI
         onMetricsUpdated?.invoke(_calculatedDistanceKm, _calculatedElevationGainM)
@@ -336,6 +341,7 @@ class WorkoutRecorder {
         workoutStartTreadmillSeconds = -1
         lastTreadmillElapsedSeconds = 0
         _isRecording = true
+        _dataVersion++
         Log.d(TAG, "Started workout recording")
     }
 
@@ -380,6 +386,31 @@ class WorkoutRecorder {
     fun getWorkoutData(): List<WorkoutDataPoint> {
         synchronized(workoutData) {
             return workoutData.toList()
+        }
+    }
+
+    /**
+     * Get recent data points within a time window from the latest point.
+     * Uses binary search on sorted elapsedMs for O(log n) window start.
+     *
+     * @param windowMs Time window in milliseconds (e.g., 30_000 for last 30 seconds)
+     * @return List of data points within the window (copy, safe for concurrent use)
+     */
+    fun getRecentData(windowMs: Long): List<WorkoutDataPoint> {
+        synchronized(workoutData) {
+            if (workoutData.isEmpty()) return emptyList()
+            val maxElapsed = workoutData.last().elapsedMs
+            val cutoff = maxElapsed - windowMs
+            if (cutoff <= 0) return workoutData.toList()
+
+            // Binary search for the first index with elapsedMs >= cutoff
+            var lo = 0
+            var hi = workoutData.size
+            while (lo < hi) {
+                val mid = (lo + hi) ushr 1
+                if (workoutData[mid].elapsedMs < cutoff) lo = mid + 1 else hi = mid
+            }
+            return workoutData.subList(lo, workoutData.size).toList()
         }
     }
 
@@ -472,6 +503,7 @@ class WorkoutRecorder {
                 }
             }
         }
+        if (reboundCount > 0) _dataVersion++
         Log.d(TAG, "rebindPrimaryHr: mac=$primaryMac, rebound=$reboundCount/${workoutData.size}")
         return reboundCount
     }
@@ -513,6 +545,7 @@ class WorkoutRecorder {
                 }
             }
         }
+        if (updated > 0) _dataVersion++
         Log.d(TAG, "updateSensorBpmInHistory: mac=$sensorMac, updated=$updated/${workoutData.size}")
         return updated
     }
@@ -564,6 +597,7 @@ class WorkoutRecorder {
         lastRecordedElapsedSeconds = -1
         workoutStartTreadmillSeconds = -1
         lastTreadmillElapsedSeconds = 0
+        _dataVersion++
         Log.d(TAG, "Cleared workout data")
     }
 
@@ -580,6 +614,7 @@ class WorkoutRecorder {
         workoutStartTimeMs = System.currentTimeMillis()
         lastRecordTimeMs = 0L
         lastRecordedElapsedSeconds = -1
+        _dataVersion++
         Log.d(TAG, "Workout data reset")
     }
 
@@ -645,6 +680,7 @@ class WorkoutRecorder {
                     } else {
                         -1
                     }
+                    _dataVersion++
                     Log.d(TAG, "Restored recorder state: dataPoints=${state.dataPoints.size}, " +
                         "rrSensors=${rrIntervalsBySensor.size}, isRecording=$_isRecording")
                 }
