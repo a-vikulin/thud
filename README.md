@@ -37,12 +37,27 @@ At times this was a frustrating experience, but overall I am absolutely blown aw
 - Heart rate with zone coloring (supports multiple simultaneous Bluetooth HR sensors)
 - Calculated HR from RR intervals — for RR-capable HR sensors optionally computes heart rate directly from raw RR data as an independent, potentially more responsive alternative to the sensor's native BPM. Appears as a separate selectable sensor with configurable EMA smoothing, artifact filtering parameters. Parameters can be tuned retroactively during a paused run — changing settings replays all stored RR data through the filter with new parameters, instantly updating the chart
 - Real-time DFA alpha1 from RR intervals — tracks aerobic (>0.75) and anaerobic (<0.5) thresholds with zone-colored HUD box. Supports per-sensor DFA computation when multiple RR-capable HR sensors are connected.
-   - **Note1:** use of Polar H10 sensor with ECG-gel is highely recommended 
-   - **Note2:** Belching produces irregular chest wall movements that severely distort RR intervals, making DFA alpha1 readings meaningless for the duration of the analysis window. After a belch, wait for the configured window period (default 2 minutes) for the corrupted data to flush out before trusting the readings again
+
+   **NOTES on DFA:**
+   - DFA makes most sense on a gradual ramp test. It's almost useless on any other kind of a run.
+   - Use of the Polar H10 sensor with ECG-gel is highly recommended 
+   - Belching produces irregular chest wall movements that severely distort RR intervals, making DFA alpha1 readings meaningless for the duration of the analysis window. After a belch, wait for the configured window period (default 2 minutes) for the corrupted data to flush out before trusting the readings again
 - Running power and cadence with zone coloring (when Stryd foot pod is connected)
 - Stryd pace for comparison and treadmill speed calibration
-- Configurable speed coefficient adjuster. In my tests with Stryd foot pods, your actual running speed is about 10% slower than what treadmill reports.
-- Incline adjuster. Set to 1% to emulate flat outdoor running effort
+- Speed calibration against Stryd foot pod — see [Speed Calibration](#speed-calibration-stryd) section below
+- Incline adjuster. Set to a value (such as 1-1.5%), which tHUD will regard as flat running - 0%. Elevation gain is calculated taking Incline adjuster in account.
+
+### Automatic Speed Calibration (Stryd)
+![ss-7.jpg](screenshots/ss-7.jpg)
+
+Treadmills are notoriously inaccurate at reporting speed. In order to ensure that your workout pace targets
+are close to reality, tHUD implements linear regression model: `adjusted speed = a × treadmill speed + b`, calculated using your last N runs with a footpod. The slope `a` captures the proportional error, and the intercept `b` accounts for any constant offset. When `b = 0` (the default), this simplifies to the traditional single-coefficient approach.
+
+Two modes are available:
+- **Auto-calibrate** — check the box and tHUD automatically updates linear regression coefficients after each run with Stryd footpod connected. You choose how many recent runs to include (5–90). The more runs at varied speeds, the better the fit.
+- **Manual** — when you have no Stryd footpod or you haven't run any runs with them yet, you may adjust Slope (a) and Offset (b) manually.
+
+All internal logic — workout engine pace targets, chart, auto-adjustment, recording, FIT export — uses calibrated speed. Raw treadmill speed is preserved in FIT files developer fields for traceability.
 
 ### User Profiles
 - Multiple user profiles with full data isolation — each user gets their own settings, workouts, Garmin Connect credentials, FIT exports, and screenshots
@@ -117,6 +132,8 @@ At times this was a frustrating experience, but overall I am absolutely blown aw
       1. **Device serial in FIT settings MUST be different from your main Garmin watch** (otherwise the watch won't sync the file - it thinks it already has it)
       2. **After uploading the FIT file to Garmin Connect, sync your watch TWICE** - first sync downloads the file to watch for processing, second sync uploads calculated metrics back
 - Power data is written as Stryd developer fields so Stryd PowerCenter recognizes it automatically
+- Raw and calibrated treadmill speeds recorded as developer fields for traceability
+- Option to use Stryd speed as the primary speed source in FIT files (enabled by default) — when active, Stryd speed replaces calibrated treadmill speed and distance/elevation are recalculated from it
 
 ### Garmin Connect Auto-Upload
 - Automatic upload to Garmin Connect after FIT export (opt-in)
@@ -195,9 +212,9 @@ adb install app/build/outputs/apk/debug/app-debug.apk
    - Optionally set a PIN to protect your profile
    - Create additional profiles for family members sharing the treadmill
 6. Open Settings → Treadmill tab to configure:
-   - Pace Coefficient: 1.0 is "same as treadmill". Adjust to match your Foot pod pace readings
+   - Speed calibration: start with manual Slope (a) = 1.0 if you don't have a Stryd yet, or enable Auto-calibrate if you do — it will improve after each run
    - Incline Power Coefficient: 0.85 seems right to me
-   - Incline Adjustment - set to 1%, meaning when treadmill is at 1% the HUD will call that 0% and will calculate elevation gain based on 0% incline for saving in FIT files
+   - Incline Adjustment: set to 1%, meaning when treadmill is at 1% the HUD will call that 0% and will calculate elevation gain based on 0% incline for saving in FIT files
    - Set other parameters if you want to see realistic TSS load calculation
 
 ### HR/Power Zones
