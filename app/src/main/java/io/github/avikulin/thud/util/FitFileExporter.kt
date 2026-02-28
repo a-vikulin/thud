@@ -108,6 +108,9 @@ class FitFileExporter(private val context: Context) {
         // tHUD Speed Calibration developer fields
         private const val THUD_FIELD_RAW_TREADMILL_SPEED: Short = 0   // Raw treadmill speed (m/s * 1000)
         private const val THUD_FIELD_CALIBRATED_SPEED: Short = 1      // Calibrated treadmill speed (m/s * 1000)
+
+        private val SANITIZE_REGEX = Regex("[^a-zA-Z0-9_-]")
+        private val FILENAME_DATE_FORMAT = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US)
     }
 
     /**
@@ -204,9 +207,8 @@ class FitFileExporter(private val context: Context) {
      */
     private fun createFilename(workoutName: String, startTimeMs: Long, suffix: String? = null): String {
         // Create filename: WorkoutName_2026-01-19_14-30-00.fit (or _Suffix.fit)
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US)
-        val dateStr = dateFormat.format(Date(startTimeMs))
-        val sanitizedName = workoutName.replace(Regex("[^a-zA-Z0-9_-]"), "_")
+        val dateStr = synchronized(FILENAME_DATE_FORMAT) { FILENAME_DATE_FORMAT.format(Date(startTimeMs)) }
+        val sanitizedName = workoutName.replace(SANITIZE_REGEX, "_")
         val suffixPart = if (!suffix.isNullOrEmpty()) "_$suffix" else ""
         return "${sanitizedName}_$dateStr${suffixPart}.fit"
     }

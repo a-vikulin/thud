@@ -125,6 +125,9 @@ class HUDService : Service(),
         private const val NOTIFICATION_CHANNEL_ID = "HUD_SERVICE_CHANNEL"
         private const val NOTIFICATION_ID = 1
 
+        private val SANITIZE_REGEX = Regex("[^a-zA-Z0-9_-]")
+        private val SCREENSHOT_DATE_FORMAT = java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.US)
+
         // Pending Garmin upload persistence keys
         private const val PENDING_GARMIN_FILE = "pending_garmin_upload.fit"
         private const val PREF_PENDING_GARMIN_FILENAME = "pending_garmin_filename"
@@ -1169,9 +1172,8 @@ class HUDService : Service(),
                 return null
             }
 
-            val sanitizedName = workoutName.replace(Regex("[^a-zA-Z0-9_-]"), "_")
-            val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.US)
-            val runStartStr = dateFormat.format(java.util.Date(startTimeMs))
+            val sanitizedName = workoutName.replace(SANITIZE_REGEX, "_")
+            val runStartStr = synchronized(SCREENSHOT_DATE_FORMAT) { SCREENSHOT_DATE_FORMAT.format(java.util.Date(startTimeMs)) }
             val prefix = "${sanitizedName}_${runStartStr}_"
 
             val allFiles = screenshotsDir.listFiles()

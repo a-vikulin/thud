@@ -442,7 +442,7 @@ class WorkoutPanelView(context: Context) : View(context) {
 
     private fun drawControlButton(canvas: Canvas, x: Float, y: Float, id: String, icon: String, buttonWidth: Float, buttonHeight: Float, enabled: Boolean = true) {
         buttonRect.set(x, y, x + buttonWidth, y + buttonHeight)
-        buttonBounds[id] = RectF(buttonRect)  // Copy for touch hit-testing
+        buttonBounds.getOrPut(id) { RectF() }.set(buttonRect)  // Reuse for touch hit-testing
 
         // Draw button background with reduced alpha when disabled
         val originalAlpha = controlButtonPaint.alpha
