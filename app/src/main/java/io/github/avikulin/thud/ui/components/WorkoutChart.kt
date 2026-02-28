@@ -524,7 +524,8 @@ class WorkoutChart @JvmOverloads constructor(
 
         // Parse step boundaries from data points for drawing past steps' HR targets
         // Only reparse if we have structured workout data (stepIndex >= 0)
-        if (data.isNotEmpty() && data.any { it.stepIndex >= 0 }) {
+        // Check last point — once a structured workout starts, all subsequent points have stepIndex >= 0
+        if (data.isNotEmpty() && data.last().stepIndex >= 0) {
             actualStepBoundaries = StepBoundaryParser.parseStepBoundaries(data)
         } else if (data.isEmpty()) {
             actualStepBoundaries = emptyList()
@@ -536,8 +537,8 @@ class WorkoutChart @JvmOverloads constructor(
                 rebuildAllPaths()
             }
         } else {
-            // Check if time range needs to expand (only in free run mode)
-            val maxMs = data.maxOf { it.elapsedMs }
+            // Data is sorted by elapsedMs — last element is max
+            val maxMs = data.last().elapsedMs
             val timeRangeChanged = checkAndExpandTimeRange(maxMs)
 
             // Calculate live scales based on mode (sets target values)
@@ -1697,6 +1698,9 @@ class WorkoutChart @JvmOverloads constructor(
     // Track if we were animating on previous frame (to detect animation completion)
     private var wasAnimating = false
 
+    // Cached per-frame: computed once at top of onDraw(), consumed by draw methods
+    private var cachedDynamicSegmentTimes: List<Pair<Long, Long>> = emptyList()
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
@@ -1710,6 +1714,9 @@ class WorkoutChart @JvmOverloads constructor(
             rebuildAllPaths()
         }
         wasAnimating = stillAnimating
+
+        // Cache dynamic segment times for this frame (used by drawPhaseBackgrounds + drawPhaseColoredXAxis)
+        cachedDynamicSegmentTimes = computeDynamicSegmentTimes()
 
         // Per spec Section 4.4, layers are drawn bottom to top:
         // 1. Background
@@ -1787,7 +1794,7 @@ class WorkoutChart @JvmOverloads constructor(
     private fun drawPhaseBackgrounds(canvas: Canvas) {
         if (plannedSegments.isEmpty()) return
 
-        val dynamicTimes = computeDynamicSegmentTimes()
+        val dynamicTimes = cachedDynamicSegmentTimes
 
         for ((index, segment) in plannedSegments.withIndex()) {
             val tintColor = when (segment.phase) {
@@ -1843,7 +1850,7 @@ class WorkoutChart @JvmOverloads constructor(
             return
         }
 
-        val dynamicTimes = computeDynamicSegmentTimes()
+        val dynamicTimes = cachedDynamicSegmentTimes
 
         // Draw X-axis as colored segments matching workout phases
         var lastPhase: WorkoutPhase? = null
