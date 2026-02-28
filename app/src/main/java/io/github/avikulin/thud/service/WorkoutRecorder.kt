@@ -38,6 +38,8 @@ class WorkoutRecorder {
 
     // HR sensor registry: index-ordered list of (MAC, name) for compact per-data-point storage.
     // Index assigned on first encounter via resolveOrRegister(); stable for the duration of the run.
+    // All accesses guarded by sensorRegistryLock. Lock ordering: sensorRegistryLock → workoutData.
+    private val sensorRegistryLock = Any()
     private val hrSensors: MutableList<Pair<String, String>> = mutableListOf()
     private val hrSensorMacToIndex: MutableMap<String, Int> = mutableMapOf()
 
@@ -46,7 +48,7 @@ class WorkoutRecorder {
         ConcurrentHashMap()
 
     // Recording state
-    private var _isRecording = false
+    @Volatile private var _isRecording = false
     val isRecording: Boolean get() = _isRecording
 
     // Timing
@@ -176,18 +178,21 @@ class WorkoutRecorder {
 
         // Auto-register new sensors and convert MAC→BPM to index→BPM
         val indexedHr = mutableMapOf<Int, Int>()
-        for ((mac, pair) in connectedHrSensors) {
-            val (name, bpm) = pair
-            val idx = resolveOrRegister(mac, name)
-            indexedHr[idx] = bpm
-        }
-        val primaryIdx = hrSensorMacToIndex[primaryHrMac] ?: -1
-
-        // Convert DFA alpha1 MAC-keyed map to sensor-index-keyed map
+        val primaryIdx: Int
         val indexedDfa = mutableMapOf<Int, Double>()
-        for ((mac, alpha1) in dfaAlpha1BySensor) {
-            val idx = hrSensorMacToIndex[mac] ?: continue
-            indexedDfa[idx] = alpha1
+        synchronized(sensorRegistryLock) {
+            for ((mac, pair) in connectedHrSensors) {
+                val (name, bpm) = pair
+                val idx = resolveOrRegisterLocked(mac, name)
+                indexedHr[idx] = bpm
+            }
+            primaryIdx = hrSensorMacToIndex[primaryHrMac] ?: -1
+
+            // Convert DFA alpha1 MAC-keyed map to sensor-index-keyed map
+            for ((mac, alpha1) in dfaAlpha1BySensor) {
+                val idx = hrSensorMacToIndex[mac] ?: continue
+                indexedDfa[idx] = alpha1
+            }
         }
 
         // Create data point
@@ -317,8 +322,10 @@ class WorkoutRecorder {
      */
     fun startRecording() {
         workoutData.clear()
-        hrSensors.clear()
-        hrSensorMacToIndex.clear()
+        synchronized(sensorRegistryLock) {
+            hrSensors.clear()
+            hrSensorMacToIndex.clear()
+        }
         rrIntervalsBySensor.clear()
         _calculatedDistanceKm = 0.0
         _calculatedElevationGainM = 0.0
@@ -389,7 +396,8 @@ class WorkoutRecorder {
      * Resolve an HR sensor MAC to its stable index, registering it if first seen.
      * This is the only path to assign sensor indices — called lazily from recordDataPoint().
      */
-    private fun resolveOrRegister(mac: String, name: String): Int {
+    /** Must be called while holding sensorRegistryLock. */
+    private fun resolveOrRegisterLocked(mac: String, name: String): Int {
         hrSensorMacToIndex[mac]?.let { return it }
         val index = hrSensors.size
         hrSensors.add(Pair(mac, name))
@@ -401,7 +409,7 @@ class WorkoutRecorder {
     /**
      * Get the index-ordered sensor registry (MAC, name) for FIT export.
      */
-    fun getHrSensors(): List<Pair<String, String>> = hrSensors.toList()
+    fun getHrSensors(): List<Pair<String, String>> = synchronized(sensorRegistryLock) { hrSensors.toList() }
 
     /**
      * Retroactively rebind all recorded data points to use a different HR sensor's readings
@@ -415,20 +423,26 @@ class WorkoutRecorder {
      */
     fun rebindPrimaryHr(primaryMac: String): Int {
         val isAverage = (primaryMac == SettingsManager.HR_PRIMARY_AVERAGE)
-        val sensorIndex = if (!isAverage) hrSensorMacToIndex[primaryMac] else null
 
-        if (!isAverage && sensorIndex == null) {
-            Log.w(TAG, "rebindPrimaryHr: sensor $primaryMac not in registry, skipping")
-            return 0
+        // Snapshot sensor registry under lock BEFORE acquiring workoutData lock (lock ordering)
+        val sensorIndex: Int?
+        val calcIndices: Set<Int>
+        synchronized(sensorRegistryLock) {
+            sensorIndex = if (!isAverage) hrSensorMacToIndex[primaryMac] else null
+
+            if (!isAverage && sensorIndex == null) {
+                Log.w(TAG, "rebindPrimaryHr: sensor $primaryMac not in registry, skipping")
+                return 0
+            }
+
+            // Pre-compute CALC sensor indices for AVERAGE mode (exclude synthetic sensors)
+            calcIndices = if (isAverage) {
+                hrSensors.withIndex()
+                    .filter { (_, pair) -> pair.first.startsWith("CALC:") }
+                    .map { (i, _) -> i }
+                    .toSet()
+            } else emptySet()
         }
-
-        // Pre-compute CALC sensor indices for AVERAGE mode (exclude synthetic sensors)
-        val calcIndices: Set<Int> = if (isAverage) {
-            hrSensors.withIndex()
-                .filter { (_, pair) -> pair.first.startsWith("CALC:") }
-                .map { (i, _) -> i }
-                .toSet()
-        } else emptySet()
 
         var reboundCount = 0
         synchronized(workoutData) {
@@ -471,7 +485,7 @@ class WorkoutRecorder {
      * @return number of updated data points
      */
     fun updateSensorBpmInHistory(sensorMac: String, bpmTimeline: List<Pair<Long, Int>>): Int {
-        val sensorIndex = hrSensorMacToIndex[sensorMac] ?: return 0
+        val sensorIndex = synchronized(sensorRegistryLock) { hrSensorMacToIndex[sensorMac] } ?: return 0
         if (bpmTimeline.isEmpty()) return 0
 
         var updated = 0
@@ -537,8 +551,10 @@ class WorkoutRecorder {
     fun clearData() {
         workoutData.clear()
         pauseEvents.clear()
-        hrSensors.clear()
-        hrSensorMacToIndex.clear()
+        synchronized(sensorRegistryLock) {
+            hrSensors.clear()
+            hrSensorMacToIndex.clear()
+        }
         rrIntervalsBySensor.clear()
         _calculatedDistanceKm = 0.0
         _calculatedElevationGainM = 0.0
@@ -573,22 +589,24 @@ class WorkoutRecorder {
      * Export the current recorder state for persistence.
      */
     fun exportState(): RecorderState {
-        synchronized(workoutData) {
-            synchronized(pauseEvents) {
-                return RecorderState(
-                    workoutStartTimeMs = workoutStartTimeMs,
-                    lastRecordTimeMs = lastRecordTimeMs,
-                    workoutStartTreadmillSeconds = workoutStartTreadmillSeconds,
-                    lastTreadmillElapsedSeconds = lastTreadmillElapsedSeconds,
-                    isRecording = _isRecording,
-                    calculatedDistanceKm = _calculatedDistanceKm,
-                    calculatedElevationGainM = _calculatedElevationGainM,
-                    calculatedCaloriesKcal = _calculatedCaloriesKcal,
-                    dataPoints = workoutData.toList(),
-                    pauseEvents = pauseEvents.toList(),
-                    hrSensors = hrSensors.toList(),
-                    rrIntervalsBySensor = getRrIntervalsBySensor()
-                )
+        synchronized(sensorRegistryLock) {
+            synchronized(workoutData) {
+                synchronized(pauseEvents) {
+                    return RecorderState(
+                        workoutStartTimeMs = workoutStartTimeMs,
+                        lastRecordTimeMs = lastRecordTimeMs,
+                        workoutStartTreadmillSeconds = workoutStartTreadmillSeconds,
+                        lastTreadmillElapsedSeconds = lastTreadmillElapsedSeconds,
+                        isRecording = _isRecording,
+                        calculatedDistanceKm = _calculatedDistanceKm,
+                        calculatedElevationGainM = _calculatedElevationGainM,
+                        calculatedCaloriesKcal = _calculatedCaloriesKcal,
+                        dataPoints = workoutData.toList(),
+                        pauseEvents = pauseEvents.toList(),
+                        hrSensors = hrSensors.toList(),
+                        rrIntervalsBySensor = getRrIntervalsBySensor()
+                    )
+                }
             }
         }
     }
@@ -597,37 +615,39 @@ class WorkoutRecorder {
      * Restore recorder state from persisted data.
      */
     fun restoreFromState(state: RecorderState) {
-        synchronized(workoutData) {
-            synchronized(pauseEvents) {
-                workoutData.clear()
-                workoutData.addAll(state.dataPoints)
-                pauseEvents.clear()
-                pauseEvents.addAll(state.pauseEvents)
-                workoutStartTimeMs = state.workoutStartTimeMs
-                lastRecordTimeMs = state.lastRecordTimeMs
-                workoutStartTreadmillSeconds = state.workoutStartTreadmillSeconds
-                lastTreadmillElapsedSeconds = state.lastTreadmillElapsedSeconds
-                _isRecording = state.isRecording
-                _calculatedDistanceKm = state.calculatedDistanceKm
-                _calculatedElevationGainM = state.calculatedElevationGainM
-                _calculatedCaloriesKcal = state.calculatedCaloriesKcal
-                hrSensors.clear()
-                hrSensorMacToIndex.clear()
-                hrSensors.addAll(state.hrSensors)
-                state.hrSensors.forEachIndexed { i, (mac, _) -> hrSensorMacToIndex[mac] = i }
-                // Restore per-sensor RR intervals
-                rrIntervalsBySensor.clear()
-                state.rrIntervalsBySensor.forEach { (mac, intervals) ->
-                    rrIntervalsBySensor[mac] = java.util.Collections.synchronizedList(intervals.toMutableList())
+        synchronized(sensorRegistryLock) {
+            synchronized(workoutData) {
+                synchronized(pauseEvents) {
+                    workoutData.clear()
+                    workoutData.addAll(state.dataPoints)
+                    pauseEvents.clear()
+                    pauseEvents.addAll(state.pauseEvents)
+                    workoutStartTimeMs = state.workoutStartTimeMs
+                    lastRecordTimeMs = state.lastRecordTimeMs
+                    workoutStartTreadmillSeconds = state.workoutStartTreadmillSeconds
+                    lastTreadmillElapsedSeconds = state.lastTreadmillElapsedSeconds
+                    _isRecording = state.isRecording
+                    _calculatedDistanceKm = state.calculatedDistanceKm
+                    _calculatedElevationGainM = state.calculatedElevationGainM
+                    _calculatedCaloriesKcal = state.calculatedCaloriesKcal
+                    hrSensors.clear()
+                    hrSensorMacToIndex.clear()
+                    hrSensors.addAll(state.hrSensors)
+                    state.hrSensors.forEachIndexed { i, (mac, _) -> hrSensorMacToIndex[mac] = i }
+                    // Restore per-sensor RR intervals
+                    rrIntervalsBySensor.clear()
+                    state.rrIntervalsBySensor.forEach { (mac, intervals) ->
+                        rrIntervalsBySensor[mac] = java.util.Collections.synchronizedList(intervals.toMutableList())
+                    }
+                    // Set lastRecordedElapsedSeconds based on restored data
+                    lastRecordedElapsedSeconds = if (state.dataPoints.isNotEmpty()) {
+                        (state.dataPoints.last().elapsedMs / 1000).toInt()
+                    } else {
+                        -1
+                    }
+                    Log.d(TAG, "Restored recorder state: dataPoints=${state.dataPoints.size}, " +
+                        "rrSensors=${rrIntervalsBySensor.size}, isRecording=$_isRecording")
                 }
-                // Set lastRecordedElapsedSeconds based on restored data
-                lastRecordedElapsedSeconds = if (state.dataPoints.isNotEmpty()) {
-                    (state.dataPoints.last().elapsedMs / 1000).toInt()
-                } else {
-                    -1
-                }
-                Log.d(TAG, "Restored recorder state: dataPoints=${state.dataPoints.size}, " +
-                    "rrSensors=${rrIntervalsBySensor.size}, isRecording=$_isRecording")
             }
         }
     }
