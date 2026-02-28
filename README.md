@@ -48,7 +48,7 @@ At times this was a frustrating experience, but overall I am absolutely blown aw
 - Incline adjuster. Set to a value (such as 1-1.5%), which tHUD will regard as flat running - 0%. Elevation gain is calculated taking Incline adjuster in account.
 
 ### Automatic Speed Calibration (Stryd)
-![ss-7.jpg](screenshots/ss-7.jpg)
+![ss-7.png](screenshots/ss-7.png)
 
 Treadmills are notoriously inaccurate at reporting speed. In order to ensure that your workout pace targets
 are close to reality, tHUD implements linear regression model: `adjusted speed = a × treadmill speed + b`, calculated using your last N runs with a footpod. The slope `a` captures the proportional error, and the intercept `b` accounts for any constant offset. When `b = 0` (the default), this simplifies to the traditional single-coefficient approach.
