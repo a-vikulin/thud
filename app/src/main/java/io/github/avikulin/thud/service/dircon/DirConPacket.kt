@@ -29,17 +29,12 @@ data class DirConPacket(
         const val MSG_ENABLE_NOTIFICATIONS = 0x05
         const val MSG_UNSOLICITED_NOTIFICATION = 0x06
         const val MSG_UNKNOWN_07 = 0x07
-        const val MSG_ERROR = 0xFF
 
         // Response codes
         const val RESPONSE_SUCCESS = 0x00
         const val RESPONSE_UNKNOWN_MESSAGE = 0x01
-        const val RESPONSE_UNEXPECTED_ERROR = 0x02
         const val RESPONSE_SERVICE_NOT_FOUND = 0x03
         const val RESPONSE_CHARACTERISTIC_NOT_FOUND = 0x04
-        const val RESPONSE_NOT_SUPPORTED = 0x05
-        const val RESPONSE_WRITE_FAILED = 0x06
-        const val RESPONSE_UNKNOWN_PROTOCOL = 0x07
 
         // Characteristic property flags
         const val PROP_READ = 0x01

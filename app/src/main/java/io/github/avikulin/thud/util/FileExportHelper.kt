@@ -31,8 +31,6 @@ object FileExportHelper {
     object Subfolder {
         const val ROOT = ""           // Downloads/tHUD/<profile>/
         const val SCREENSHOTS = "screenshots"  // Downloads/tHUD/<profile>/screenshots/
-        const val EXPORT = "export"   // Downloads/tHUD/<profile>/export/
-        const val IMPORT = "import"   // Downloads/tHUD/<profile>/import/
     }
 
     /**

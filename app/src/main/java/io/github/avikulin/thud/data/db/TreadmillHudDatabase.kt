@@ -293,15 +293,6 @@ abstract class TreadmillHudDatabase : RoomDatabase() {
             }
         }
 
-        /**
-         * Close a specific database instance by path.
-         */
-        fun closeDatabase(dbPath: String) {
-            synchronized(this) {
-                instances.remove(dbPath)?.close()
-            }
-        }
-
         private fun buildDatabase(context: Context, dbPath: String): TreadmillHudDatabase {
             File(dbPath).parentFile?.mkdirs()
             return Room.databaseBuilder(

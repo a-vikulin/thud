@@ -35,13 +35,4 @@ interface SpeedCalibrationDao {
     @Query("SELECT COUNT(DISTINCT runId) FROM speed_calibration_points")
     suspend fun getRunCount(): Int
 
-    /** Total point count for last N runs (for UI display). */
-    @Query("""
-        SELECT COUNT(*) FROM speed_calibration_points
-        WHERE runId IN (
-            SELECT DISTINCT runId FROM speed_calibration_points
-            ORDER BY runId DESC LIMIT :maxRuns
-        )
-    """)
-    suspend fun getPointCountForLastRuns(maxRuns: Int): Int
 }

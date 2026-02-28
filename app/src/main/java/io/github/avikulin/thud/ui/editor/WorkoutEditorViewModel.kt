@@ -26,7 +26,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicLong
-import kotlin.math.pow
 
 /**
  * ViewModel for the unified Workout Editor screen (master-detail layout).

@@ -17,14 +17,11 @@ object FtmsCharacteristics {
 
     // Fitness Machine Service Characteristics
     const val CHAR_TREADMILL_DATA = 0x2ACD
-    const val CHAR_INDOOR_BIKE_DATA = 0x2AD2
     const val CHAR_FITNESS_MACHINE_FEATURE = 0x2ACC
     const val CHAR_FITNESS_MACHINE_CONTROL_POINT = 0x2AD9
     const val CHAR_FITNESS_MACHINE_STATUS = 0x2ADA
     const val CHAR_SUPPORTED_SPEED_RANGE = 0x2AD4
     const val CHAR_SUPPORTED_INCLINE_RANGE = 0x2AD5
-    const val CHAR_SUPPORTED_RESISTANCE_RANGE = 0x2AD6
-    const val CHAR_SUPPORTED_POWER_RANGE = 0x2AD8
     const val CHAR_TRAINING_STATUS = 0x2AD3
 
     // Heart Rate Service Characteristics
@@ -43,7 +40,6 @@ object FtmsCharacteristics {
     const val CMD_SET_TARGET_INCLINATION = 0x03
     const val CMD_SET_TARGET_RESISTANCE = 0x04
     const val CMD_SET_TARGET_POWER = 0x05
-    const val CMD_SET_TARGET_HR = 0x06
     const val CMD_START_RESUME = 0x07
     const val CMD_STOP_PAUSE = 0x08
     const val CMD_SET_INDOOR_BIKE_SIMULATION = 0x11
@@ -53,7 +49,6 @@ object FtmsCharacteristics {
     const val RESULT_SUCCESS = 0x01
     const val RESULT_NOT_SUPPORTED = 0x02
     const val RESULT_INVALID_PARAMETER = 0x03
-    const val RESULT_OPERATION_FAILED = 0x04
     const val RESULT_CONTROL_NOT_PERMITTED = 0x05
 
     /**
@@ -364,115 +359,4 @@ object FtmsCharacteristics {
         return command
     }
 
-    // ==================== RSC and Power Encoding (Stryd Re-broadcast) ====================
-
-    /**
-     * Encode RSC (Running Speed and Cadence) Measurement characteristic.
-     * Used to re-broadcast Stryd cadence and speed data.
-     *
-     * @param speedKph Speed in km/h
-     * @param cadenceSpm Cadence in strides per minute (one foot contact)
-     * @param strideLength Stride length in meters (0 if not available)
-     */
-    fun encodeRscMeasurement(
-        speedKph: Double,
-        cadenceSpm: Int,
-        strideLength: Double = 0.0
-    ): ByteArray {
-        // RSC Measurement format (per BLE spec):
-        // Flags (1 byte):
-        //   Bit 0: Instantaneous Stride Length Present
-        //   Bit 1: Total Distance Present
-        //   Bit 2: Walking or Running Status (0 = walking, 1 = running)
-        // Speed (2 bytes): uint16, 1/256 m/s units
-        // Cadence (1 byte): uint8, strides/min
-        // Stride Length (2 bytes, optional): uint16, 1/100 m units
-        // Total Distance (4 bytes, optional): uint32, 1/10 m units
-
-        val hasStrideLength = strideLength > 0
-        var flags = 0x04  // Bit 2 = running
-        if (hasStrideLength) {
-            flags = flags or 0x01  // Bit 0 = stride length present
-        }
-
-        val bufferSize = 1 + 2 + 1 + (if (hasStrideLength) 2 else 0)
-        val buffer = ByteBuffer.allocate(bufferSize).order(ByteOrder.LITTLE_ENDIAN)
-
-        // Flags
-        buffer.put(flags.toByte())
-
-        // Instantaneous Speed (1/256 m/s units)
-        val speedMs = speedKph / 3.6
-        val speedRaw = (speedMs * 256).toInt().coerceIn(0, 65535)
-        buffer.putShort(speedRaw.toShort())
-
-        // Instantaneous Cadence (strides per minute)
-        buffer.put(cadenceSpm.coerceIn(0, 255).toByte())
-
-        // Stride Length (1/100 m units) - optional
-        if (hasStrideLength) {
-            val strideLengthCm = (strideLength * 100).toInt().coerceIn(0, 65535)
-            buffer.putShort(strideLengthCm.toShort())
-        }
-
-        return buffer.array()
-    }
-
-    /**
-     * Encode RSC Feature characteristic (static).
-     */
-    fun encodeRscFeature(): ByteArray {
-        // RSC Feature (2 bytes):
-        // Bit 0: Instantaneous Stride Length Measurement Supported
-        // Bit 1: Total Distance Measurement Supported
-        // Bit 2: Walking or Running Status Supported
-        // Bit 3: Calibration Procedure Supported
-        // Bit 4: Multiple Sensor Locations Supported
-        val features = 0x0004  // Running status supported
-        val buffer = ByteBuffer.allocate(2).order(ByteOrder.LITTLE_ENDIAN)
-        buffer.putShort(features.toShort())
-        return buffer.array()
-    }
-
-    /**
-     * Encode Cycling Power Measurement characteristic.
-     * Used to re-broadcast Stryd running power data.
-     *
-     * @param powerWatts Power in watts
-     */
-    fun encodeCyclingPowerMeasurement(powerWatts: Int): ByteArray {
-        // Cycling Power Measurement format (per BLE spec):
-        // Flags (2 bytes): indicate which optional fields are present
-        //   Bit 0: Pedal Power Balance Present
-        //   Bit 1: Pedal Power Balance Reference
-        //   Bit 2: Accumulated Torque Present
-        //   ... many more optional fields
-        // Instantaneous Power (2 bytes): sint16, watts
-        // Optional fields follow based on flags
-
-        // We only need the basic power measurement, no optional fields
-        val flags = 0x0000
-
-        val buffer = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
-
-        // Flags
-        buffer.putShort(flags.toShort())
-
-        // Instantaneous Power (watts)
-        buffer.putShort(powerWatts.coerceIn(-32768, 32767).toShort())
-
-        return buffer.array()
-    }
-
-    /**
-     * Encode Cycling Power Feature characteristic (static).
-     */
-    fun encodeCyclingPowerFeature(): ByteArray {
-        // Cycling Power Feature (4 bytes):
-        // Minimal feature set - just instantaneous power
-        val features = 0x00000000
-        val buffer = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
-        buffer.putInt(features)
-        return buffer.array()
-    }
 }

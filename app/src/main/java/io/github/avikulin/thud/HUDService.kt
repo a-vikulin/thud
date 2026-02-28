@@ -64,7 +64,6 @@ import io.github.avikulin.thud.service.garmin.GarminConnectUploader
 import io.github.avikulin.thud.util.FileExportHelper
 import io.github.avikulin.thud.util.FitFileExporter
 import java.io.File
-import io.github.avikulin.thud.util.HeartRateZones
 
 import io.github.avikulin.thud.util.DfaAlpha1Calculator
 import io.github.avikulin.thud.util.PaceConverter
@@ -952,11 +951,6 @@ class HUDService : Service(),
         }
     }
 
-    /**
-     * Upload FIT file to Garmin Connect and optionally attach a screenshot.
-     * Handles auth failures by launching re-auth WebView.
-     * Must be called from a coroutine on Dispatchers.IO.
-     */
     /**
      * Upload FIT file to Garmin Connect and optionally attach a screenshot.
      * Handles auth failures by launching re-auth WebView.
@@ -3268,27 +3262,6 @@ class HUDService : Service(),
     private fun currentDfaSnapshot(): Map<String, Double> {
         if (state.dfaResults.isEmpty()) return emptyMap()
         return state.dfaResults.mapValues { (_, r) -> if (r.isValid) r.alpha1 else -1.0 }
-    }
-
-    // ==================== Public API (for WorkoutRecorder delegation) ====================
-
-    fun startRecording() = workoutRecorder.startRecording()
-    fun stopRecording() = workoutRecorder.stopRecording()
-    fun getWorkoutData(): List<WorkoutDataPoint> = workoutRecorder.getWorkoutData()
-    fun clearWorkoutData() = workoutRecorder.clearData()
-
-    /**
-     * Returns the heart rate zone (1-5) for a given BPM.
-     */
-    fun getHeartRateZone(bpm: Double): Int {
-        return HeartRateZones.getZone(bpm, state.hrZone2Start, state.hrZone3Start, state.hrZone4Start, state.hrZone5Start)
-    }
-
-    /**
-     * Returns the color resource ID for a given heart rate zone.
-     */
-    fun getHeartRateZoneColor(zone: Int): Int {
-        return HeartRateZones.getZoneColorResId(zone)
     }
 
     // ==================== DirCon Server Listener ====================

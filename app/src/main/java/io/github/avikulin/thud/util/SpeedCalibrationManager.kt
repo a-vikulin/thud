@@ -13,8 +13,6 @@ import kotlin.math.pow
  */
 object SpeedCalibrationManager {
 
-    private const val TAG = "SpeedCalibrationManager"
-
     /** Minimum data points required for a meaningful regression. */
     private const val MIN_POINTS_FOR_REGRESSION = 10
 
