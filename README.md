@@ -44,7 +44,7 @@ At times this was a frustrating experience, but overall I am absolutely blown aw
    - Belching produces irregular chest wall movements that severely distort RR intervals, making DFA alpha1 readings meaningless for the duration of the analysis window. After a belch, wait for the configured window period (default 2 minutes) for the corrupted data to flush out before trusting the readings again
 - Running power and cadence with zone coloring (when Stryd foot pod is connected)
 - Stryd pace for comparison and treadmill speed calibration
-- Speed calibration against Stryd foot pod — see [Speed Calibration](#speed-calibration-stryd) section below
+- Speed calibration against Stryd foot pod — see [Speed Calibration](#automatic-speed-calibration-stryd)section below
 - Incline adjuster. Set to a value (such as 1-1.5%), which tHUD will regard as flat running - 0%. Elevation gain is calculated taking Incline adjuster in account.
 
 ### Automatic Speed Calibration (Stryd)
