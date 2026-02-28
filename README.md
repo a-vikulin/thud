@@ -51,13 +51,13 @@ At times this was a frustrating experience, but overall I am absolutely blown aw
 ![ss-7.png](screenshots/ss-7.png)
 
 Treadmills are notoriously inaccurate at reporting speed. In order to ensure that your workout pace targets
-are close to reality, tHUD implements linear regression model: `adjusted speed = a × treadmill speed + b`, calculated using your last N runs with a footpod. The slope `a` captures the proportional error, and the intercept `b` accounts for any constant offset. When `b = 0` (the default), this simplifies to the traditional single-coefficient approach.
+are close to reality, tHUD calibrates treadmill speed against Stryd foot pod data using your last N runs.
 
 Two modes are available:
-- **Auto-calibrate** — check the box and tHUD automatically updates linear regression coefficients after each run with Stryd footpod connected. You choose how many recent runs to include (5–90). The more runs at varied speeds, the better the fit.
-- **Manual** — when you have no Stryd footpod or you haven't run any runs with them yet, you may adjust Slope (a) and Offset (b) manually.
+- **Auto-calibrate** — check the box and tHUD automatically computes a polynomial regression (degree 1, 2, or 3) after each run with Stryd connected. You choose the polynomial degree and how many recent runs to include (5–90). Degree 1 is a straight line; degree 2-3 captures the S-curve characteristic where Stryd reports relatively slower speed at low treadmill speeds and faster at high speeds. The more runs at varied speeds, the better the fit. Polynomial coefficients are always recomputed after every run, so switching to auto mode later gives you instant calibration from your history.
+- **Manual** — when you have no Stryd footpod or you haven't run any runs with them yet, you may adjust Slope (a) and Offset (b) manually using the linear model `adjusted speed = a × treadmill speed + b`.
 
-All internal logic — workout engine pace targets, chart, auto-adjustment, recording, FIT export — uses calibrated speed. Raw treadmill speed is preserved in FIT files developer fields for traceability.
+Both modes display the calibration chart with R², N statistics, and the regression formula. All internal logic — workout engine pace targets, chart, auto-adjustment, recording, FIT export — uses calibrated speed. Raw treadmill speed is preserved in FIT files developer fields for traceability.
 
 ### User Profiles
 - Multiple user profiles with full data isolation — each user gets their own settings, workouts, Garmin Connect credentials, FIT exports, and screenshots
@@ -212,7 +212,7 @@ adb install app/build/outputs/apk/debug/app-debug.apk
    - Optionally set a PIN to protect your profile
    - Create additional profiles for family members sharing the treadmill
 6. Open Settings → Treadmill tab to configure:
-   - Speed calibration: start with manual Slope (a) = 1.0 if you don't have a Stryd yet, or enable Auto-calibrate if you do — it will improve after each run
+   - Speed calibration: start with manual Slope (a) = 1.0 if you don't have a Stryd yet, or enable Auto-calibrate if you do — select polynomial degree (1 for linear, 2 or 3 for curved fit) and it will improve after each run
    - Incline Power Coefficient: 0.85 seems right to me
    - Incline Adjustment: set to 1%, meaning when treadmill is at 1% the HUD will call that 0% and will calculate elevation gain based on 0% incline for saving in FIT files
    - Set other parameters if you want to see realistic TSS load calculation

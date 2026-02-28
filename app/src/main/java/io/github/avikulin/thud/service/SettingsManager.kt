@@ -66,6 +66,11 @@ class SettingsManager(
         const val PREF_SPEED_CALIBRATION_B = "speed_calibration_b"
         const val PREF_SPEED_CALIBRATION_AUTO = "speed_calibration_auto"
         const val PREF_SPEED_CALIBRATION_RUN_WINDOW = "speed_calibration_run_window"
+        const val PREF_SPEED_CALIBRATION_DEGREE = "speed_calibration_degree"
+        const val PREF_SPEED_CALIBRATION_C0 = "speed_calibration_c0"
+        const val PREF_SPEED_CALIBRATION_C1 = "speed_calibration_c1"
+        const val PREF_SPEED_CALIBRATION_C2 = "speed_calibration_c2"
+        const val PREF_SPEED_CALIBRATION_C3 = "speed_calibration_c3"
         const val PREF_FIT_USE_STRYD_SPEED = "fit_use_stryd_speed"
         const val PREF_INCLINE_ADJUSTMENT = "incline_adjustment"
         const val PREF_INCLINE_POWER_COEFFICIENT = "incline_power_coefficient"
@@ -297,6 +302,7 @@ class SettingsManager(
 
     // Treadmill tab — speed calibration UI
     private var checkAutoCalibrate: CheckBox? = null
+    private var spinnerDegree: TouchSpinner? = null
     private var spinnerRunWindow: TouchSpinner? = null
     private var calibrationChart: SpeedCalibrationChart? = null
     private var sliderSlopeA: OneKnobSlider? = null
@@ -390,6 +396,11 @@ class SettingsManager(
         state.speedCalibrationB = prefs.getFloat(PREF_SPEED_CALIBRATION_B, 0f).toDouble()
         state.speedCalibrationAuto = prefs.getBoolean(PREF_SPEED_CALIBRATION_AUTO, false)
         state.speedCalibrationRunWindow = prefs.getInt(PREF_SPEED_CALIBRATION_RUN_WINDOW, 30)
+        state.speedCalibrationDegree = prefs.getInt(PREF_SPEED_CALIBRATION_DEGREE, 1)
+        state.speedCalibrationC0 = prefs.getFloat(PREF_SPEED_CALIBRATION_C0, 0f).toDouble()
+        state.speedCalibrationC1 = prefs.getFloat(PREF_SPEED_CALIBRATION_C1, 1f).toDouble()
+        state.speedCalibrationC2 = prefs.getFloat(PREF_SPEED_CALIBRATION_C2, 0f).toDouble()
+        state.speedCalibrationC3 = prefs.getFloat(PREF_SPEED_CALIBRATION_C3, 0f).toDouble()
         state.fitUseStrydSpeed = prefs.getBoolean(PREF_FIT_USE_STRYD_SPEED, true)
         state.inclineAdjustment = prefs.getFloat(PREF_INCLINE_ADJUSTMENT, DEFAULT_INCLINE_ADJUSTMENT.toFloat()).toDouble()
         state.inclinePowerCoefficient = prefs.getFloat(PREF_INCLINE_POWER_COEFFICIENT, DEFAULT_INCLINE_POWER_COEFFICIENT.toFloat()).toDouble()
@@ -989,19 +1000,30 @@ class SettingsManager(
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
 
-            // Auto-calibrate checkbox + run window spinner on one row
+            // Auto-calibrate checkbox + degree spinner + run window spinner on one row
+            // Layout: [✓ "Use"] [1▲▼] ["-degree regression, using the last"] [30▲▼] ["runs"]
             checkAutoCalibrate = CheckBox(service).apply {
-                text = service.getString(R.string.settings_auto_calibrate_label)
+                text = service.getString(R.string.settings_calibration_use_prefix)
                 setTextColor(textColor)
                 isChecked = isAutoMode
                 setOnCheckedChangeListener { _, checked ->
+                    spinnerDegree?.isEnabled = checked
                     sliderSlopeA?.isEnabled = !checked
                     sliderOffsetB?.isEnabled = !checked
                     if (checked) recomputeCalibrationFromDb()
+                    else refreshCalibrationDisplay()
                 }
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
                 )
+            }
+            spinnerDegree = TouchSpinner(service).apply {
+                minValue = 1.0; maxValue = 3.0; step = 1.0
+                format = TouchSpinner.Format.INTEGER
+                value = state.speedCalibrationDegree.toDouble()
+                isEnabled = isAutoMode
+                layoutParams = LinearLayout.LayoutParams(spinnerWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
+                onValueChanged = { recomputeCalibrationFromDb() }
             }
             spinnerRunWindow = TouchSpinner(service).apply {
                 minValue = 5.0; maxValue = 90.0; step = 5.0
@@ -1019,6 +1041,11 @@ class SettingsManager(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
                 )
                 addView(checkAutoCalibrate)
+                addView(spinnerDegree)
+                addView(TextView(service).apply {
+                    text = service.getString(R.string.settings_calibration_degree_suffix)
+                    setTextColor(textColor)
+                })
                 addView(spinnerRunWindow)
                 addView(TextView(service).apply {
                     text = service.getString(R.string.settings_calibration_runs_label)
@@ -1161,7 +1188,7 @@ class SettingsManager(
 
     /**
      * Recompute regression from DB data and update chart/sliders.
-     * In auto mode, runs regression and updates slider values.
+     * In auto mode, runs polynomial regression and updates state coefficients.
      * In manual mode, just reloads data (run window may have changed).
      */
     private fun recomputeCalibrationFromDb() {
@@ -1176,10 +1203,14 @@ class SettingsManager(
                 cachedCalibrationPoints = points
 
                 if (isAuto) {
-                    val result = SpeedCalibrationManager.computeRegression(points)
+                    val degree = spinnerDegree?.value?.toInt() ?: state.speedCalibrationDegree
+                    state.speedCalibrationDegree = degree
+                    val result = SpeedCalibrationManager.computePolynomialRegression(points, degree)
                     if (result != null) {
-                        sliderSlopeA?.setValue(result.a)
-                        sliderOffsetB?.setValue(result.b)
+                        state.speedCalibrationC0 = result.coefficients[0]
+                        state.speedCalibrationC1 = result.coefficients.getOrElse(1) { 0.0 }
+                        state.speedCalibrationC2 = result.coefficients.getOrElse(2) { 0.0 }
+                        state.speedCalibrationC3 = result.coefficients.getOrElse(3) { 0.0 }
                     }
                 }
                 refreshCalibrationDisplay()
@@ -1190,42 +1221,88 @@ class SettingsManager(
     }
 
     /**
-     * Refresh chart and equation text from cached calibration points + current slider values.
+     * Refresh chart and equation text from cached calibration points + current coefficients.
      * Pure UI update — no DB access, no recursion. Safe to call from slider listeners.
+     *
+     * In auto mode: uses polynomial coefficients from state, passes them to chart for curve drawing.
+     * In manual mode: uses linear (a, b) from sliders, chart draws straight line.
      */
     private fun refreshCalibrationDisplay() {
-        val a = sliderSlopeA?.getValue() ?: state.paceCoefficient
-        val b = sliderOffsetB?.getValue() ?: state.speedCalibrationB
+        val isAuto = checkAutoCalibrate?.isChecked ?: state.speedCalibrationAuto
         val points = cachedCalibrationPoints
         val n = points.size
-        val r2 = if (n >= 10) SpeedCalibrationManager.computeR2(points, a, b) else 0.0
-        calibrationChart?.setData(points, a, b, r2, n, state.minSpeedKph, state.maxSpeedKph)
-        updateCalibrationEquation(r2, n)
+
+        if (isAuto) {
+            val coefficients = state.getPolynomialCoefficients()
+            val r2 = if (n >= 10) SpeedCalibrationManager.computePolynomialR2(points, coefficients) else 0.0
+            // In auto mode, pass a=1,b=0 as unused linear params; polynomial coefficients drive rendering
+            calibrationChart?.setData(points, 1.0, 0.0, r2, n, state.minSpeedKph, state.maxSpeedKph, coefficients)
+            updateCalibrationEquation(r2, n)
+        } else {
+            val a = sliderSlopeA?.getValue() ?: state.paceCoefficient
+            val b = sliderOffsetB?.getValue() ?: state.speedCalibrationB
+            val r2 = if (n >= 10) SpeedCalibrationManager.computeR2(points, a, b) else 0.0
+            calibrationChart?.setData(points, a, b, r2, n, state.minSpeedKph, state.maxSpeedKph)
+            updateCalibrationEquation(r2, n)
+        }
     }
 
     /**
      * Update the equation text display. Pure text — no side effects.
+     *
+     * Manual mode: `y = 1.000x + 0.00 (R²=0.950) N=23`
+     * Auto mode: `y = C0 + C1·x [+ C2·x² [+ C3·x³]] (R²=0.985) N=23`
      */
     private fun updateCalibrationEquation(r2: Double? = null, n: Int? = null) {
-        val a = sliderSlopeA?.getValue() ?: state.paceCoefficient
-        val b = sliderOffsetB?.getValue() ?: state.speedCalibrationB
-        val bSign = if (b >= 0) "+" else "−"
-        val bAbs = abs(b)
-        val r2Str = if (r2 != null) String.format(Locale.US, "  (R²=%.2f)", r2) else ""
+        val isAuto = checkAutoCalibrate?.isChecked ?: state.speedCalibrationAuto
+        val r2Str = if (r2 != null) String.format(Locale.US, "  (R²=%.3f)", r2) else ""
         val nStr = if (n != null && n > 0) "  N=$n" else ""
-        tvCalibrationEquation?.text = String.format(
-            Locale.US, "y = %.3fx %s %.2f%s%s", a, bSign, bAbs, r2Str, nStr
-        )
+
+        if (isAuto) {
+            val c = state.getPolynomialCoefficients()
+            val sb = StringBuilder()
+            sb.append("y = ")
+            sb.append(String.format(Locale.US, "%.3f", c[0]))
+            if (c.size > 1) {
+                val sign1 = if (c[1] >= 0) " + " else " − "
+                sb.append(String.format(Locale.US, "%s%.3fx", sign1, abs(c[1])))
+            }
+            if (c.size > 2) {
+                val sign2 = if (c[2] >= 0) " + " else " − "
+                sb.append(String.format(Locale.US, "%s%.4fx²", sign2, abs(c[2])))
+            }
+            if (c.size > 3) {
+                val sign3 = if (c[3] >= 0) " + " else " − "
+                sb.append(String.format(Locale.US, "%s%.5fx³", sign3, abs(c[3])))
+            }
+            sb.append(r2Str)
+            sb.append(nStr)
+            tvCalibrationEquation?.text = sb.toString()
+        } else {
+            val a = sliderSlopeA?.getValue() ?: state.paceCoefficient
+            val b = sliderOffsetB?.getValue() ?: state.speedCalibrationB
+            val bSign = if (b >= 0) "+" else "−"
+            val bAbs = abs(b)
+            tvCalibrationEquation?.text = String.format(
+                Locale.US, "y = %.3fx %s %.2f%s%s", a, bSign, bAbs, r2Str, nStr
+            )
+        }
     }
 
     /**
      * Save calibration coefficients to SharedPreferences.
-     * Called by HUDService after auto-regression update.
+     * Called by HUDService after polynomial regression update.
+     * Persists both manual (a, b) and auto (C0..C3, degree) coefficients.
      */
     fun saveCalibrationCoefficients(state: ServiceStateHolder) {
         prefs.edit {
             putFloat(PREF_PACE_COEFFICIENT, state.paceCoefficient.toFloat())
             putFloat(PREF_SPEED_CALIBRATION_B, state.speedCalibrationB.toFloat())
+            putInt(PREF_SPEED_CALIBRATION_DEGREE, state.speedCalibrationDegree)
+            putFloat(PREF_SPEED_CALIBRATION_C0, state.speedCalibrationC0.toFloat())
+            putFloat(PREF_SPEED_CALIBRATION_C1, state.speedCalibrationC1.toFloat())
+            putFloat(PREF_SPEED_CALIBRATION_C2, state.speedCalibrationC2.toFloat())
+            putFloat(PREF_SPEED_CALIBRATION_C3, state.speedCalibrationC3.toFloat())
         }
     }
 
@@ -2503,7 +2580,7 @@ class SettingsManager(
             }
         }
 
-        // Save speed calibration from sliders
+        // Save speed calibration from sliders (manual coefficients)
         sliderSlopeA?.getValue()?.let { a ->
             state.paceCoefficient = a
         }
@@ -2512,7 +2589,8 @@ class SettingsManager(
         }
         state.speedCalibrationAuto = checkAutoCalibrate?.isChecked ?: state.speedCalibrationAuto
         spinnerRunWindow?.let { state.speedCalibrationRunWindow = it.value.toInt() }
-        Log.d(TAG, "Speed calibration saved: a=${state.paceCoefficient}, b=${state.speedCalibrationB}, auto=${state.speedCalibrationAuto}, window=${state.speedCalibrationRunWindow}")
+        spinnerDegree?.let { state.speedCalibrationDegree = it.value.toInt() }
+        Log.d(TAG, "Speed calibration saved: a=${state.paceCoefficient}, b=${state.speedCalibrationB}, auto=${state.speedCalibrationAuto}, degree=${state.speedCalibrationDegree}, window=${state.speedCalibrationRunWindow}")
 
         // Save incline adjustment from spinner
         spinnerInclineAdjustment?.let { spinner ->
@@ -2627,6 +2705,11 @@ class SettingsManager(
             putFloat(PREF_SPEED_CALIBRATION_B, state.speedCalibrationB.toFloat())
             putBoolean(PREF_SPEED_CALIBRATION_AUTO, state.speedCalibrationAuto)
             putInt(PREF_SPEED_CALIBRATION_RUN_WINDOW, state.speedCalibrationRunWindow)
+            putInt(PREF_SPEED_CALIBRATION_DEGREE, state.speedCalibrationDegree)
+            putFloat(PREF_SPEED_CALIBRATION_C0, state.speedCalibrationC0.toFloat())
+            putFloat(PREF_SPEED_CALIBRATION_C1, state.speedCalibrationC1.toFloat())
+            putFloat(PREF_SPEED_CALIBRATION_C2, state.speedCalibrationC2.toFloat())
+            putFloat(PREF_SPEED_CALIBRATION_C3, state.speedCalibrationC3.toFloat())
             putBoolean(PREF_FIT_USE_STRYD_SPEED, state.fitUseStrydSpeed)
             putFloat(PREF_INCLINE_ADJUSTMENT, state.inclineAdjustment.toFloat())
             putFloat(PREF_INCLINE_POWER_COEFFICIENT, state.inclinePowerCoefficient.toFloat())

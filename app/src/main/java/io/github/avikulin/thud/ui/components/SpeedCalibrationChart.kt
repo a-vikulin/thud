@@ -11,6 +11,7 @@ import android.view.View
 import androidx.core.content.ContextCompat
 import io.github.avikulin.thud.R
 import io.github.avikulin.thud.data.entity.SpeedCalibrationPoint
+import io.github.avikulin.thud.util.SpeedCalibrationManager
 import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -18,9 +19,13 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Scatter plot of treadmill speed (X) vs Stryd speed (Y) with regression and identity lines.
+ * Scatter plot of treadmill speed (X) vs Stryd speed (Y) with regression line/curve and identity line.
  * Semi-transparent dots create a natural density heatmap via alpha accumulation.
  * All Paint objects pre-allocated in init — no allocation in onDraw.
+ *
+ * Supports two rendering modes:
+ * - Linear (polynomialCoefficients = null): draws a straight regression line y = ax + b
+ * - Polynomial (polynomialCoefficients != null): draws a smooth curve using ~50 line segments
  */
 @SuppressLint("ViewConstructor")
 class SpeedCalibrationChart(context: Context) : View(context) {
@@ -32,6 +37,7 @@ class SpeedCalibrationChart(context: Context) : View(context) {
         private const val LABEL_TEXT_SP = 9f
         private const val PADDING_DP = 32f
         private const val AXIS_LABEL_OFFSET_DP = 14f
+        private const val CURVE_SEGMENTS = 50  // line segments for polynomial curve
     }
 
     // Data
@@ -40,6 +46,7 @@ class SpeedCalibrationChart(context: Context) : View(context) {
     private var regressionB = 0.0
     private var regressionR2 = 0.0
     private var pointCount = 0
+    private var polyCoefficients: DoubleArray? = null  // null = linear mode, non-null = polynomial
 
     // Treadmill speed range (for axis scaling when no data)
     private var treadmillMinKph = 1.6
@@ -107,8 +114,8 @@ class SpeedCalibrationChart(context: Context) : View(context) {
 
     /**
      * Set display data. Call this when data changes.
-     * @param treadmillMinKph treadmill minimum speed (for axis scaling when no data)
-     * @param treadmillMaxKph treadmill maximum speed (for axis scaling when no data)
+     * @param polynomialCoefficients when non-null, draws a polynomial curve instead of a straight line.
+     *        Array index = power (C0 + C1*x + C2*x² + ...). When null, uses linear (a, b).
      */
     fun setData(
         pairs: List<SpeedCalibrationPoint>,
@@ -117,7 +124,8 @@ class SpeedCalibrationChart(context: Context) : View(context) {
         r2: Double,
         n: Int,
         treadmillMinKph: Double = 1.6,
-        treadmillMaxKph: Double = 20.0
+        treadmillMaxKph: Double = 20.0,
+        polynomialCoefficients: DoubleArray? = null
     ) {
         points = pairs
         regressionA = a
@@ -126,6 +134,7 @@ class SpeedCalibrationChart(context: Context) : View(context) {
         pointCount = n
         this.treadmillMinKph = treadmillMinKph
         this.treadmillMaxKph = treadmillMaxKph
+        polyCoefficients = polynomialCoefficients
 
         computeAxisRange(pairs, a, b)
         invalidate()
@@ -134,7 +143,7 @@ class SpeedCalibrationChart(context: Context) : View(context) {
     /**
      * Compute axis ranges from data points, or from treadmill speed range when no data.
      * X-axis is ALWAYS the treadmill speed range — never changes with regression params.
-     * Y-axis adjusts to fit the identity line (y=x), regression line (y=ax+b), and data dots.
+     * Y-axis adjusts to fit the identity line (y=x), regression line/curve, and data dots.
      */
     private fun computeAxisRange(pairs: List<SpeedCalibrationPoint>, a: Double, b: Double) {
         // X-axis: treadmill speed range only (with data, use data range; without, use device range)
@@ -144,12 +153,27 @@ class SpeedCalibrationChart(context: Context) : View(context) {
         xMin = floor((dataXMin - xMargin) * 2) / 2  // snap to 0.5
         xMax = ceil((dataXMax + xMargin) * 2) / 2
 
-        // Y-axis: must encompass identity line (y=x), regression line, and data dots
-        val regYAtXMin = a * dataXMin + b
-        val regYAtXMax = a * dataXMax + b
+        // Y-axis: must encompass identity line (y=x), regression line/curve, and data dots
         // Identity line spans y = dataXMin..dataXMax within the X range
-        var allYMin = min(min(dataXMin, regYAtXMin), regYAtXMax)
-        var allYMax = max(max(dataXMax, regYAtXMax), regYAtXMin)
+        var allYMin = dataXMin
+        var allYMax = dataXMax
+
+        val poly = polyCoefficients
+        if (poly != null) {
+            // Sample polynomial at several points to find Y extent
+            val steps = 20
+            for (i in 0..steps) {
+                val x = dataXMin + (dataXMax - dataXMin) * i / steps
+                val y = SpeedCalibrationManager.evaluatePolynomial(poly, x)
+                allYMin = min(allYMin, y)
+                allYMax = max(allYMax, y)
+            }
+        } else {
+            val regYAtXMin = a * dataXMin + b
+            val regYAtXMax = a * dataXMax + b
+            allYMin = min(min(allYMin, regYAtXMin), regYAtXMax)
+            allYMax = max(max(allYMax, regYAtXMax), regYAtXMin)
+        }
 
         if (pairs.isNotEmpty()) {
             allYMin = min(allYMin, pairs.minOf { it.strydKph })
@@ -217,20 +241,32 @@ class SpeedCalibrationChart(context: Context) : View(context) {
             canvas.drawPath(linePath, identityPaint)
         }
 
-        // Regression line (solid)
-        val regXStart = xMin
-        val regXEnd = xMax
-        val regYStart = regressionA * regXStart + regressionB
-        val regYEnd = regressionA * regXEnd + regressionB
+        // Regression line or polynomial curve (solid)
+        val poly = polyCoefficients
         linePath.reset()
-        linePath.moveTo(
-            mapX(regXStart, plotLeft, plotRight),
-            mapY(regYStart.coerceIn(yMin, yMax), plotTop, plotBottom)
-        )
-        linePath.lineTo(
-            mapX(regXEnd, plotLeft, plotRight),
-            mapY(regYEnd.coerceIn(yMin, yMax), plotTop, plotBottom)
-        )
+        if (poly != null) {
+            // Polynomial curve: draw multi-segment path
+            for (i in 0..CURVE_SEGMENTS) {
+                val x = xMin + (xMax - xMin) * i / CURVE_SEGMENTS
+                val y = SpeedCalibrationManager.evaluatePolynomial(poly, x)
+                    .coerceIn(yMin, yMax)
+                val px = mapX(x, plotLeft, plotRight)
+                val py = mapY(y, plotTop, plotBottom)
+                if (i == 0) linePath.moveTo(px, py) else linePath.lineTo(px, py)
+            }
+        } else {
+            // Straight regression line
+            val regYStart = (regressionA * xMin + regressionB).coerceIn(yMin, yMax)
+            val regYEnd = (regressionA * xMax + regressionB).coerceIn(yMin, yMax)
+            linePath.moveTo(
+                mapX(xMin, plotLeft, plotRight),
+                mapY(regYStart, plotTop, plotBottom)
+            )
+            linePath.lineTo(
+                mapX(xMax, plotLeft, plotRight),
+                mapY(regYEnd, plotTop, plotBottom)
+            )
+        }
         canvas.drawPath(linePath, regressionPaint)
 
         // Data points (semi-transparent dots)

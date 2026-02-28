@@ -65,9 +65,10 @@ class FitFileExporter(private val context: Context) {
     private data class TreadmillSpeedDevFields(
         val devDataIdMesg: DeveloperDataIdMesg,
         val rawSpeedFieldDesc: FieldDescriptionMesg,        // Field 0: raw treadmill speed
-        val calibratedSpeedFieldDesc: FieldDescriptionMesg, // Field 1: calibrated (a*raw+b) speed
-        val calibrationA: Double,                           // slope for computing calibrated from raw
-        val calibrationB: Double                            // intercept for computing calibrated from raw
+        val calibratedSpeedFieldDesc: FieldDescriptionMesg, // Field 1: calibrated speed
+        val calibrationA: Double,                           // slope for linear mode
+        val calibrationB: Double,                           // intercept for linear mode
+        val polynomialCoefficients: DoubleArray? = null     // polynomial coefficients for auto mode (overrides a/b)
     )
 
     companion object {
@@ -148,7 +149,8 @@ class FitFileExporter(private val context: Context) {
         filenameSuffix: String? = null,
         useStrydSpeed: Boolean = false,
         paceCoefficient: Double = 1.0,
-        speedCalibrationB: Double = 0.0
+        speedCalibrationB: Double = 0.0,
+        polynomialCoefficients: DoubleArray? = null
     ): FitExportResult? {
         if (workoutData.isEmpty()) {
             Log.w(TAG, "No workout data to export")
@@ -167,7 +169,7 @@ class FitFileExporter(private val context: Context) {
                 executionSteps, originalSteps,
                 fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion,
                 hrSensors, rrIntervals,
-                paceCoefficient, speedCalibrationB
+                paceCoefficient, speedCalibrationB, polynomialCoefficients
             )
             Log.i(TAG, "FIT file exported: ${result.displayPath} (useStrydSpeed=$useStrydSpeed)")
             result
@@ -237,13 +239,14 @@ class FitFileExporter(private val context: Context) {
         hrSensors: List<Pair<String, String>> = emptyList(),
         rrIntervals: List<Pair<Long, Float>>? = null,
         paceCoefficient: Double = 1.0,
-        speedCalibrationB: Double = 0.0
+        speedCalibrationB: Double = 0.0,
+        polynomialCoefficients: DoubleArray? = null
     ): FitExportResult {
         // Create temp file for FIT SDK (it requires a File, not OutputStream)
         val tempFile = FileExportHelper.getTempFile(context, filename)
         try {
             // Write FIT file to temp location
-            writeFitFile(tempFile, workoutData, workoutName, startTimeMs, userHrRest, userLthr, userFtpWatts, thresholdPaceKph, pauseEvents, executionSteps, originalSteps, fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion, hrSensors, rrIntervals, paceCoefficient, speedCalibrationB)
+            writeFitFile(tempFile, workoutData, workoutName, startTimeMs, userHrRest, userLthr, userFtpWatts, thresholdPaceKph, pauseEvents, executionSteps, originalSteps, fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion, hrSensors, rrIntervals, paceCoefficient, speedCalibrationB, polynomialCoefficients)
 
             // Read bytes before saving to MediaStore (for Garmin Connect upload)
             val fitData = tempFile.readBytes()
@@ -289,7 +292,8 @@ class FitFileExporter(private val context: Context) {
         hrSensors: List<Pair<String, String>> = emptyList(),
         rrIntervals: List<Pair<Long, Float>>? = null,
         paceCoefficient: Double = 1.0,
-        speedCalibrationB: Double = 0.0
+        speedCalibrationB: Double = 0.0,
+        polynomialCoefficients: DoubleArray? = null
     ) {
         val encoder = FileEncoder(file, Fit.ProtocolVersion.V2_0)
 
@@ -346,7 +350,7 @@ class FitFileExporter(private val context: Context) {
             .takeIf { it.isNotEmpty() }
 
         // 3d. tHUD treadmill speed developer fields (always written — raw + calibrated speed)
-        val treadmillDevFields = writeTreadmillDeveloperFieldDefinitions(encoder, hrSensors.size, paceCoefficient, speedCalibrationB)
+        val treadmillDevFields = writeTreadmillDeveloperFieldDefinitions(encoder, hrSensors.size, paceCoefficient, speedCalibrationB, polynomialCoefficients)
 
         // 4. Sport message (required for proper workout recognition)
         writeSportMessage(encoder)
@@ -1009,7 +1013,8 @@ class FitFileExporter(private val context: Context) {
         encoder: FileEncoder,
         hrSensorCount: Int,
         calibrationA: Double,
-        calibrationB: Double
+        calibrationB: Double,
+        polynomialCoefficients: DoubleArray? = null
     ): TreadmillSpeedDevFields {
         val devDataIndex = (STRYD_DEV_DATA_INDEX + 1 + hrSensorCount).toShort()
 
@@ -1053,7 +1058,7 @@ class FitFileExporter(private val context: Context) {
         encoder.write(calibratedSpeedDesc)
 
         Log.d(TAG, "Wrote tHUD treadmill speed developer fields at devDataIndex=$devDataIndex")
-        return TreadmillSpeedDevFields(devDataId, rawSpeedDesc, calibratedSpeedDesc, calibrationA, calibrationB)
+        return TreadmillSpeedDevFields(devDataId, rawSpeedDesc, calibratedSpeedDesc, calibrationA, calibrationB, polynomialCoefficients)
     }
 
     /**
@@ -1167,8 +1172,15 @@ class FitFileExporter(private val context: Context) {
             rawField.setValue((dataPoint.rawTreadmillSpeedKph / 3.6 * 1000).toInt())
             record.addDeveloperField(rawField)
 
-            // Calibrated treadmill speed = a*raw + b (UINT16 in m/s * 1000)
-            val calibratedKph = dataPoint.rawTreadmillSpeedKph * treadmillDevFields.calibrationA + treadmillDevFields.calibrationB
+            // Calibrated treadmill speed (UINT16 in m/s * 1000)
+            // Uses polynomial model when available, otherwise linear a*raw+b
+            val calibratedKph = if (treadmillDevFields.polynomialCoefficients != null) {
+                SpeedCalibrationManager.evaluatePolynomial(
+                    treadmillDevFields.polynomialCoefficients, dataPoint.rawTreadmillSpeedKph
+                )
+            } else {
+                dataPoint.rawTreadmillSpeedKph * treadmillDevFields.calibrationA + treadmillDevFields.calibrationB
+            }
             val calField = DeveloperField(treadmillDevFields.calibratedSpeedFieldDesc, treadmillDevFields.devDataIdMesg)
             calField.setValue((calibratedKph / 3.6 * 1000).toInt())
             record.addDeveloperField(calField)

@@ -4,6 +4,8 @@
     <!-- Settings Dialog -->
     <string name="settings_pace_coefficient_label">Pace Coefficient (e.g., 0.85 = 15%% slower)</string>
     <string name="settings_auto_calibrate_label">Auto-calibrate speed from Stryd data, using the last</string>
+    <string name="settings_calibration_use_prefix">Use</string>
+    <string name="settings_calibration_degree_suffix">-degree regression, using the last</string>
     <string name="settings_calibration_runs_label">runs</string>
     <string name="settings_calibration_slope_label">Slope (a)</string>
     <string name="settings_calibration_intercept_label">Offset (b)</string>

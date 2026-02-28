@@ -71,18 +71,20 @@
 | Remote control | `RemoteControlManager` (SharedPrefs JSON) | `RemoteControlBridge` → `AccessibilityService` |
 | Profile registry + paths | `ProfileManager` (`tHUD_profiles` SharedPrefs) | `SettingsManager.PREFS_NAME`, `GarminConnectUploader.PREFS_NAME`, DB, exports |
 | Profile switch + PIN auth | `HUDService.handleProfileSwitch()` | `setActiveProfile()` → `stopSelf()` → restart; PIN via `setAuthenticatedSwitch()` |
-| Speed calibration | `WorkoutDataPoint` (raw + Stryd) | `SpeedCalibrationDao` → `SpeedCalibrationManager` → `state.paceCoefficient` + `state.speedCalibrationB` |
+| Speed calibration | `WorkoutDataPoint` (raw + Stryd) | `SpeedCalibrationDao` → `SpeedCalibrationManager` → manual: `state.paceCoefficient` + `state.speedCalibrationB`; auto: `state.speedCalibrationC0..C3` (polynomial degree 1-3) |
 | FIT Stryd speed flag | `ServiceStateHolder` (SharedPrefs) | `HUDService` → `FitFileExporter.exportWorkout(useStrydSpeed)` |
 | Saved BT devices | `SavedBluetoothDevices` | Sensor managers, BT dialog |
 | FTMS server settings | `ServiceStateHolder` (SharedPrefs) | `HUDService` → server start/stop |
 
 ### ⚠️ SPEED - ABSOLUTE RULES ⚠️
 
-**Linear calibration model:** `adjustedSpeed = a * rawSpeed + b` where `a` = `paceCoefficient` (slope) and `b` = `speedCalibrationB` (intercept). When `b = 0` (default), this reduces to the legacy multiplicative model.
+**Two independent calibration models:**
+- **Manual mode** (`speedCalibrationAuto=false`): Linear `adjustedSpeed = a * rawSpeed + b` where `a` = `paceCoefficient` (slope) and `b` = `speedCalibrationB` (intercept). User-controlled via sliders.
+- **Auto mode** (`speedCalibrationAuto=true`): Polynomial (degree 1-3) `adjustedSpeed = C0 + C1*x + C2*x² + C3*x³` using `speedCalibrationC0..C3` and `speedCalibrationDegree`. Coefficients recomputed after every run (even when auto is off), but only used live when auto is enabled. Inversion via Newton-Raphson.
 
 **Conversion methods (SINGLE SOURCE OF TRUTH):**
-- `state.rawToAdjustedSpeed(rawKph)` → `rawKph * paceCoefficient + speedCalibrationB`
-- `state.adjustedToRawSpeed(adjustedKph)` → `(adjustedKph - speedCalibrationB) / paceCoefficient`
+- `state.rawToAdjustedSpeed(rawKph)` → branches on `speedCalibrationAuto`: polynomial `evaluatePolynomial()` or linear `rawKph * paceCoefficient + speedCalibrationB`
+- `state.adjustedToRawSpeed(adjustedKph)` → branches on `speedCalibrationAuto`: `invertPolynomialNewtonRaphson()` or `(adjustedKph - speedCalibrationB) / paceCoefficient`
 
 **NEVER multiply/divide by `paceCoefficient` directly!** Always use `rawToAdjustedSpeed()` / `adjustedToRawSpeed()`.
 
@@ -189,9 +191,15 @@ When enabled (`state.calcHrEnabled`), `HUDService.onRrIntervalsReceived()` compu
 **Retroactive recalc:** On param change, `recalculateAllCalcHr()` replays stored RR through `processCalcHrBatch()` (shared pure filter method), patches `WorkoutDataPoint`s in-place.
 
 ### SpeedCalibrationManager (`util/SpeedCalibrationManager.kt`)
-Stateless utility — filtering + OLS regression math. `extractPairs(dataPoints, runStartMs)` → valid calibration pairs. `computeRegression(points)` → `RegressionResult(a, b, r2, n)` or null if < 10 points. `computeR2(points, a, b)` → R² for manual mode feedback.
+Stateless utility — filtering + regression math. Two regression modes:
 
-**Data pipeline:** `WorkoutDataPoint` → `extractPairs()` → `SpeedCalibrationDao.insertAll()` → `getPointsForLastRuns(N)` → `computeRegression()` → `state.paceCoefficient` + `state.speedCalibrationB`. DB retention: 90 runs max (trimmed on insert).
+**Linear (manual mode):** `computeRegression(points)` → `RegressionResult(a, b, r2, n)` or null if < 10 points. `computeR2(points, a, b)` → R² for manual mode feedback.
+
+**Polynomial (auto mode):** `computePolynomialRegression(points, degree)` → `PolynomialResult(coefficients, degree, r2, n)` or null. Degree 1-3. Uses Vandermonde matrix normal equations with data centering/scaling for numerical stability. Gaussian elimination with partial pivoting (max 4×4 system). Monotonicity validation for degree 2-3 — falls back to lower degree if non-monotonic. `evaluatePolynomial(coefficients, x)` — Horner-style evaluation. `invertPolynomialNewtonRaphson(coefficients, targetY)` — for `adjustedToRawSpeed()`. `computePolynomialR2(points, coefficients)` — R² using polynomial model.
+
+**Shared:** `extractPairs(dataPoints, runStartMs)` → valid calibration pairs.
+
+**Data pipeline:** `WorkoutDataPoint` → `extractPairs()` → `SpeedCalibrationDao.insertAll()` → `getPointsForLastRuns(N)` → `computePolynomialRegression()` → `state.speedCalibrationC0..C3` (always recomputed after every run). Manual mode still uses `computeRegression()` → `state.paceCoefficient` + `state.speedCalibrationB`. DB retention: 90 runs max (trimmed on insert).
 
 ### OverlayHelper (`service/OverlayHelper.kt`)
 Overlay window and dialog utilities. `createOverlayParams()`, `createDialogContainer/Title/Message/ButtonRow()`, `createStyledButton()` (see Button Styling rule), `calculateWidth/Height()`.
@@ -205,7 +213,7 @@ Exports to Downloads/tHUD/<profile>/ via MediaStore. `saveToDownloads()`, `getTe
 Unified BT sensor storage. `getAll/getByType/save/remove/isSaved/getSavedMacs`. Types: `HR_SENSOR`, `FOOT_POD`.
 
 ### SettingsManager (`service/SettingsManager.kt`)
-All SharedPreferences keys as constants. Key groups: `pace_coefficient`/`speed_calibration_b`/`speed_calibration_auto`/`speed_calibration_run_window` (calibration), `hr_zone*_max`, `threshold_pace_kph`, `default_incline`, treadmill min/max, `fit_*`/`fit_use_stryd_speed`, `ftms_*`, `garmin_auto_upload`, `remote_bindings`, `calc_hr_*` (4 keys), `dfa_*` (5 keys), `chart_zoom_timeframe_minutes`. Settings dialog: 8 tabs (User, Treadmill, Zones, Auto-Adjust, FIT Export, FTMS, HR, Chart). Guest profile: User tab has disabled username, no PIN/Delete.
+All SharedPreferences keys as constants. Key groups: `pace_coefficient`/`speed_calibration_b`/`speed_calibration_auto`/`speed_calibration_run_window`/`speed_calibration_degree`/`speed_calibration_c0..c3` (calibration), `hr_zone*_max`, `threshold_pace_kph`, `default_incline`, treadmill min/max, `fit_*`/`fit_use_stryd_speed`, `ftms_*`, `garmin_auto_upload`, `remote_bindings`, `calc_hr_*` (4 keys), `dfa_*` (5 keys), `chart_zoom_timeframe_minutes`. Settings dialog: 8 tabs (User, Treadmill, Zones, Auto-Adjust, FIT Export, FTMS, HR, Chart). Guest profile: User tab has disabled username, no PIN/Delete.
 
 ### ⚠️ HR/Power Targets: Percentage-Based ⚠️
 All HR/Power targets stored as **% of threshold** (LTHR/FTP) so workouts survive threshold changes.
@@ -217,12 +225,18 @@ ExecutionStep convenience: `step.getHrTargetMinBpm(lthrBpm)`, `step.getPowerTarg
 
 | Coefficient | Location | Purpose | Changed By |
 |-------------|----------|---------|------------|
-| `paceCoefficient` | `ServiceStateHolder` | **CALIBRATION slope `a`** — linear model `adjusted = a * raw + b` | User (Settings slider) or auto-regression from Stryd |
-| `speedCalibrationB` | `ServiceStateHolder` | **CALIBRATION intercept `b`** — linear model offset | User (Settings slider) or auto-regression from Stryd |
+| `paceCoefficient` | `ServiceStateHolder` | **CALIBRATION slope `a`** — manual linear model `adjusted = a * raw + b` | User (Settings slider) only |
+| `speedCalibrationB` | `ServiceStateHolder` | **CALIBRATION intercept `b`** — manual linear model offset | User (Settings slider) only |
+| `speedCalibrationC0..C3` | `ServiceStateHolder` | **CALIBRATION polynomial** — auto model `C0 + C1*x + C2*x² + C3*x³` | Auto-regression from Stryd after every run |
+| `speedCalibrationDegree` | `ServiceStateHolder` | **Polynomial degree** (1, 2, or 3) for auto calibration | User (Settings spinner) |
 | `speedAdjustmentCoefficient` | `WorkoutExecutionEngine` | **DYNAMIC** — HR auto-adjust / manual buttons | Code, from telemetry |
 | `inclineAdjustmentCoefficient` | `WorkoutExecutionEngine` | **DYNAMIC** — incline auto-adjust / manual buttons | Code, from telemetry |
 
-**paceCoefficient + speedCalibrationB:** When `speedCalibrationAuto = true`, both are updated automatically after each run via `SpeedCalibrationManager.computeRegression()`. When `false`, user sets them manually via sliders. Default `a=1.0, b=0.0` = legacy behavior (pure multiplication). **NEVER multiply/divide by `paceCoefficient` directly** — use `state.rawToAdjustedSpeed()` / `state.adjustedToRawSpeed()`.
+**paceCoefficient + speedCalibrationB:** Manual-only. User sets them via sliders. Default `a=1.0, b=0.0` = identity. Never auto-updated.
+
+**speedCalibrationC0..C3:** Auto-only. Recomputed after every run via `SpeedCalibrationManager.computePolynomialRegression()` regardless of mode, but only used for live conversion when `speedCalibrationAuto = true`. Default `C0=0.0, C1=1.0, C2=0.0, C3=0.0` = identity polynomial.
+
+**NEVER multiply/divide by `paceCoefficient` directly** — use `state.rawToAdjustedSpeed()` / `state.adjustedToRawSpeed()`.
 
 AdjustmentController is stateless for values — WorkoutExecutionEngine owns coefficients, calculates from telemetry, provides `getEffectiveSpeed(step)`.
 

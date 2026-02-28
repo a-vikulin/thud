@@ -2,6 +2,7 @@ package io.github.avikulin.thud.service
 
 import com.ifit.glassos.workout.WorkoutState
 import io.github.avikulin.thud.util.DfaAlpha1Calculator
+import io.github.avikulin.thud.util.SpeedCalibrationManager
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.ceil
@@ -40,19 +41,46 @@ class ServiceStateHolder {
     @Volatile var activePrimaryHrMac: String = ""  // currently active primary (may differ during fallback)
 
     // ==================== Settings State ====================
-    // Speed calibration linear model: adjusted = paceCoefficient * raw + speedCalibrationB
-    // paceCoefficient is the slope (a), speedCalibrationB is the intercept (b)
-    // When b=0, this is identical to the legacy multiplicative model.
+    // Speed calibration — two independent coefficient sets:
+    //
+    // Manual mode (auto=false): linear model adjusted = paceCoefficient * raw + speedCalibrationB
     @Volatile var paceCoefficient = 1.0
     @Volatile var speedCalibrationB = 0.0           // intercept (default 0 = backward compatible)
-    @Volatile var speedCalibrationAuto = false       // true = auto from Stryd regression
+    //
+    // Auto mode (auto=true): polynomial model y = C0 + C1*x + C2*x² + C3*x³
+    // Always recomputed after every run; only used live when speedCalibrationAuto = true.
+    @Volatile var speedCalibrationC0 = 0.0
+    @Volatile var speedCalibrationC1 = 1.0          // default = identity (y = x)
+    @Volatile var speedCalibrationC2 = 0.0
+    @Volatile var speedCalibrationC3 = 0.0
+    @Volatile var speedCalibrationDegree = 1        // 1, 2, or 3
+    //
+    @Volatile var speedCalibrationAuto = false       // true = use polynomial from Stryd regression
     @Volatile var speedCalibrationRunWindow = 30     // how many recent runs for regression
 
+    /** Get auto-mode polynomial coefficients as array (C0..Cn, index = power). */
+    fun getPolynomialCoefficients(): DoubleArray = when (speedCalibrationDegree) {
+        1 -> doubleArrayOf(speedCalibrationC0, speedCalibrationC1)
+        2 -> doubleArrayOf(speedCalibrationC0, speedCalibrationC1, speedCalibrationC2)
+        3 -> doubleArrayOf(speedCalibrationC0, speedCalibrationC1, speedCalibrationC2, speedCalibrationC3)
+        else -> doubleArrayOf(speedCalibrationC0, speedCalibrationC1)
+    }
+
     /** Convert raw treadmill speed to adjusted (perceived) speed. Single source of truth. */
-    fun rawToAdjustedSpeed(rawKph: Double): Double = rawKph * paceCoefficient + speedCalibrationB
+    fun rawToAdjustedSpeed(rawKph: Double): Double = if (speedCalibrationAuto) {
+        SpeedCalibrationManager.evaluatePolynomial(getPolynomialCoefficients(), rawKph)
+    } else {
+        rawKph * paceCoefficient + speedCalibrationB
+    }
 
     /** Convert adjusted (perceived) speed back to raw treadmill speed. Single source of truth. */
-    fun adjustedToRawSpeed(adjustedKph: Double): Double = (adjustedKph - speedCalibrationB) / paceCoefficient
+    fun adjustedToRawSpeed(adjustedKph: Double): Double = if (speedCalibrationAuto) {
+        SpeedCalibrationManager.invertPolynomialNewtonRaphson(
+            getPolynomialCoefficients(), adjustedKph
+        )
+    } else {
+        (adjustedKph - speedCalibrationB) / paceCoefficient
+    }
 
     // Incline adjustment (effective incline = treadmill incline - adjustment)
     // Default 1.0 means 1% treadmill incline = flat outdoor running

@@ -760,15 +760,19 @@ class HUDService : Service(),
                 dao.trimOldRuns(90)  // keep max 90 runs in DB regardless of display window
                 Log.d(TAG, "Saved ${pairs.size} calibration pairs, runs in DB: ${dao.getRunCount()}")
 
-                // Auto-update regression if enabled
-                if (state.speedCalibrationAuto) {
-                    val points = dao.getPointsForLastRuns(state.speedCalibrationRunWindow)
-                    SpeedCalibrationManager.computeRegression(points)?.let { result ->
-                        state.paceCoefficient = result.a
-                        state.speedCalibrationB = result.b
-                        settingsManager.saveCalibrationCoefficients(state)
-                        Log.d(TAG, "Auto-calibration updated: a=${result.a}, b=${result.b}, R²=${result.r2}, N=${result.n}")
-                    }
+                // Always compute polynomial regression and store coefficients.
+                // They are only used live when speedCalibrationAuto = true (via rawToAdjustedSpeed).
+                val points = dao.getPointsForLastRuns(state.speedCalibrationRunWindow)
+                SpeedCalibrationManager.computePolynomialRegression(
+                    points, state.speedCalibrationDegree
+                )?.let { result ->
+                    state.speedCalibrationC0 = result.coefficients[0]
+                    state.speedCalibrationC1 = result.coefficients.getOrElse(1) { 0.0 }
+                    state.speedCalibrationC2 = result.coefficients.getOrElse(2) { 0.0 }
+                    state.speedCalibrationC3 = result.coefficients.getOrElse(3) { 0.0 }
+                    settingsManager.saveCalibrationCoefficients(state)
+                    Log.d(TAG, "Calibration updated: degree=${result.degree}, " +
+                        "C=${result.coefficients.toList()}, R²=${result.r2}, N=${result.n}")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to extract/save calibration data: ${e.message}", e)
@@ -915,7 +919,8 @@ class HUDService : Service(),
                     filenameSuffix = task.filenameSuffix,
                     useStrydSpeed = state.fitUseStrydSpeed,
                     paceCoefficient = state.paceCoefficient,
-                    speedCalibrationB = state.speedCalibrationB
+                    speedCalibrationB = state.speedCalibrationB,
+                    polynomialCoefficients = if (state.speedCalibrationAuto) state.getPolynomialCoefficients() else null
                 )
                 if (fitResult != null) {
                     exportedCount++
