@@ -54,7 +54,7 @@ Treadmills are notoriously inaccurate at reporting speed. In order to ensure tha
 are close to reality, tHUD calibrates treadmill speed against Stryd foot pod data using your last N runs.
 
 Two modes are available:
-- **Auto-calibrate** — check the box and tHUD automatically computes a polynomial regression (degree 1, 2, or 3) after each run with Stryd connected. You choose the polynomial degree and how many recent runs to include (5–90). Degree 1 is a straight line; degree 2-3 captures the S-curve characteristic where Stryd reports relatively slower speed at low treadmill speeds and faster at high speeds. The more runs at varied speeds, the better the fit. Polynomial coefficients are always recomputed after every run, so switching to auto mode later gives you instant calibration from your history.
+- **Auto-calibrate** — check the box and tHUD automatically computes a polynomial regression (degree 1, 2, or 3) after each run with Stryd connected. You choose the polynomial degree and how many recent runs to include (5–90). Degree 1 is a straight line; degree 2-3 captures the S-curve characteristic where Stryd reports relatively slower speed at low treadmill speeds and faster at high speeds. The more runs at varied speeds, the better the fit.
 - **Manual** — when you have no Stryd footpod or you haven't run any runs with them yet, you may adjust Slope (a) and Offset (b) manually using the linear model `adjusted speed = a × treadmill speed + b`.
 
 Both modes display the calibration chart with R², N statistics, and the regression formula. All internal logic — workout engine pace targets, chart, auto-adjustment, recording, FIT export — uses calibrated speed. Raw treadmill speed is preserved in FIT files developer fields for traceability.
