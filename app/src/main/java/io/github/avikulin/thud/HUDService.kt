@@ -2954,7 +2954,7 @@ class HUDService : Service(),
         hudDisplayManager.updateHrSubtitle(activeHrSubtitleLabel())
         bluetoothSensorDialogManager.updateStatus()
         // Handle DFA sensor disconnect (clears calculator, falls back to next RR-capable)
-        if (hrSensorManager.hasRrCapability(mac)) {
+        if (dfaCalculators.containsKey(mac) || state.dfaResults.containsKey(mac)) {
             handleDfaSensorDisconnect(mac)
         }
     }

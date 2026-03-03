@@ -540,6 +540,7 @@ class HrSensorManager(
                     val deviceName = resolveDeviceName(gatt)
                     connections.remove(mac)
                     pendingGatts.remove(mac)?.second?.close()
+                    gatt.close()
 
                     handler.post {
                         listener?.onHrSensorDisconnected(mac, deviceName)
