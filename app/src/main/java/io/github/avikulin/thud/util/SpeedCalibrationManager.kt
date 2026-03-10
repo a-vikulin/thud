@@ -33,6 +33,14 @@ object SpeedCalibrationManager {
     /** Maximum allowed speed discrepancy (30%) — rejects transition artifacts and glitches. */
     private const val MAX_DISCREPANCY_FRACTION = 0.30
 
+    /** Minimum raw speed change (kph) to trigger settle window.
+     *  Set below 0.1 kph so that the smallest real speed command (0.1 kph) always triggers. */
+    private const val SPEED_CHANGE_THRESHOLD_KPH = 0.09
+
+    /** Duration (ms) to ignore data after a raw treadmill speed change.
+     *  Treadmill belt ramp-up + Stryd smoothing lag ≈ 10s to reach steady state. */
+    private const val SETTLE_AFTER_CHANGE_MS = 10_000L
+
     /** Newton-Raphson defaults for polynomial inversion. */
     private const val NR_MAX_ITERATIONS = 10
     private const val NR_TOLERANCE = 1e-6
@@ -49,7 +57,12 @@ object SpeedCalibrationManager {
 
     /**
      * Extract valid calibration pairs from workout data points.
-     * Filters: both speeds > 0, discrepancy ≤ 30%.
+     * Filters: both speeds > 0, settle window after speed changes, discrepancy ≤ 30%.
+     *
+     * The settle window rejects data for [SETTLE_AFTER_CHANGE_MS] after any raw treadmill
+     * speed change ≥ [SPEED_CHANGE_THRESHOLD_KPH]. This eliminates transition artifacts
+     * where the treadmill reports target speed instantly but the belt and Stryd need ~10s
+     * to reach steady state.
      *
      * @param dataPoints Recorded workout data
      * @param runId Unique identifier for this run (typically start timestamp)
@@ -59,8 +72,29 @@ object SpeedCalibrationManager {
         dataPoints: List<WorkoutDataPoint>,
         runId: Long
     ): List<SpeedCalibrationPoint> {
+        // First pass: determine which data points fall within a settle window
+        var settleDeadlineMs = Long.MIN_VALUE
+        var prevRawSpeed = Double.NaN
+
         return dataPoints
-            .filter { it.rawTreadmillSpeedKph > 0 && it.strydSpeedKph > 0 }
+            .filter { dp ->
+                val rawSpeed = dp.rawTreadmillSpeedKph
+                val settled = if (rawSpeed <= 0 || dp.strydSpeedKph <= 0) {
+                    false
+                } else if (prevRawSpeed.isNaN()) {
+                    // First valid point — accept it but record speed for next comparison
+                    true
+                } else if (abs(rawSpeed - prevRawSpeed) >= SPEED_CHANGE_THRESHOLD_KPH) {
+                    // Speed changed — start settle window
+                    settleDeadlineMs = dp.timestampMs + SETTLE_AFTER_CHANGE_MS
+                    false
+                } else {
+                    // No speed change — check if we're past the settle deadline
+                    dp.timestampMs >= settleDeadlineMs
+                }
+                if (rawSpeed > 0) prevRawSpeed = rawSpeed
+                settled
+            }
             .filter {
                 val diff = abs(it.rawTreadmillSpeedKph - it.strydSpeedKph)
                 val max = maxOf(it.rawTreadmillSpeedKph, it.strydSpeedKph)
