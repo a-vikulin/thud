@@ -85,6 +85,22 @@ class GarminConnectUploader(private val context: Context) {
                     .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                     .build()
 
+                // Check if new prefs already have tokens (previous migration succeeded
+                // but legacy cleanup failed — e.g., EncryptedSharedPreferences corruption).
+                // In that case, just clean up the legacy file and return.
+                val newPrefs = EncryptedSharedPreferences.create(
+                    context,
+                    PREFS_NAME,
+                    masterKey,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                )
+                if (!newPrefs.getString(KEY_OAUTH1_TOKEN, null).isNullOrEmpty()) {
+                    Log.d(TAG, "New prefs already have tokens — cleaning up legacy file")
+                    deleteLegacyFiles(legacyFile, renamedFile)
+                    return
+                }
+
                 // If old migration code renamed the file, undo the rename first
                 // so EncryptedSharedPreferences can open it with the original name
                 if (!legacyFile.exists() && renamedFile.exists()) {
@@ -103,7 +119,8 @@ class GarminConnectUploader(private val context: Context) {
 
                 val oauth1Token = legacyPrefs.getString(KEY_OAUTH1_TOKEN, null)
                 if (oauth1Token.isNullOrEmpty()) {
-                    Log.d(TAG, "Legacy Garmin prefs exist but have no tokens — skipping migration")
+                    Log.d(TAG, "Legacy Garmin prefs exist but have no tokens — cleaning up")
+                    deleteLegacyFiles(legacyFile, renamedFile)
                     return
                 }
 
@@ -114,14 +131,6 @@ class GarminConnectUploader(private val context: Context) {
                 val webCookies = legacyPrefs.getString(KEY_WEB_SESSION_COOKIES, null)
 
                 // Write to new profile-specific prefs
-                val newPrefs = EncryptedSharedPreferences.create(
-                    context,
-                    PREFS_NAME,
-                    masterKey,
-                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-                )
-
                 newPrefs.edit().apply {
                     putString(KEY_OAUTH1_TOKEN, oauth1Token)
                     if (oauth1Secret != null) putString(KEY_OAUTH1_SECRET, oauth1Secret)
@@ -131,13 +140,23 @@ class GarminConnectUploader(private val context: Context) {
                     apply()
                 }
 
-                // Clear legacy tokens (don't delete file — Android may still have it cached)
-                legacyPrefs.edit().clear().apply()
+                // Delete legacy files — clear().apply() is unreliable on corrupted
+                // EncryptedSharedPreferences, so just remove the files directly.
+                deleteLegacyFiles(legacyFile, renamedFile)
 
                 Log.i(TAG, "Migrated Garmin tokens from '$LEGACY_PREFS_NAME' to '$PREFS_NAME'")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to migrate Garmin tokens: ${e.message}", e)
             }
+        }
+
+        /**
+         * Delete legacy Garmin token files from disk.
+         * Safer than EncryptedSharedPreferences.clear() which can fail on corrupted keys.
+         */
+        private fun deleteLegacyFiles(legacyFile: File, renamedFile: File) {
+            if (legacyFile.exists()) legacyFile.delete()
+            if (renamedFile.exists()) renamedFile.delete()
         }
 
         // Consumer key/secret source
