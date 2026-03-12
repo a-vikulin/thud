@@ -95,15 +95,16 @@ class WorkoutExecutionEngine(
     private var currentHeartRateBpm: Double = 0.0
     private var currentPowerWatts: Double = 0.0  // Incline-adjusted power from Stryd
 
-    // Adjustment coefficients - apply to all step targets when executing
+    // Adjustment coefficients/offsets - apply to all step targets when executing
     // Calculated from reported speed/incline vs step target
     // Modified by HR auto-adjust or manual button presses
     private var speedAdjustmentCoefficient: Double = 1.0
-    private var inclineAdjustmentCoefficient: Double = 1.0
+    private var inclineAdjustmentOffset: Double = 0.0  // Additive: effective = target + offset
     private var hasReachedTargetSpeed: Boolean = false  // Don't calc coefficient during initial acceleration
+    private var hasReachedTargetIncline: Boolean = false  // Don't calc offset during incline transition
 
     // Per-step coefficient scoping (ONE_STEP mode)
-    // Key: stepIdentityKey, Value: (speedCoeff, inclineCoeff)
+    // Key: stepIdentityKey, Value: (speedCoeff, inclineOffset)
     private var adjustmentScope: AdjustmentScope = AdjustmentScope.ALL_STEPS
     private val stepCoefficients: MutableMap<String, Pair<Double, Double>> = mutableMapOf()
 
@@ -310,11 +311,12 @@ class WorkoutExecutionEngine(
         // Reset acceleration flag — belt restarts from 0 after pause and needs time
         // to reach target speed before coefficient tracking resumes
         hasReachedTargetSpeed = false
+        hasReachedTargetIncline = false
 
         // Calculate effective pace/incline using the adjustment coefficients
         val effectivePace = getEffectiveSpeed(step)
         val effectiveIncline = getEffectiveIncline(step)
-        val isAdjustmentActive = speedAdjustmentCoefficient != 1.0 || inclineAdjustmentCoefficient != 1.0
+        val isAdjustmentActive = speedAdjustmentCoefficient != 1.0 || inclineAdjustmentOffset != 0.0
 
         _state.value = WorkoutExecutionState.Running(
             workout = currentState.workout,
@@ -530,17 +532,26 @@ class WorkoutExecutionEngine(
             }
         }
 
-        // For incline, handle the case where base is 0%
-        if (step.inclineTargetPercent > 0) {
-            val oldCoefficient = inclineAdjustmentCoefficient
-            inclineAdjustmentCoefficient = actualInclinePercent / step.inclineTargetPercent
-
-            if (kotlin.math.abs(inclineAdjustmentCoefficient - oldCoefficient) > 0.01) {
-                val percentChange = ((inclineAdjustmentCoefficient - 1.0) * 100)
-                val displayStr = if (percentChange >= 0) "+%.0f%%".format(percentChange) else "%.0f%%".format(percentChange)
-                emitEvent(WorkoutEvent.EffortAdjusted("incline", inclineAdjustmentCoefficient, displayStr))
-                Log.d(TAG, "Incline coefficient changed: $oldCoefficient -> $inclineAdjustmentCoefficient ($displayStr)")
+        // Incline uses additive offset: effective = target + offset
+        // Wait until treadmill has reached commanded incline before tracking offset
+        val effectiveTargetIncline = step.inclineTargetPercent + inclineAdjustmentOffset
+        if (!hasReachedTargetIncline) {
+            if (kotlin.math.abs(actualInclinePercent - effectiveTargetIncline) <= 0.5) {
+                hasReachedTargetIncline = true
+                Log.d(TAG, "Incline reached target: actual=$actualInclinePercent, target=$effectiveTargetIncline")
+            } else {
+                return  // Still transitioning, don't update offset
             }
+        }
+
+        val oldOffset = inclineAdjustmentOffset
+        val newOffset = actualInclinePercent - step.inclineTargetPercent
+
+        if (kotlin.math.abs(newOffset - oldOffset) > 0.01) {
+            inclineAdjustmentOffset = newOffset
+            val displayStr = if (newOffset >= 0) "+%.1f%%".format(newOffset) else "%.1f%%".format(newOffset)
+            emitEvent(WorkoutEvent.EffortAdjusted("incline", newOffset, displayStr))
+            Log.d(TAG, "Incline offset changed: $oldOffset -> $inclineAdjustmentOffset ($displayStr)")
         }
     }
 
@@ -742,8 +753,9 @@ class WorkoutExecutionEngine(
                 val toPhase = if (crossingWarmupToMain) "main" else "cooldown"
                 Log.d(TAG, "Phase boundary crossed ($fromPhase -> $toPhase): resetting coefficients")
                 speedAdjustmentCoefficient = 1.0
-                inclineAdjustmentCoefficient = 1.0
+                inclineAdjustmentOffset = 0.0
                 hasReachedTargetSpeed = false
+        hasReachedTargetIncline = false
                 currentProgressionBaseSpeed = 0.0
                 lastCommandedProgressionSpeed = 0.0
                 stepCoefficients.clear()
@@ -755,7 +767,7 @@ class WorkoutExecutionEngine(
             val prevStep = executionSteps.getOrNull(previousIndex)
             if (prevStep != null && prevStep.stepIdentityKey.isNotEmpty()) {
                 stepCoefficients[prevStep.stepIdentityKey] = Pair(
-                    speedAdjustmentCoefficient, inclineAdjustmentCoefficient
+                    speedAdjustmentCoefficient, inclineAdjustmentOffset
                 )
             }
             val nextStep = executionSteps[index]
@@ -763,13 +775,13 @@ class WorkoutExecutionEngine(
                 val saved = stepCoefficients[nextStep.stepIdentityKey]
                 if (saved != null) {
                     speedAdjustmentCoefficient = saved.first
-                    inclineAdjustmentCoefficient = saved.second
-                    Log.d(TAG, "ONE_STEP: restored coefficients for '${nextStep.stepIdentityKey}': " +
-                        "speed=${"%.2f".format(saved.first)}, incline=${"%.2f".format(saved.second)}")
+                    inclineAdjustmentOffset = saved.second
+                    Log.d(TAG, "ONE_STEP: restored adjustments for '${nextStep.stepIdentityKey}': " +
+                        "speed=${"%.2f".format(saved.first)}, inclineOffset=${"%.1f".format(saved.second)}")
                 } else {
                     speedAdjustmentCoefficient = 1.0
-                    inclineAdjustmentCoefficient = 1.0
-                    Log.d(TAG, "ONE_STEP: fresh coefficients for '${nextStep.stepIdentityKey}'")
+                    inclineAdjustmentOffset = 0.0
+                    Log.d(TAG, "ONE_STEP: fresh adjustments for '${nextStep.stepIdentityKey}'")
                 }
             }
         }
@@ -787,6 +799,7 @@ class WorkoutExecutionEngine(
 
         // Reset flags for new step
         hasReachedTargetSpeed = false  // Wait for belt to reach target before tracking coefficient
+        hasReachedTargetIncline = false  // Wait for incline to reach target before tracking offset
 
         // Initialize progression base speed for new step
         if (step.hasProgression) {
@@ -831,16 +844,16 @@ class WorkoutExecutionEngine(
             )
         }
 
-        // Calculate effective targets with adjustment coefficients
+        // Calculate effective targets with adjustment coefficients/offsets
         val effectivePaceKph = step.paceTargetKph * speedAdjustmentCoefficient
-        val effectiveInclinePercent = step.inclineTargetPercent * inclineAdjustmentCoefficient
+        val effectiveInclinePercent = step.inclineTargetPercent + inclineAdjustmentOffset
 
         // Emit event with effective values
         emitEvent(WorkoutEvent.StepStarted(step, effectivePaceKph, effectiveInclinePercent))
 
         Log.d(TAG, "Started step ${index + 1}/${executionSteps.size}: ${step.displayName}, " +
             "effective pace=${"%.1f".format(effectivePaceKph)} kph (coef=${"%.2f".format(speedAdjustmentCoefficient)}), " +
-            "effective incline=${"%.1f".format(effectiveInclinePercent)}% (coef=${"%.2f".format(inclineAdjustmentCoefficient)})")
+            "effective incline=${"%.1f".format(effectiveInclinePercent)}% (offset=${"%.1f".format(inclineAdjustmentOffset)})")
     }
 
     private fun applyStepTargets(step: ExecutionStep) {
@@ -1083,7 +1096,7 @@ class WorkoutExecutionEngine(
         }
         cachedWorkoutElapsedMs = getWorkoutElapsedMs()
 
-        val isAdjustmentActive = speedAdjustmentCoefficient != 1.0 || inclineAdjustmentCoefficient != 1.0
+        val isAdjustmentActive = speedAdjustmentCoefficient != 1.0 || inclineAdjustmentOffset != 0.0
 
         // Calculate countdown (3, 2, 1) for the last 3 seconds before step ends
         val countdownSeconds = calculateCountdownSeconds(step)
@@ -1118,7 +1131,7 @@ class WorkoutExecutionEngine(
         val stepIdx = currentStepIndex
         if (stepIdx !in executionSteps.indices) return
         val step = executionSteps[stepIdx]
-        val isAdjustmentActive = speedAdjustmentCoefficient != 1.0 || inclineAdjustmentCoefficient != 1.0
+        val isAdjustmentActive = speedAdjustmentCoefficient != 1.0 || inclineAdjustmentOffset != 0.0
 
         // Calculate countdown (3, 2, 1) for the last 3 seconds before step ends
         val countdownSeconds = calculateCountdownSeconds(step)
@@ -1149,8 +1162,8 @@ class WorkoutExecutionEngine(
         return when {
             speedAdjustmentCoefficient < 0.99 -> "reducing"
             speedAdjustmentCoefficient > 1.01 -> "increasing"
-            inclineAdjustmentCoefficient < 0.99 -> "reducing"
-            inclineAdjustmentCoefficient > 1.01 -> "increasing"
+            inclineAdjustmentOffset < -0.01 -> "reducing"
+            inclineAdjustmentOffset > 0.01 -> "increasing"
             else -> null
         }
     }
@@ -1223,8 +1236,9 @@ class WorkoutExecutionEngine(
         workoutStartDistanceKm = 0.0
         stepStartDistanceKm = 0.0
         speedAdjustmentCoefficient = 1.0
-        inclineAdjustmentCoefficient = 1.0
+        inclineAdjustmentOffset = 0.0
         hasReachedTargetSpeed = false
+        hasReachedTargetIncline = false
         currentProgressionBaseSpeed = 0.0
         lastCommandedProgressionSpeed = 0.0
         adjustmentScope = AdjustmentScope.ALL_STEPS
@@ -1269,10 +1283,10 @@ class WorkoutExecutionEngine(
     fun getSpeedAdjustmentCoefficient(): Double = speedAdjustmentCoefficient
 
     /**
-     * Get the current incline adjustment coefficient.
+     * Get the current incline adjustment offset.
      * Used by UI/chart to show adjusted targets for remaining steps.
      */
-    fun getInclineAdjustmentCoefficient(): Double = inclineAdjustmentCoefficient
+    fun getInclineAdjustmentOffset(): Double = inclineAdjustmentOffset
 
     /**
      * Compute the current base speed for a progression step.
@@ -1306,9 +1320,9 @@ class WorkoutExecutionEngine(
     fun getEffectiveSpeed(step: ExecutionStep): Double = getProgressionBaseSpeed(step) * speedAdjustmentCoefficient
 
     /**
-     * Get effective incline for a step (base target * coefficient).
+     * Get effective incline for a step (base target + offset).
      */
-    fun getEffectiveIncline(step: ExecutionStep): Double = step.inclineTargetPercent * inclineAdjustmentCoefficient
+    fun getEffectiveIncline(step: ExecutionStep): Double = step.inclineTargetPercent + inclineAdjustmentOffset
 
     /**
      * Reset both adjustment coefficients to 1.0.
@@ -1316,14 +1330,14 @@ class WorkoutExecutionEngine(
      */
     fun resetAdjustmentCoefficients() {
         speedAdjustmentCoefficient = 1.0
-        inclineAdjustmentCoefficient = 1.0
+        inclineAdjustmentOffset = 0.0
         if (adjustmentScope == AdjustmentScope.ONE_STEP && currentStepIndex >= 0) {
             val step = executionSteps.getOrNull(currentStepIndex)
             if (step != null && step.stepIdentityKey.isNotEmpty()) {
-                stepCoefficients[step.stepIdentityKey] = Pair(1.0, 1.0)
+                stepCoefficients[step.stepIdentityKey] = Pair(1.0, 0.0)
             }
         }
-        Log.d(TAG, "Reset adjustment coefficients to 1.0")
+        Log.d(TAG, "Reset adjustment coefficients (speed=1.0, inclineOffset=0.0)")
     }
 
     /**
@@ -1345,7 +1359,7 @@ class WorkoutExecutionEngine(
             val currentStep = executionSteps.getOrNull(currentStepIndex)
             if (currentStep != null && currentStep.stepIdentityKey.isNotEmpty()) {
                 snapshot[currentStep.stepIdentityKey] = Pair(
-                    speedAdjustmentCoefficient, inclineAdjustmentCoefficient
+                    speedAdjustmentCoefficient, inclineAdjustmentOffset
                 )
             }
         }
@@ -1375,8 +1389,9 @@ class WorkoutExecutionEngine(
             stepStartDistanceKm = stepStartDistanceKm,
             lastDistanceKm = lastDistanceKm,
             speedAdjustmentCoefficient = speedAdjustmentCoefficient,
-            inclineAdjustmentCoefficient = inclineAdjustmentCoefficient,
+            inclineAdjustmentOffset = inclineAdjustmentOffset,
             hasReachedTargetSpeed = hasReachedTargetSpeed,
+            hasReachedTargetIncline = hasReachedTargetIncline,
             currentProgressionBaseSpeed = currentProgressionBaseSpeed,
             adjustmentScope = adjustmentScope,
             stepCoefficients = if (adjustmentScope == AdjustmentScope.ONE_STEP) stepCoefficients.toMap() else null
@@ -1415,8 +1430,9 @@ class WorkoutExecutionEngine(
         stepStartDistanceKm = state.stepStartDistanceKm
         lastDistanceKm = state.lastDistanceKm
         speedAdjustmentCoefficient = state.speedAdjustmentCoefficient
-        inclineAdjustmentCoefficient = state.inclineAdjustmentCoefficient
+        inclineAdjustmentOffset = state.inclineAdjustmentOffset
         hasReachedTargetSpeed = state.hasReachedTargetSpeed
+        hasReachedTargetIncline = state.hasReachedTargetIncline
         currentProgressionBaseSpeed = state.currentProgressionBaseSpeed
         adjustmentScope = state.adjustmentScope
         if (state.stepCoefficients != null) {
@@ -1451,7 +1467,7 @@ class WorkoutExecutionEngine(
                 workoutDistanceMeters = getWorkoutDistanceMeters()
             )
         } else {
-            val isAdjustmentActive = speedAdjustmentCoefficient != 1.0 || inclineAdjustmentCoefficient != 1.0
+            val isAdjustmentActive = speedAdjustmentCoefficient != 1.0 || inclineAdjustmentOffset != 0.0
             _state.value = WorkoutExecutionState.Running(
                 workout = workout,
                 currentStepIndex = currentStepIndex,
@@ -1468,7 +1484,7 @@ class WorkoutExecutionEngine(
         }
 
         Log.d(TAG, "Restored engine state: step=$currentStepIndex/${executionSteps.size}, " +
-            "speedCoeff=$speedAdjustmentCoefficient, inclineCoeff=$inclineAdjustmentCoefficient")
+            "speedCoeff=$speedAdjustmentCoefficient, inclineOffset=$inclineAdjustmentOffset")
     }
 
     /**

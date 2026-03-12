@@ -49,8 +49,9 @@ data class EnginePersistenceState(
     val stepStartDistanceKm: Double,
     val lastDistanceKm: Double,
     val speedAdjustmentCoefficient: Double,
-    val inclineAdjustmentCoefficient: Double,
+    val inclineAdjustmentOffset: Double,
     val hasReachedTargetSpeed: Boolean,
+    val hasReachedTargetIncline: Boolean = false,
     val currentProgressionBaseSpeed: Double = 0.0,
     val adjustmentScope: AdjustmentScope = AdjustmentScope.ALL_STEPS,
     val stepCoefficients: Map<String, Pair<Double, Double>>? = null
@@ -312,8 +313,9 @@ class RunPersistenceManager(
             put("ssd", state.stepStartDistanceKm)
             put("ldk", state.lastDistanceKm)
             put("sac", state.speedAdjustmentCoefficient)
-            put("iac2", state.inclineAdjustmentCoefficient)
+            put("iao", state.inclineAdjustmentOffset)
             put("hrts", state.hasReachedTargetSpeed)
+            put("hrti", state.hasReachedTargetIncline)
             put("cpbs", state.currentProgressionBaseSpeed)
             put("as", state.adjustmentScope.name)
             if (!state.stepCoefficients.isNullOrEmpty()) {
@@ -440,8 +442,9 @@ class RunPersistenceManager(
             stepStartDistanceKm = json.getDouble("ssd"),
             lastDistanceKm = json.getDouble("ldk"),
             speedAdjustmentCoefficient = json.getDouble("sac"),
-            inclineAdjustmentCoefficient = json.getDouble("iac2"),
+            inclineAdjustmentOffset = json.optDouble("iao", 0.0),
             hasReachedTargetSpeed = json.getBoolean("hrts"),
+            hasReachedTargetIncline = json.optBoolean("hrti", false),
             currentProgressionBaseSpeed = json.optDouble("cpbs", 0.0),
             adjustmentScope = adjustmentScope,
             stepCoefficients = stepCoefficients

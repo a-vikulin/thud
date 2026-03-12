@@ -549,14 +549,14 @@ class ChartManager(
      *
      * @param currentStepIndex Which step we're currently on
      * @param speedCoeff Speed adjustment coefficient
-     * @param inclineCoeff Incline adjustment coefficient
+     * @param inclineOffset Incline adjustment offset (0.0 = no adjustment)
      * @param stepElapsedMs How long we've been in the current step (for positioning future segments)
      * @param workoutElapsedMs Total workout elapsed time from engine (for accurate timing)
      */
     fun setAdjustmentCoefficients(
         currentStepIndex: Int,
         speedCoeff: Double,
-        inclineCoeff: Double,
+        inclineOffset: Double,
         stepElapsedMs: Long = 0,
         workoutElapsedMs: Long = 0,
         perStepCoefficients: Map<String, Pair<Double, Double>>? = null
@@ -578,7 +578,7 @@ class ChartManager(
             }
             lastStepIndex = currentStepIndex
 
-            chart.setAdjustmentCoefficients(currentStepIndex, speedCoeff, inclineCoeff, stepElapsedMs, workoutElapsedMs, perStepCoefficients)
+            chart.setAdjustmentCoefficients(currentStepIndex, speedCoeff, inclineOffset, stepElapsedMs, workoutElapsedMs, perStepCoefficients)
         }
     }
 

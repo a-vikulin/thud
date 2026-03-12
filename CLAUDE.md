@@ -230,7 +230,7 @@ ExecutionStep convenience: `step.getHrTargetMinBpm(lthrBpm)`, `step.getPowerTarg
 | `speedCalibrationC0..C5` | `ServiceStateHolder` | **CALIBRATION polynomial** — auto model `C0 + C1*x + C2*x² + C3*x³ + C4*sin(θ) + C5*x*sin(θ)` | Auto-regression from Stryd after every run |
 | `speedCalibrationDegree` | `ServiceStateHolder` | **Polynomial degree** (1, 2, or 3) for auto calibration | User (Settings spinner) |
 | `speedAdjustmentCoefficient` | `WorkoutExecutionEngine` | **DYNAMIC** — HR auto-adjust / manual buttons | Code, from telemetry |
-| `inclineAdjustmentCoefficient` | `WorkoutExecutionEngine` | **DYNAMIC** — incline auto-adjust / manual buttons | Code, from telemetry |
+| `inclineAdjustmentOffset` | `WorkoutExecutionEngine` | **DYNAMIC additive** — `effective = target + offset`. Manual buttons / telemetry feedback | Code, from telemetry |
 
 **paceCoefficient + speedCalibrationB:** Manual-only. User sets them via sliders. Default `a=1.0, b=0.0` = identity. Never auto-updated.
 
@@ -238,7 +238,9 @@ ExecutionStep convenience: `step.getHrTargetMinBpm(lthrBpm)`, `step.getPowerTarg
 
 **NEVER multiply/divide by `paceCoefficient` directly** — use `state.rawToAdjustedSpeed()` / `state.adjustedToRawSpeed()`.
 
-AdjustmentController is stateless for values — WorkoutExecutionEngine owns coefficients, calculates from telemetry, provides `getEffectiveSpeed(step)`.
+**inclineAdjustmentOffset:** Additive, default 0.0. `effective = target + offset`. Works at all incline targets including 0%. Updated from `actual - target` on telemetry feedback.
+
+AdjustmentController is stateless for values — WorkoutExecutionEngine owns coefficients/offsets, calculates from telemetry, provides `getEffectiveSpeed(step)` and `getEffectiveIncline(step)`.
 
 ### ⚠️ Zone Boundary Caches — MUST INVALIDATE ⚠️
 `ServiceStateHolder.hrZone2Start..hrZone5Start` and `powerZone2Start..powerZone5Start` are **cached** (not computed on access). After writing `userLthrBpm`, `userFtpWatts`, or any `hrZone*StartPercent` / `powerZone*StartPercent`, you **MUST** call `invalidateHrZoneCaches()` / `invalidatePowerZoneCaches()`. Currently only `SettingsManager` writes these (loadSettings + save callback).

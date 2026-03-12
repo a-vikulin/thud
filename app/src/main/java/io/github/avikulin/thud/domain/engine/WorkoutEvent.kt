@@ -93,11 +93,12 @@ sealed class WorkoutEvent {
     data class Error(val message: String) : WorkoutEvent()
 
     /**
-     * Effort coefficient was changed by user pressing physical buttons.
+     * Effort adjustment changed by user pressing physical buttons or auto-adjust.
+     * For speed: value is the multiplicative coefficient. For incline: value is the additive offset.
      */
     data class EffortAdjusted(
         val type: String,
-        val coefficient: Double,
+        val value: Double,
         val displayString: String
     ) : WorkoutEvent()
 }

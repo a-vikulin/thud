@@ -238,7 +238,7 @@ class WorkoutChart @JvmOverloads constructor(
     private var currentStepIndex: Int = 0
     private var previousStepIndex: Int = -1  // Track step changes to allow timeline shrinking on skip
     private var speedCoefficient: Double = 1.0
-    private var inclineCoefficient: Double = 1.0
+    private var inclineOffset: Double = 0.0
     private var perStepCoefficients: Map<String, Pair<Double, Double>>? = null  // ONE_STEP mode per-segment lookup
     private var currentStepElapsedMs: Long = 0  // How long we've been in current step
     private var currentStepActualStartMs: Long = 0  // When current step actually started (captured on step change)
@@ -1010,7 +1010,7 @@ class WorkoutChart @JvmOverloads constructor(
             currentStepIndex = 0
             previousStepIndex = -1
             speedCoefficient = 1.0
-            inclineCoefficient = 1.0
+            inclineOffset = 0.0
             perStepCoefficients = null
 
             // Enable workout mode and set fixed time range to workout duration
@@ -1047,14 +1047,14 @@ class WorkoutChart @JvmOverloads constructor(
      *
      * @param stepIndex Current step index (0-based)
      * @param speedCoeff Speed adjustment coefficient (1.0 = no adjustment)
-     * @param inclineCoeff Incline adjustment coefficient (1.0 = no adjustment)
+     * @param inclineOffset Incline adjustment offset (0.0 = no adjustment)
      * @param stepElapsedMs How long we've been in the current step (for positioning)
      * @param workoutElapsedMs Total elapsed workout time from engine (avoids stale data point timing)
      */
     fun setAdjustmentCoefficients(
         stepIndex: Int,
         speedCoeff: Double,
-        inclineCoeff: Double,
+        inclineOffset: Double,
         stepElapsedMs: Long = 0,
         workoutElapsedMs: Long = 0,
         perStepCoefficients: Map<String, Pair<Double, Double>>? = null
@@ -1072,7 +1072,7 @@ class WorkoutChart @JvmOverloads constructor(
 
         currentStepIndex = stepIndex
         speedCoefficient = speedCoeff
-        inclineCoefficient = inclineCoeff
+        this.inclineOffset = inclineOffset
         this.perStepCoefficients = perStepCoefficients
         currentStepElapsedMs = stepElapsedMs
         currentWorkoutElapsedMs = currentElapsedMs
@@ -1092,15 +1092,15 @@ class WorkoutChart @JvmOverloads constructor(
      * In ONE_STEP mode: current step uses active coefficients, others use per-step map lookup.
      */
     private fun getSegmentCoefficients(segment: PlannedSegment, index: Int): Pair<Double, Double> {
-        // Coefficients don't cross phase boundaries — segments in a different phase use 1.0
+        // Coefficients don't cross phase boundaries — segments in a different phase use defaults
         val currentPhase = plannedSegments.getOrNull(currentStepIndex)?.phase
-        if (currentPhase != null && segment.phase != currentPhase) return Pair(1.0, 1.0)
+        if (currentPhase != null && segment.phase != currentPhase) return Pair(1.0, 0.0)
 
-        val map = perStepCoefficients ?: return Pair(speedCoefficient, inclineCoefficient)
+        val map = perStepCoefficients ?: return Pair(speedCoefficient, inclineOffset)
         // Current step: use active coefficients (freshest from telemetry)
-        if (index == currentStepIndex) return Pair(speedCoefficient, inclineCoefficient)
+        if (index == currentStepIndex) return Pair(speedCoefficient, inclineOffset)
         // Future step: look up by identity key in map
-        return map[segment.stepIdentityKey] ?: Pair(1.0, 1.0)
+        return map[segment.stepIdentityKey] ?: Pair(1.0, 0.0)
     }
 
     /**
@@ -1161,7 +1161,7 @@ class WorkoutChart @JvmOverloads constructor(
         currentStepIndex = 0
         previousStepIndex = -1
         speedCoefficient = 1.0
-        inclineCoefficient = 1.0
+        inclineOffset = 0.0
         perStepCoefficients = null
         // Reset time range and all scales to initial values for free run mode
         timeRangeMinutes = INITIAL_TIME_RANGE_MINUTES
@@ -2474,7 +2474,7 @@ class WorkoutChart @JvmOverloads constructor(
 
             // Apply adjustment coefficients to current and future segments
             val adjustedPace = segment.paceKph * segSpeedCoeff
-            val adjustedIncline = segment.inclinePercent * segInclineCoeff
+            val adjustedIncline = segment.inclinePercent + segInclineCoeff
             val hasProgression = segment.paceEndKph != null && segment.paceEndKph != segment.paceKph
             val adjustedEndPace = if (hasProgression) segment.paceEndKph!! * segSpeedCoeff else adjustedPace
 

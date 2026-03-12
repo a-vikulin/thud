@@ -710,7 +710,7 @@ class WorkoutEngineManager(
         chartManager?.setAdjustmentCoefficients(
             currentStepIndex = stepIndex,
             speedCoeff = engine.getSpeedAdjustmentCoefficient(),
-            inclineCoeff = engine.getInclineAdjustmentCoefficient(),
+            inclineOffset = engine.getInclineAdjustmentOffset(),
             stepElapsedMs = stepElapsedMs,
             workoutElapsedMs = workoutElapsedMs,
             perStepCoefficients = perStepCoeffs
@@ -752,14 +752,14 @@ class WorkoutEngineManager(
     }
 
     /**
-     * Get current incline adjustment coefficient (default 1.0 when engine not running).
+     * Get current incline adjustment offset (default 0.0 when engine not running).
      */
-    fun getInclineAdjustmentCoefficient(): Double {
-        val engine = workoutEngine ?: return 1.0
+    fun getInclineAdjustmentOffset(): Double {
+        val engine = workoutEngine ?: return 0.0
         return try {
-            engine.getInclineAdjustmentCoefficient()
+            engine.getInclineAdjustmentOffset()
         } catch (e: Exception) {
-            1.0
+            0.0
         }
     }
 

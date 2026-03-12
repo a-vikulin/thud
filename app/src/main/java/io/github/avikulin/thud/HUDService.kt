@@ -2807,7 +2807,7 @@ class HUDService : Service(),
                     chartManager.setAdjustmentCoefficients(
                         currentStepIndex = executionState.currentStepIndex,
                         speedCoeff = workoutEngineManager.getSpeedAdjustmentCoefficient(),
-                        inclineCoeff = workoutEngineManager.getInclineAdjustmentCoefficient(),
+                        inclineOffset = workoutEngineManager.getInclineAdjustmentOffset(),
                         stepElapsedMs = executionState.stepElapsedMs,
                         workoutElapsedMs = executionState.workoutElapsedMs,
                         perStepCoefficients = workoutEngineManager.getPerStepCoefficients()
@@ -2819,7 +2819,7 @@ class HUDService : Service(),
                     chartManager.setAdjustmentCoefficients(
                         currentStepIndex = executionState.currentStepIndex,
                         speedCoeff = workoutEngineManager.getSpeedAdjustmentCoefficient(),
-                        inclineCoeff = workoutEngineManager.getInclineAdjustmentCoefficient(),
+                        inclineOffset = workoutEngineManager.getInclineAdjustmentOffset(),
                         stepElapsedMs = executionState.stepElapsedMs,
                         workoutElapsedMs = executionState.workoutElapsedMs,
                         perStepCoefficients = workoutEngineManager.getPerStepCoefficients()
