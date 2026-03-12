@@ -19,6 +19,7 @@ data class WorkoutDataPoint(
     val cadenceSpm: Int = 0,
     val strydSpeedKph: Double = 0.0,       // Raw instantaneous speed from Stryd foot pod
     val rawTreadmillSpeedKph: Double = 0.0, // Raw treadmill speed before calibration model
+    val rawTreadmillInclinePercent: Double = 0.0, // Raw treadmill incline before adjustment (for calibration)
     // Workout step tracking for FIT lap export
     val stepIndex: Int = -1,
     val stepName: String = "",

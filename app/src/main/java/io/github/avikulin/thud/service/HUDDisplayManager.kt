@@ -364,7 +364,7 @@ class HUDDisplayManager(
         val displayText = when {
             currentTreadmillState == WorkoutState.WORKOUT_STATE_PAUSED -> "❚❚"
             currentTreadmillState == WorkoutState.WORKOUT_STATE_RUNNING && lastSpeedKph > 0 -> {
-                PaceConverter.formatPaceFromSpeed(state.rawToAdjustedSpeed(lastSpeedKph))
+                PaceConverter.formatPaceFromSpeed(state.rawToAdjustedSpeed(lastSpeedKph, state.currentRawInclinePercent))
             }
             else -> "▶"  // Idle or stopped
         }

@@ -71,6 +71,8 @@ class SettingsManager(
         const val PREF_SPEED_CALIBRATION_C1 = "speed_calibration_c1"
         const val PREF_SPEED_CALIBRATION_C2 = "speed_calibration_c2"
         const val PREF_SPEED_CALIBRATION_C3 = "speed_calibration_c3"
+        const val PREF_SPEED_CALIBRATION_C4 = "speed_calibration_c4"
+        const val PREF_SPEED_CALIBRATION_C5 = "speed_calibration_c5"
         const val PREF_FIT_USE_STRYD_SPEED = "fit_use_stryd_speed"
         const val PREF_INCLINE_ADJUSTMENT = "incline_adjustment"
         const val PREF_INCLINE_POWER_COEFFICIENT = "incline_power_coefficient"
@@ -401,6 +403,8 @@ class SettingsManager(
         state.speedCalibrationC1 = prefs.getFloat(PREF_SPEED_CALIBRATION_C1, 1f).toDouble()
         state.speedCalibrationC2 = prefs.getFloat(PREF_SPEED_CALIBRATION_C2, 0f).toDouble()
         state.speedCalibrationC3 = prefs.getFloat(PREF_SPEED_CALIBRATION_C3, 0f).toDouble()
+        state.speedCalibrationC4 = prefs.getFloat(PREF_SPEED_CALIBRATION_C4, 0f).toDouble()
+        state.speedCalibrationC5 = prefs.getFloat(PREF_SPEED_CALIBRATION_C5, 0f).toDouble()
         state.fitUseStrydSpeed = prefs.getBoolean(PREF_FIT_USE_STRYD_SPEED, true)
         state.inclineAdjustment = prefs.getFloat(PREF_INCLINE_ADJUSTMENT, DEFAULT_INCLINE_ADJUSTMENT.toFloat()).toDouble()
         state.inclinePowerCoefficient = prefs.getFloat(PREF_INCLINE_POWER_COEFFICIENT, DEFAULT_INCLINE_POWER_COEFFICIENT.toFloat()).toDouble()
@@ -1211,6 +1215,8 @@ class SettingsManager(
                         state.speedCalibrationC1 = result.coefficients.getOrElse(1) { 0.0 }
                         state.speedCalibrationC2 = result.coefficients.getOrElse(2) { 0.0 }
                         state.speedCalibrationC3 = result.coefficients.getOrElse(3) { 0.0 }
+                        state.speedCalibrationC4 = result.coefficients.getOrElse(4) { 0.0 }
+                        state.speedCalibrationC5 = result.coefficients.getOrElse(5) { 0.0 }
                     }
                 }
                 refreshCalibrationDisplay()
@@ -1229,20 +1235,27 @@ class SettingsManager(
      */
     private fun refreshCalibrationDisplay() {
         val isAuto = checkAutoCalibrate?.isChecked ?: state.speedCalibrationAuto
-        val points = cachedCalibrationPoints
-        val n = points.size
+        val allPoints = cachedCalibrationPoints
+        val n = allPoints.size
+
+        // Chart shows only near-flat points (0-3% raw incline) for cleaner scatter plot.
+        // R² and regression use ALL data (including incline runs).
+        val chartPoints = allPoints.filter { it.inclinePercent in 0.0..3.0 }
+
+        // Curve evaluated at user's incline adjustment (their "flat" setting)
+        val curveSinIncline = PaceConverter.inclinePercentToSin(state.inclineAdjustment)
 
         if (isAuto) {
             val coefficients = state.getPolynomialCoefficients()
-            val r2 = if (n >= 10) SpeedCalibrationManager.computePolynomialR2(points, coefficients) else 0.0
+            val r2 = if (n >= 10) SpeedCalibrationManager.computePolynomialR2(allPoints, coefficients) else 0.0
             // In auto mode, pass a=1,b=0 as unused linear params; polynomial coefficients drive rendering
-            calibrationChart?.setData(points, 1.0, 0.0, r2, n, state.minSpeedKph, state.maxSpeedKph, coefficients)
+            calibrationChart?.setData(chartPoints, 1.0, 0.0, r2, n, state.minSpeedKph, state.maxSpeedKph, coefficients, curveSinIncline)
             updateCalibrationEquation(r2, n)
         } else {
             val a = sliderSlopeA?.getValue() ?: state.paceCoefficient
             val b = sliderOffsetB?.getValue() ?: state.speedCalibrationB
-            val r2 = if (n >= 10) SpeedCalibrationManager.computeR2(points, a, b) else 0.0
-            calibrationChart?.setData(points, a, b, r2, n, state.minSpeedKph, state.maxSpeedKph)
+            val r2 = if (n >= 10) SpeedCalibrationManager.computeR2(allPoints, a, b) else 0.0
+            calibrationChart?.setData(chartPoints, a, b, r2, n, state.minSpeedKph, state.maxSpeedKph)
             updateCalibrationEquation(r2, n)
         }
     }
@@ -1251,7 +1264,7 @@ class SettingsManager(
      * Update the equation text display. Pure text — no side effects.
      *
      * Manual mode: `y = 1.000x + 0.00 (R²=0.950) N=23`
-     * Auto mode: `y = C0 + C1·x [+ C2·x² [+ C3·x³]] (R²=0.985) N=23`
+     * Auto mode: `y = C0 + C1·x [+ C2·x² [+ C3·x³]] + C4·sin(θ) + C5·x·sin(θ) (R²=0.985) N=23`
      */
     private fun updateCalibrationEquation(r2: Double? = null, n: Int? = null) {
         val isAuto = checkAutoCalibrate?.isChecked ?: state.speedCalibrationAuto
@@ -1259,22 +1272,26 @@ class SettingsManager(
         val nStr = if (n != null && n > 0) "  N=$n" else ""
 
         if (isAuto) {
-            val c = state.getPolynomialCoefficients()
+            val c = state.getPolynomialCoefficients()  // always 6: [C0, C1, C2, C3, C4, C5]
             val sb = StringBuilder()
             sb.append("y = ")
             sb.append(String.format(Locale.US, "%.3f", c[0]))
-            if (c.size > 1) {
-                val sign1 = if (c[1] >= 0) " + " else " − "
-                sb.append(String.format(Locale.US, "%s%.3fx", sign1, abs(c[1])))
-            }
-            if (c.size > 2) {
+            // Speed terms
+            val sign1 = if (c[1] >= 0) " + " else " − "
+            sb.append(String.format(Locale.US, "%s%.3fx", sign1, abs(c[1])))
+            if (state.speedCalibrationDegree >= 2) {
                 val sign2 = if (c[2] >= 0) " + " else " − "
                 sb.append(String.format(Locale.US, "%s%.4fx²", sign2, abs(c[2])))
             }
-            if (c.size > 3) {
+            if (state.speedCalibrationDegree >= 3) {
                 val sign3 = if (c[3] >= 0) " + " else " − "
                 sb.append(String.format(Locale.US, "%s%.5fx³", sign3, abs(c[3])))
             }
+            // Incline terms (always shown)
+            val sign4 = if (c[4] >= 0) " + " else " − "
+            sb.append(String.format(Locale.US, "%s%.3f·sin(θ)", sign4, abs(c[4])))
+            val sign5 = if (c[5] >= 0) " + " else " − "
+            sb.append(String.format(Locale.US, "%s%.4f·x·sin(θ)", sign5, abs(c[5])))
             sb.append(r2Str)
             sb.append(nStr)
             tvCalibrationEquation?.text = sb.toString()
@@ -1292,7 +1309,7 @@ class SettingsManager(
     /**
      * Save calibration coefficients to SharedPreferences.
      * Called by HUDService after polynomial regression update.
-     * Persists both manual (a, b) and auto (C0..C3, degree) coefficients.
+     * Persists both manual (a, b) and auto (C0..C5, degree) coefficients.
      */
     fun saveCalibrationCoefficients(state: ServiceStateHolder) {
         prefs.edit {
@@ -1303,6 +1320,8 @@ class SettingsManager(
             putFloat(PREF_SPEED_CALIBRATION_C1, state.speedCalibrationC1.toFloat())
             putFloat(PREF_SPEED_CALIBRATION_C2, state.speedCalibrationC2.toFloat())
             putFloat(PREF_SPEED_CALIBRATION_C3, state.speedCalibrationC3.toFloat())
+            putFloat(PREF_SPEED_CALIBRATION_C4, state.speedCalibrationC4.toFloat())
+            putFloat(PREF_SPEED_CALIBRATION_C5, state.speedCalibrationC5.toFloat())
         }
     }
 
@@ -2710,6 +2729,8 @@ class SettingsManager(
             putFloat(PREF_SPEED_CALIBRATION_C1, state.speedCalibrationC1.toFloat())
             putFloat(PREF_SPEED_CALIBRATION_C2, state.speedCalibrationC2.toFloat())
             putFloat(PREF_SPEED_CALIBRATION_C3, state.speedCalibrationC3.toFloat())
+            putFloat(PREF_SPEED_CALIBRATION_C4, state.speedCalibrationC4.toFloat())
+            putFloat(PREF_SPEED_CALIBRATION_C5, state.speedCalibrationC5.toFloat())
             putBoolean(PREF_FIT_USE_STRYD_SPEED, state.fitUseStrydSpeed)
             putFloat(PREF_INCLINE_ADJUSTMENT, state.inclineAdjustment.toFloat())
             putFloat(PREF_INCLINE_POWER_COEFFICIENT, state.inclinePowerCoefficient.toFloat())

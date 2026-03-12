@@ -189,7 +189,7 @@ class TelemetryManager(
      * Set treadmill speed (adjusted speed, will be converted to treadmill speed).
      */
     fun setTreadmillSpeed(adjustedKph: Double): Boolean {
-        val treadmillKph = state.adjustedToRawSpeed(adjustedKph)
+        val treadmillKph = state.adjustedToRawSpeed(adjustedKph, state.currentRawInclinePercent)
         val success = glassOsClient?.setSpeed(treadmillKph) ?: false
         Log.d(TAG, "Set speed: $adjustedKph kph (adjusted) -> $treadmillKph kph (treadmill): $success")
         return success

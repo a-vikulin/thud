@@ -118,8 +118,9 @@ class PopupManager(
         val rawMaxKph = client?.maxSpeedKph ?: 20.0
         val treadmillMinKph = if (rawMinKph > 0) max(rawMinKph, 1.6) else 1.6
         val treadmillMaxKph = if (rawMaxKph > treadmillMinKph) rawMaxKph else 20.0
-        val adjustedMinKph = state.rawToAdjustedSpeed(treadmillMinKph)
-        val adjustedMaxKph = state.rawToAdjustedSpeed(treadmillMaxKph)
+        val rawIncline = state.currentRawInclinePercent
+        val adjustedMinKph = state.rawToAdjustedSpeed(treadmillMinKph, rawIncline)
+        val adjustedMaxKph = state.rawToAdjustedSpeed(treadmillMaxKph, rawIncline)
 
         // Generate ADJUSTED speeds at 0.5 kph steps
         var adjustedSpeeds = ServiceStateHolder.generateSpeedValues(adjustedMinKph, adjustedMaxKph)
@@ -150,7 +151,7 @@ class PopupManager(
         val buttonTextSize = resources.getDimension(R.dimen.text_popup_button) / TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 1f, resources.displayMetrics)
 
         // Current adjusted speed rounded to nearest 0.5 for highlighting
-        val currentAdjustedKph = state.rawToAdjustedSpeed(state.currentSpeedKph)
+        val currentAdjustedKph = state.rawToAdjustedSpeed(state.currentSpeedKph, rawIncline)
         val roundedCurrentAdjustedKph = round(currentAdjustedKph * 2) / 2
 
         // Create popup container with dynamic grid size

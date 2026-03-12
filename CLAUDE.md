@@ -71,7 +71,7 @@
 | Remote control | `RemoteControlManager` (SharedPrefs JSON) | `RemoteControlBridge` → `AccessibilityService` |
 | Profile registry + paths | `ProfileManager` (`tHUD_profiles` SharedPrefs) | `SettingsManager.PREFS_NAME`, `GarminConnectUploader.PREFS_NAME`, DB, exports |
 | Profile switch + PIN auth | `HUDService.handleProfileSwitch()` | `setActiveProfile()` → `stopSelf()` → restart; PIN via `setAuthenticatedSwitch()` |
-| Speed calibration | `WorkoutDataPoint` (raw + Stryd) | `SpeedCalibrationDao` → `SpeedCalibrationManager` → manual: `state.paceCoefficient` + `state.speedCalibrationB`; auto: `state.speedCalibrationC0..C3` (polynomial degree 1-3) |
+| Speed calibration | `WorkoutDataPoint` (raw + Stryd + incline) | `SpeedCalibrationDao` → `SpeedCalibrationManager` → manual: `state.paceCoefficient` + `state.speedCalibrationB`; auto: `state.speedCalibrationC0..C5` (polynomial degree 1-3 + incline terms) |
 | FIT Stryd speed flag | `ServiceStateHolder` (SharedPrefs) | `HUDService` → `FitFileExporter.exportWorkout(useStrydSpeed)` |
 | Saved BT devices | `SavedBluetoothDevices` | Sensor managers, BT dialog |
 | FTMS server settings | `ServiceStateHolder` (SharedPrefs) | `HUDService` → server start/stop |
@@ -80,11 +80,11 @@
 
 **Two independent calibration models:**
 - **Manual mode** (`speedCalibrationAuto=false`): Linear `adjustedSpeed = a * rawSpeed + b` where `a` = `paceCoefficient` (slope) and `b` = `speedCalibrationB` (intercept). User-controlled via sliders.
-- **Auto mode** (`speedCalibrationAuto=true`): Polynomial (degree 1-3) `adjustedSpeed = C0 + C1*x + C2*x² + C3*x³` using `speedCalibrationC0..C3` and `speedCalibrationDegree`. Coefficients recomputed after every run (even when auto is off), but only used live when auto is enabled. Inversion via Newton-Raphson.
+- **Auto mode** (`speedCalibrationAuto=true`): Polynomial (degree 1-3) with incline `adjustedSpeed = C0 + C1*x + C2*x² + C3*x³ + C4*sin(θ) + C5*x*sin(θ)` using `speedCalibrationC0..C5` and `speedCalibrationDegree`. sin(θ) from raw treadmill incline via `PaceConverter.inclinePercentToSin()`. Coefficients recomputed after every run (even when auto is off), but only used live when auto is enabled. Inversion via Newton-Raphson at fixed sin(θ).
 
 **Conversion methods (SINGLE SOURCE OF TRUTH):**
-- `state.rawToAdjustedSpeed(rawKph)` → branches on `speedCalibrationAuto`: polynomial `evaluatePolynomial()` or linear `rawKph * paceCoefficient + speedCalibrationB`
-- `state.adjustedToRawSpeed(adjustedKph)` → branches on `speedCalibrationAuto`: `invertPolynomialNewtonRaphson()` or `(adjustedKph - speedCalibrationB) / paceCoefficient`
+- `state.rawToAdjustedSpeed(rawKph, rawInclinePercent)` → branches on `speedCalibrationAuto`: polynomial `evaluatePolynomial(coeffs, x, sin(θ))` or linear `rawKph * paceCoefficient + speedCalibrationB`
+- `state.adjustedToRawSpeed(adjustedKph, rawInclinePercent)` → branches on `speedCalibrationAuto`: `invertPolynomialNewtonRaphson(coeffs, y, sin(θ))` or `(adjustedKph - speedCalibrationB) / paceCoefficient`
 
 **NEVER multiply/divide by `paceCoefficient` directly!** Always use `rawToAdjustedSpeed()` / `adjustedToRawSpeed()`.
 
@@ -199,7 +199,7 @@ Stateless utility — filtering + regression math. Two regression modes:
 
 **Shared:** `extractPairs(dataPoints, runStartMs)` → valid calibration pairs.
 
-**Data pipeline:** `WorkoutDataPoint` → `extractPairs()` → `SpeedCalibrationDao.insertAll()` → `getPointsForLastRuns(N)` → `computePolynomialRegression()` → `state.speedCalibrationC0..C3` (always recomputed after every run). Manual mode still uses `computeRegression()` → `state.paceCoefficient` + `state.speedCalibrationB`. DB retention: 90 runs max (trimmed on insert).
+**Data pipeline:** `WorkoutDataPoint` → `extractPairs()` → `SpeedCalibrationDao.insertAll()` → `getPointsForLastRuns(N)` → `computePolynomialRegression()` → `state.speedCalibrationC0..C5` (always recomputed after every run). Manual mode still uses `computeRegression()` → `state.paceCoefficient` + `state.speedCalibrationB`. DB retention: 90 runs max (trimmed on insert). `SpeedCalibrationPoint.inclinePercent` stores raw treadmill incline; converted to sin(θ) at computation time.
 
 ### OverlayHelper (`service/OverlayHelper.kt`)
 Overlay window and dialog utilities. `createOverlayParams()`, `createDialogContainer/Title/Message/ButtonRow()`, `createStyledButton()` (see Button Styling rule), `calculateWidth/Height()`.
@@ -213,7 +213,7 @@ Exports to Downloads/tHUD/<profile>/ via MediaStore. `saveToDownloads()`, `getTe
 Unified BT sensor storage. `getAll/getByType/save/remove/isSaved/getSavedMacs`. Types: `HR_SENSOR`, `FOOT_POD`.
 
 ### SettingsManager (`service/SettingsManager.kt`)
-All SharedPreferences keys as constants. Key groups: `pace_coefficient`/`speed_calibration_b`/`speed_calibration_auto`/`speed_calibration_run_window`/`speed_calibration_degree`/`speed_calibration_c0..c3` (calibration), `hr_zone*_max`, `threshold_pace_kph`, `default_incline`, treadmill min/max, `fit_*`/`fit_use_stryd_speed`, `ftms_*`, `garmin_auto_upload`, `remote_bindings`, `calc_hr_*` (4 keys), `dfa_*` (5 keys), `chart_zoom_timeframe_minutes`. Settings dialog: 8 tabs (User, Treadmill, Zones, Auto-Adjust, FIT Export, FTMS, HR, Chart). Guest profile: User tab has disabled username, no PIN/Delete.
+All SharedPreferences keys as constants. Key groups: `pace_coefficient`/`speed_calibration_b`/`speed_calibration_auto`/`speed_calibration_run_window`/`speed_calibration_degree`/`speed_calibration_c0..c5` (calibration), `hr_zone*_max`, `threshold_pace_kph`, `default_incline`, treadmill min/max, `fit_*`/`fit_use_stryd_speed`, `ftms_*`, `garmin_auto_upload`, `remote_bindings`, `calc_hr_*` (4 keys), `dfa_*` (5 keys), `chart_zoom_timeframe_minutes`. Settings dialog: 8 tabs (User, Treadmill, Zones, Auto-Adjust, FIT Export, FTMS, HR, Chart). Guest profile: User tab has disabled username, no PIN/Delete.
 
 ### ⚠️ HR/Power Targets: Percentage-Based ⚠️
 All HR/Power targets stored as **% of threshold** (LTHR/FTP) so workouts survive threshold changes.
@@ -227,14 +227,14 @@ ExecutionStep convenience: `step.getHrTargetMinBpm(lthrBpm)`, `step.getPowerTarg
 |-------------|----------|---------|------------|
 | `paceCoefficient` | `ServiceStateHolder` | **CALIBRATION slope `a`** — manual linear model `adjusted = a * raw + b` | User (Settings slider) only |
 | `speedCalibrationB` | `ServiceStateHolder` | **CALIBRATION intercept `b`** — manual linear model offset | User (Settings slider) only |
-| `speedCalibrationC0..C3` | `ServiceStateHolder` | **CALIBRATION polynomial** — auto model `C0 + C1*x + C2*x² + C3*x³` | Auto-regression from Stryd after every run |
+| `speedCalibrationC0..C5` | `ServiceStateHolder` | **CALIBRATION polynomial** — auto model `C0 + C1*x + C2*x² + C3*x³ + C4*sin(θ) + C5*x*sin(θ)` | Auto-regression from Stryd after every run |
 | `speedCalibrationDegree` | `ServiceStateHolder` | **Polynomial degree** (1, 2, or 3) for auto calibration | User (Settings spinner) |
 | `speedAdjustmentCoefficient` | `WorkoutExecutionEngine` | **DYNAMIC** — HR auto-adjust / manual buttons | Code, from telemetry |
 | `inclineAdjustmentCoefficient` | `WorkoutExecutionEngine` | **DYNAMIC** — incline auto-adjust / manual buttons | Code, from telemetry |
 
 **paceCoefficient + speedCalibrationB:** Manual-only. User sets them via sliders. Default `a=1.0, b=0.0` = identity. Never auto-updated.
 
-**speedCalibrationC0..C3:** Auto-only. Recomputed after every run via `SpeedCalibrationManager.computePolynomialRegression()` regardless of mode, but only used for live conversion when `speedCalibrationAuto = true`. Default `C0=0.0, C1=1.0, C2=0.0, C3=0.0` = identity polynomial.
+**speedCalibrationC0..C5:** Auto-only. Recomputed after every run via `SpeedCalibrationManager.computePolynomialRegression()` regardless of mode, but only used for live conversion when `speedCalibrationAuto = true`. Default `C0=0.0, C1=1.0, C2-C5=0.0` = identity polynomial. C4=sin(θ) term, C5=x·sin(θ) cross term. Uses raw treadmill incline converted to sin(θ) via `PaceConverter.inclinePercentToSin()`.
 
 **NEVER multiply/divide by `paceCoefficient` directly** — use `state.rawToAdjustedSpeed()` / `state.adjustedToRawSpeed()`.
 

@@ -16,5 +16,6 @@ data class SpeedCalibrationPoint(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val runId: Long,            // run start timestamp (groups points by run)
     val treadmillKph: Double,   // raw treadmill speed
-    val strydKph: Double        // Stryd foot pod speed
+    val strydKph: Double,       // Stryd foot pod speed
+    val inclinePercent: Double = 0.0  // raw treadmill incline (for incline-aware calibration)
 )

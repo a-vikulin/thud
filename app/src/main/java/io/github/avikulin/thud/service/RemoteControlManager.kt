@@ -121,10 +121,11 @@ class RemoteControlManager(
 
     private fun adjustSpeed(deltaKph: Double) {
         val fromPending = pendingSpeedAdjusted != null
+        val rawIncline = state.currentRawInclinePercent
         val currentAdjusted = pendingSpeedAdjusted
-            ?: state.rawToAdjustedSpeed(state.currentSpeedKph)
+            ?: state.rawToAdjustedSpeed(state.currentSpeedKph, rawIncline)
         val newAdjusted = (currentAdjusted + deltaKph)
-            .coerceIn(state.rawToAdjustedSpeed(state.minSpeedKph), state.rawToAdjustedSpeed(state.maxSpeedKph))
+            .coerceIn(state.rawToAdjustedSpeed(state.minSpeedKph, rawIncline), state.rawToAdjustedSpeed(state.maxSpeedKph, rawIncline))
         pendingSpeedAdjusted = newAdjusted
         Log.d(TAG, "adjustSpeed: delta=$deltaKph, from=${if (fromPending) "pending" else "state"}=$currentAdjusted, target=$newAdjusted")
         scope.launch(Dispatchers.IO) {

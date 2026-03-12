@@ -1175,8 +1175,9 @@ class FitFileExporter(private val context: Context) {
             // Calibrated treadmill speed (UINT16 in m/s * 1000)
             // Uses polynomial model when available, otherwise linear a*raw+b
             val calibratedKph = if (treadmillDevFields.polynomialCoefficients != null) {
+                val sinTheta = PaceConverter.inclinePercentToSin(dataPoint.rawTreadmillInclinePercent)
                 SpeedCalibrationManager.evaluatePolynomial(
-                    treadmillDevFields.polynomialCoefficients, dataPoint.rawTreadmillSpeedKph
+                    treadmillDevFields.polynomialCoefficients, dataPoint.rawTreadmillSpeedKph, sinTheta
                 )
             } else {
                 dataPoint.rawTreadmillSpeedKph * treadmillDevFields.calibrationA + treadmillDevFields.calibrationB

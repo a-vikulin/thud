@@ -770,6 +770,8 @@ class HUDService : Service(),
                     state.speedCalibrationC1 = result.coefficients.getOrElse(1) { 0.0 }
                     state.speedCalibrationC2 = result.coefficients.getOrElse(2) { 0.0 }
                     state.speedCalibrationC3 = result.coefficients.getOrElse(3) { 0.0 }
+                    state.speedCalibrationC4 = result.coefficients.getOrElse(4) { 0.0 }
+                    state.speedCalibrationC5 = result.coefficients.getOrElse(5) { 0.0 }
                     settingsManager.saveCalibrationCoefficients(state)
                     Log.d(TAG, "Calibration updated: degree=${result.degree}, " +
                         "C=${result.coefficients.toList()}, R²=${result.r2}, N=${result.n}")
@@ -2202,7 +2204,7 @@ class HUDService : Service(),
         val (stepIndex, stepName) = getCurrentStepInfo()
 
         workoutRecorder.recordDataPoint(
-            state.rawToAdjustedSpeed(state.currentSpeedKph),
+            state.rawToAdjustedSpeed(state.currentSpeedKph, state.currentRawInclinePercent),
             state.currentSpeedKph,
             state.currentInclinePercent,
             state.currentHeartRateBpm,
@@ -2213,6 +2215,7 @@ class HUDService : Service(),
             rawPowerWatts = state.currentRawPowerWatts,
             inclinePowerWatts = state.currentPowerWatts - state.currentRawPowerWatts,
             strydSpeedKph = state.currentStrydSpeedKph,
+            rawInclinePercent = state.currentRawInclinePercent,
             stepIndex = stepIndex,
             stepName = stepName,
             connectedHrSensors = state.connectedHrSensors,
@@ -2234,8 +2237,8 @@ class HUDService : Service(),
         }
 
         // IMPORTANT: Pass ADJUSTED speed to workout engine, never raw treadmill speed.
-        // All workout logic uses adjusted speed (linear model: a*raw + b).
-        val adjustedSpeedKph = state.rawToAdjustedSpeed(state.currentSpeedKph)
+        // All workout logic uses adjusted speed (calibration model with incline correction).
+        val adjustedSpeedKph = state.rawToAdjustedSpeed(state.currentSpeedKph, state.currentRawInclinePercent)
         workoutEngineManager.onTelemetryUpdate(
             adjustedSpeedKph,
             state.currentInclinePercent,
@@ -2457,7 +2460,7 @@ class HUDService : Service(),
         val (stepIndex, stepName) = getCurrentStepInfo()
 
         workoutRecorder.ensurePeriodicRecord(
-            state.rawToAdjustedSpeed(state.currentSpeedKph),
+            state.rawToAdjustedSpeed(state.currentSpeedKph, state.currentRawInclinePercent),
             state.currentSpeedKph,
             state.currentInclinePercent,
             state.currentHeartRateBpm,
@@ -2467,6 +2470,7 @@ class HUDService : Service(),
             rawPowerWatts = state.currentRawPowerWatts,
             inclinePowerWatts = state.currentPowerWatts - state.currentRawPowerWatts,
             strydSpeedKph = state.currentStrydSpeedKph,
+            rawInclinePercent = state.currentRawInclinePercent,
             stepIndex = stepIndex,
             stepName = stepName,
             connectedHrSensors = state.connectedHrSensors,
@@ -3343,7 +3347,7 @@ class HUDService : Service(),
 
     override fun getCurrentSpeedKph(): Double {
         // Return adjusted speed (what user perceives)
-        return state.rawToAdjustedSpeed(state.currentSpeedKph)
+        return state.rawToAdjustedSpeed(state.currentSpeedKph, state.currentRawInclinePercent)
     }
 
     override fun getCurrentInclinePercent(): Double {

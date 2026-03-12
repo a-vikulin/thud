@@ -11,6 +11,7 @@ import io.github.avikulin.thud.data.entity.SpeedCalibrationPoint
 import io.github.avikulin.thud.data.entity.Workout
 import io.github.avikulin.thud.data.entity.WorkoutStep
 import io.github.avikulin.thud.service.ProfileManager
+import io.github.avikulin.thud.service.SettingsManager
 import java.io.File
 
 /**
@@ -18,7 +19,7 @@ import java.io.File
  */
 @Database(
     entities = [Workout::class, WorkoutStep::class, SpeedCalibrationPoint::class],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -266,6 +267,22 @@ abstract class TreadmillHudDatabase : RoomDatabase() {
         }
 
         /**
+         * Migration from version 10 to 11:
+         * - Add inclinePercent column to speed_calibration_points for incline-aware calibration
+         * - Backfill with user's current inclineAdjustment as best-guess raw treadmill incline
+         */
+        private fun createMigration10to11(context: Context): Migration = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE speed_calibration_points ADD COLUMN inclinePercent REAL NOT NULL DEFAULT 0.0")
+                // Backfill: existing data was collected at unknown incline; user's incline adjustment
+                // (e.g. 1.0%) is the best guess since they usually run "flat" at that treadmill incline.
+                val prefs = context.getSharedPreferences(SettingsManager.PREFS_NAME, Context.MODE_PRIVATE)
+                val inclineAdjustment = prefs.getFloat(SettingsManager.PREF_INCLINE_ADJUSTMENT, 1.0f).toDouble()
+                db.execSQL("UPDATE speed_calibration_points SET inclinePercent = ?", arrayOf(inclineAdjustment))
+            }
+        }
+
+        /**
          * Get a database instance for a specific absolute path.
          * Each profile has its own DB at files/profiles/<id>/treadmillhud.db.
          */
@@ -300,7 +317,7 @@ abstract class TreadmillHudDatabase : RoomDatabase() {
                 TreadmillHudDatabase::class.java,
                 dbPath
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, createMigration10to11(context))
                 .build()
         }
     }

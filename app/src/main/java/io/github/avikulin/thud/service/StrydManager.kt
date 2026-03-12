@@ -21,6 +21,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import io.github.avikulin.thud.R
+import io.github.avikulin.thud.util.PaceConverter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.util.*
@@ -758,17 +759,14 @@ class StrydManager(
         val coefficient = state.inclinePowerCoefficient
 
         // state.currentInclinePercent is already the effective incline (treadmill incline - adjustment)
-        // So we can use it directly for power calculation
-        val effectiveInclinePercent = inclinePercent
-
-        // Convert grade percentage to angle: grade = tan(θ) × 100, so θ = atan(grade/100)
-        val angleRadians = kotlin.math.atan(effectiveInclinePercent / 100.0)
+        // sin(θ) gives the gravitational force component along the belt surface
+        val sinTheta = PaceConverter.inclinePercentToSin(inclinePercent)
 
         // Gravity power = mass × gravity × vertical velocity
         // Positive incline: runner works against gravity (add power)
         // Negative incline: gravity assists (subtract power)
         // Apply coefficient to allow tuning for treadmill vs outdoor
-        val gravityPower = coefficient * 9.8 * userWeightKg * beltSpeedMs * kotlin.math.sin(angleRadians)
+        val gravityPower = coefficient * 9.8 * userWeightKg * beltSpeedMs * sinTheta
 
         return measuredPower + gravityPower
     }

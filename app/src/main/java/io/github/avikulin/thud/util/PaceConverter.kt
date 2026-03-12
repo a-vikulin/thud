@@ -83,6 +83,23 @@ object PaceConverter {
         }
     }
 
+    // ==================== Incline Conversion ====================
+
+    /**
+     * Convert incline grade percentage to sin(θ) — the physically meaningful quantity
+     * for belt load force calculations and speed calibration.
+     *
+     * Grade % = tan(θ) × 100, so sin(θ) = sin(atan(g)) = g / sqrt(1 + g²)
+     * where g = percent / 100.
+     *
+     * At small inclines (<5%), sin ≈ tan ≈ grade/100.
+     * At 40% grade, sin(θ) = 0.371 vs grade/100 = 0.40 (7.8% difference).
+     */
+    fun inclinePercentToSin(percent: Double): Double {
+        val g = percent / 100.0
+        return g / kotlin.math.sqrt(1.0 + g * g)
+    }
+
     // ==================== Duration/Distance Cross-Calculations ====================
 
     /**

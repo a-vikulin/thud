@@ -11,6 +11,7 @@ import android.view.View
 import androidx.core.content.ContextCompat
 import io.github.avikulin.thud.R
 import io.github.avikulin.thud.data.entity.SpeedCalibrationPoint
+import io.github.avikulin.thud.util.PaceConverter
 import io.github.avikulin.thud.util.SpeedCalibrationManager
 import java.util.Locale
 import kotlin.math.ceil
@@ -47,6 +48,7 @@ class SpeedCalibrationChart(context: Context) : View(context) {
     private var regressionR2 = 0.0
     private var pointCount = 0
     private var polyCoefficients: DoubleArray? = null  // null = linear mode, non-null = polynomial
+    private var curveSinIncline = 0.0  // sin(θ) at which the polynomial curve is evaluated
 
     // Treadmill speed range (for axis scaling when no data)
     private var treadmillMinKph = 1.6
@@ -115,7 +117,10 @@ class SpeedCalibrationChart(context: Context) : View(context) {
     /**
      * Set display data. Call this when data changes.
      * @param polynomialCoefficients when non-null, draws a polynomial curve instead of a straight line.
-     *        Array index = power (C0 + C1*x + C2*x² + ...). When null, uses linear (a, b).
+     *        6-element array [C0, C1, C2, C3, C4, C5] for y = speed_poly + C4*sin(θ) + C5*x*sin(θ).
+     *        When null, uses linear (a, b).
+     * @param sinIncline sin(θ) at which to evaluate the polynomial curve (e.g., from user's incline
+     *        adjustment setting). Only used in polynomial mode. Default 0.0 = flat.
      */
     fun setData(
         pairs: List<SpeedCalibrationPoint>,
@@ -125,7 +130,8 @@ class SpeedCalibrationChart(context: Context) : View(context) {
         n: Int,
         treadmillMinKph: Double = 1.6,
         treadmillMaxKph: Double = 20.0,
-        polynomialCoefficients: DoubleArray? = null
+        polynomialCoefficients: DoubleArray? = null,
+        sinIncline: Double = 0.0
     ) {
         points = pairs
         regressionA = a
@@ -135,6 +141,7 @@ class SpeedCalibrationChart(context: Context) : View(context) {
         this.treadmillMinKph = treadmillMinKph
         this.treadmillMaxKph = treadmillMaxKph
         polyCoefficients = polynomialCoefficients
+        curveSinIncline = sinIncline
 
         computeAxisRange(pairs, a, b)
         invalidate()
@@ -164,7 +171,7 @@ class SpeedCalibrationChart(context: Context) : View(context) {
             val steps = 20
             for (i in 0..steps) {
                 val x = dataXMin + (dataXMax - dataXMin) * i / steps
-                val y = SpeedCalibrationManager.evaluatePolynomial(poly, x)
+                val y = SpeedCalibrationManager.evaluatePolynomial(poly, x, curveSinIncline)
                 allYMin = min(allYMin, y)
                 allYMax = max(allYMax, y)
             }
@@ -248,7 +255,7 @@ class SpeedCalibrationChart(context: Context) : View(context) {
             // Polynomial curve: draw multi-segment path
             for (i in 0..CURVE_SEGMENTS) {
                 val x = xMin + (xMax - xMin) * i / CURVE_SEGMENTS
-                val y = SpeedCalibrationManager.evaluatePolynomial(poly, x)
+                val y = SpeedCalibrationManager.evaluatePolynomial(poly, x, curveSinIncline)
                     .coerceIn(yMin, yMax)
                 val px = mapX(x, plotLeft, plotRight)
                 val py = mapY(y, plotTop, plotBottom)

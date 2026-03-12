@@ -7,11 +7,13 @@ import kotlin.math.pow
 
 /**
  * Stateless utility for speed calibration: filters workout data into calibration pairs
- * and computes OLS regression (linear or polynomial up to degree 3).
+ * and computes OLS regression (linear or polynomial up to degree 3, with incline terms).
  *
  * Two independent coefficient sets:
  * - Manual mode: linear (a, b) via [computeRegression] / [computeR2]
- * - Auto mode: polynomial C0..C3 via [computePolynomialRegression] / [computePolynomialR2]
+ * - Auto mode: polynomial+incline C0..C5 via [computePolynomialRegression] / [computePolynomialR2]
+ *   Model: y = C0 + C1*x + C2*x² + C3*x³ + C4*sin(θ) + C5*x*sin(θ)
+ *   where x = raw treadmill speed (kph), sin(θ) = PaceConverter.inclinePercentToSin(rawIncline%)
  *
  * No file I/O — just filtering + math.
  */
@@ -47,10 +49,16 @@ object SpeedCalibrationManager {
 
     data class RegressionResult(val a: Double, val b: Double, val r2: Double, val n: Int)
 
-    /** Result of polynomial regression: coefficients[i] is the coefficient for x^i. */
+    /**
+     * Result of polynomial regression.
+     * coefficients is always 6 elements: [C0, C1, C2, C3, C4, C5]
+     * Model: y = C0 + C1*x + C2*x² + C3*x³ + C4*s + C5*x*s
+     * where s = sin(θ) from raw incline %.
+     * Unused higher-degree speed terms are 0 (e.g., degree=1 → C2=C3=0).
+     */
     data class PolynomialResult(
-        val coefficients: DoubleArray,  // C0, C1, ..., Cn (index = power)
-        val degree: Int,               // 1, 2, or 3
+        val coefficients: DoubleArray,  // always [C0, C1, C2, C3, C4, C5]
+        val degree: Int,               // speed polynomial degree: 1, 2, or 3
         val r2: Double,
         val n: Int
     )
@@ -104,7 +112,8 @@ object SpeedCalibrationManager {
                 SpeedCalibrationPoint(
                     runId = runId,
                     treadmillKph = it.rawTreadmillSpeedKph,
-                    strydKph = it.strydSpeedKph
+                    strydKph = it.strydSpeedKph,
+                    inclinePercent = it.rawTreadmillInclinePercent
                 )
             }
     }
@@ -169,18 +178,20 @@ object SpeedCalibrationManager {
         return if (ssTot > 0) 1.0 - ssRes / ssTot else 0.0
     }
 
-    // ==================== Polynomial Regression ====================
+    // ==================== Polynomial + Incline Regression ====================
 
     /**
-     * Compute polynomial regression of given degree: stryd = C0 + C1*x + C2*x² + C3*x³.
-     * Uses Vandermonde matrix normal equations solved by Gaussian elimination.
+     * Compute polynomial+incline regression:
+     *   y = C0 + C1*x + C2*x² + C3*x³ + C4*s + C5*x*s
+     * where x = raw treadmill speed, s = sin(θ) from raw incline %.
      *
-     * For degree 2-3, validates monotonicity over the data range.
-     * If non-monotonic, falls back to lower degrees, then returns null.
+     * Uses design matrix normal equations solved by Gaussian elimination (max 6×6).
+     * For degree 2-3, validates monotonicity (∂y/∂x > 0) over the data range
+     * at representative incline values. Falls back to lower degrees if non-monotonic.
      *
      * @param points Calibration data (from DB, possibly spanning multiple runs)
-     * @param degree Polynomial degree (1, 2, or 3)
-     * @return Polynomial result with coefficients, R², and point count; null if insufficient data
+     * @param degree Speed polynomial degree (1, 2, or 3)
+     * @return Result with 6 coefficients [C0..C5], R², and point count; null if insufficient data
      */
     fun computePolynomialRegression(
         points: List<SpeedCalibrationPoint>,
@@ -197,102 +208,158 @@ object SpeedCalibrationManager {
 
         // Try requested degree, fall back to lower degrees if monotonicity fails
         for (d in clampedDegree downTo 1) {
-            val result = fitPolynomial(points, d, xMin, xMax)
+            val result = fitPolynomialWithIncline(points, d, xMin, xMax)
             if (result != null) return result
         }
         return null
     }
 
     /**
-     * Fit a polynomial of exact degree [d] and validate it.
-     * Returns null if the system is singular, coefficients are unreasonable,
-     * or (for degree >= 2) the polynomial is non-monotonic over [xMin, xMax].
+     * Fit a polynomial+incline model of exact speed degree [d] and validate it.
      *
-     * Centers and scales x values before building the Vandermonde matrix to avoid
-     * ill-conditioning (raw x values like 10-20 kph produce x^6 terms ~10^7 which
-     * cause catastrophic cancellation in Gaussian elimination). The resulting
-     * coefficients are denormalized back to original x-space before returning.
+     * Design matrix basis functions (in normalized space):
+     *   [1, zx, zx², zx³, zs, zx*zs]
+     * where zx = (x - xMean) / xStd, zs = (s - sMean) / sStd (or raw s if no variation).
+     *
+     * After solving, coefficients are denormalized back to original (x, s) space,
+     * then packed into a 6-element array [C0, C1, C2, C3, C4, C5].
      */
-    private fun fitPolynomial(
+    private fun fitPolynomialWithIncline(
         points: List<SpeedCalibrationPoint>,
         d: Int,
         xMin: Double,
         xMax: Double
     ): PolynomialResult? {
         val n = points.size
-        val m = d + 1  // number of coefficients
+        // Basis: [1, x, x², ..., x^d, s, x*s] → (d+1) + 2 = d+3 columns
+        val m = d + 3
 
-        // Center and scale x values to improve numerical conditioning.
-        // Transforms x values to roughly [-1, 1] range so the Vandermonde matrix
-        // entries stay O(1) instead of growing to x^(2d).
+        // Center and scale x and s for numerical conditioning
         val xMean = points.sumOf { it.treadmillKph } / n
         val xStd = kotlin.math.sqrt(points.sumOf { (it.treadmillKph - xMean).pow(2) } / n)
-        if (xStd < 1e-10) return null  // all x values identical
+        if (xStd < 1e-10) return null
 
-        // Build normal equations in normalized space: z = (x - xMean) / xStd
-        val ata = Array(m) { DoubleArray(m) }  // V^T V
-        val aty = DoubleArray(m)                // V^T y
+        // Compute sin(θ) for each point
+        val sValues = points.map { PaceConverter.inclinePercentToSin(it.inclinePercent) }
+        val sMean = sValues.sum() / n
+        val sStd = kotlin.math.sqrt(sValues.sumOf { (it - sMean).pow(2) } / n)
+        // If no incline variation, sStd ≈ 0 — normalize to keep s around its mean
+        val effectiveSStd = if (sStd > 1e-10) sStd else 1.0
 
-        for (p in points) {
-            val z = (p.treadmillKph - xMean) / xStd
+        // Build normal equations: A^T A * coeffs = A^T y
+        val ata = Array(m) { DoubleArray(m) }
+        val aty = DoubleArray(m)
+
+        for (idx in points.indices) {
+            val p = points[idx]
+            val zx = (p.treadmillKph - xMean) / xStd
+            val zs = (sValues[idx] - sMean) / effectiveSStd
             val y = p.strydKph
-            var zPowI = 1.0
+
+            // Build basis vector: [1, zx, zx², ..., zx^d, zs, zx*zs]
+            val basis = DoubleArray(m)
+            var zxPow = 1.0
+            for (i in 0..d) {
+                basis[i] = zxPow
+                zxPow *= zx
+            }
+            basis[d + 1] = zs
+            basis[d + 2] = zx * zs
+
+            // Accumulate normal equations
             for (i in 0 until m) {
-                aty[i] += zPowI * y
-                var zPowJ = zPowI
+                aty[i] += basis[i] * y
                 for (j in i until m) {
-                    ata[i][j] += zPowI * zPowJ
-                    if (i != j) ata[j][i] = ata[i][j]  // symmetric
-                    zPowJ *= z
+                    ata[i][j] += basis[i] * basis[j]
+                    if (i != j) ata[j][i] = ata[i][j]
                 }
-                zPowI *= z
             }
         }
 
         // Solve in normalized space
-        val normalizedCoeffs = solveLinearSystem(ata, aty) ?: return null
+        val nc = solveLinearSystem(ata, aty) ?: return null
 
-        // Convert coefficients back to original x-space:
-        // P(z) = a0 + a1*z + a2*z² + a3*z³ where z = (x - mu) / s
-        // Expand using binomial theorem to get Q(x) = c0 + c1*x + c2*x² + c3*x³
-        val coefficients = denormalizeCoefficients(normalizedCoeffs, xMean, xStd)
+        // Denormalize: convert from (zx, zs) space back to (x, s) space
+        // zx = (x - xMean) / xStd, zs = (s - sMean) / effectiveSStd
+        //
+        // Speed polynomial part: same binomial expansion as before
+        // nc[0..d] are coefficients for [1, zx, zx², ..., zx^d]
+        val speedNorm = nc.sliceArray(0..d)
+        val speedCoeffs = denormalizeSpeedCoefficients(speedNorm, xMean, xStd)
 
-        // Degree-1 sanity check: same bounds as linear regression
+        // Incline terms: nc[d+1] * zs + nc[d+2] * zx * zs
+        // zs = (s - sMean) / sStd
+        // nc[d+1] * (s - sMean) / sStd = nc[d+1]/sStd * s - nc[d+1]*sMean/sStd
+        // nc[d+2] * (x - xMean)/xStd * (s - sMean)/sStd
+        //   = nc[d+2]/(xStd*sStd) * x*s - nc[d+2]*sMean/(xStd*sStd) * x
+        //     - nc[d+2]*xMean/(xStd*sStd) * s + nc[d+2]*xMean*sMean/(xStd*sStd)
+        val a4Norm = nc[d + 1]
+        val a5Norm = nc[d + 2]
+        val ss = effectiveSStd
+
+        // C4 (coefficient of s)
+        val c4 = a4Norm / ss - a5Norm * xMean / (xStd * ss)
+        // C5 (coefficient of x*s)
+        val c5 = a5Norm / (xStd * ss)
+        // Corrections to C0 and C1 from the incline denormalization
+        val c0Correction = -a4Norm * sMean / ss + a5Norm * xMean * sMean / (xStd * ss)
+        val c1Correction = -a5Norm * sMean / (xStd * ss)
+
+        // Assemble final 6-element coefficient array
+        val coefficients = DoubleArray(6)
+        // Pad speed coefficients (may be shorter than 4 for lower degrees)
+        for (i in speedCoeffs.indices) coefficients[i] = speedCoeffs[i]
+        coefficients[0] += c0Correction
+        coefficients[1] += c1Correction
+        coefficients[4] = c4
+        coefficients[5] = c5
+
+        // Degree-1 sanity check (at zero incline: effectively C0 + C1*x)
         if (d == 1) {
-            val a = coefficients[1]
-            val b = coefficients[0]
-            if (a < MIN_SLOPE || a > MAX_SLOPE || b < MIN_INTERCEPT || b > MAX_INTERCEPT) return null
+            val effectiveSlope = coefficients[1]  // C1 dominates at s≈0
+            val effectiveIntercept = coefficients[0]
+            if (effectiveSlope < MIN_SLOPE || effectiveSlope > MAX_SLOPE ||
+                effectiveIntercept < MIN_INTERCEPT || effectiveIntercept > MAX_INTERCEPT) return null
         }
 
-        // Degree 2-3: validate monotonicity over data range
-        // The derivative must be positive everywhere in [xMin, xMax]
-        if (d >= 2 && !isMonotonicIncreasing(coefficients, xMin, xMax)) return null
+        // Monotonicity: ∂y/∂x = C1 + 2*C2*x + 3*C3*x² + C5*s must be > 0
+        // Check at representative incline values spanning the data range
+        val sMin = sValues.min()
+        val sMax = sValues.max()
+        if (d >= 2) {
+            for (sVal in listOf(sMin, 0.0, sMax)) {
+                if (!isMonotonicIncreasing(coefficients, xMin, xMax, sVal)) return null
+            }
+        } else {
+            // Even degree 1 with C5 could theoretically go non-monotonic at extreme s
+            if (!isMonotonicIncreasing(coefficients, xMin, xMax, sMin)) return null
+            if (!isMonotonicIncreasing(coefficients, xMin, xMax, sMax)) return null
+        }
 
-        // Sanity: predicted values at data boundaries should be reasonable
-        // (within 0.5x to 1.5x of input speed)
-        val yAtMin = evaluatePolynomial(coefficients, xMin)
-        val yAtMax = evaluatePolynomial(coefficients, xMax)
+        // Sanity: predicted values at data boundaries (at s=0) should be reasonable
+        val yAtMin = evaluatePolynomial(coefficients, xMin, 0.0)
+        val yAtMax = evaluatePolynomial(coefficients, xMax, 0.0)
         if (yAtMin < xMin * 0.5 || yAtMin > xMin * 1.5) return null
         if (yAtMax < xMax * 0.5 || yAtMax > xMax * 1.5) return null
 
         // R²
         val meanY = points.sumOf { it.strydKph } / n
         val ssTot = points.sumOf { (it.strydKph - meanY).pow(2) }
-        val ssRes = points.sumOf { (it.strydKph - evaluatePolynomial(coefficients, it.treadmillKph)).pow(2) }
+        val ssRes = points.indices.sumOf { i ->
+            val predicted = evaluatePolynomial(coefficients, points[i].treadmillKph, sValues[i])
+            (points[i].strydKph - predicted).pow(2)
+        }
         val r2 = if (ssTot > 0) 1.0 - ssRes / ssTot else 0.0
 
         return PolynomialResult(coefficients, d, r2, n)
     }
 
     /**
-     * Convert polynomial coefficients from normalized space back to original x-space.
-     *
-     * Given P(z) = a[0] + a[1]*z + a[2]*z² + a[3]*z³ where z = (x - mu) / s,
-     * expands to Q(x) = c[0] + c[1]*x + c[2]*x² + c[3]*x³ using binomial theorem.
-     *
-     * Hardcoded for degrees 1-3 for clarity and correctness.
+     * Denormalize speed-only polynomial coefficients from normalized space.
+     * Given P(z) = a[0] + a[1]*z + ... where z = (x - mu) / s,
+     * expands to Q(x) = c[0] + c[1]*x + ... using binomial theorem.
      */
-    private fun denormalizeCoefficients(
+    private fun denormalizeSpeedCoefficients(
         a: DoubleArray,
         mu: Double,
         s: Double
@@ -300,18 +367,15 @@ object SpeedCalibrationManager {
         val s2 = s * s
         val mu2 = mu * mu
         return when (a.size) {
-            // degree 1: a0 + a1*(x-mu)/s
             2 -> doubleArrayOf(
                 a[0] - a[1] * mu / s,
                 a[1] / s
             )
-            // degree 2: a0 + a1*(x-mu)/s + a2*((x-mu)/s)²
             3 -> doubleArrayOf(
                 a[0] - a[1] * mu / s + a[2] * mu2 / s2,
                 a[1] / s - 2.0 * a[2] * mu / s2,
                 a[2] / s2
             )
-            // degree 3: a0 + a1*(x-mu)/s + a2*((x-mu)/s)² + a3*((x-mu)/s)³
             4 -> {
                 val s3 = s2 * s
                 val mu3 = mu2 * mu
@@ -327,112 +391,120 @@ object SpeedCalibrationManager {
     }
 
     /**
-     * Check that the polynomial's derivative is positive over [xMin, xMax].
-     * Samples at 20 evenly-spaced points plus the endpoints.
+     * Check that ∂y/∂x > 0 over [xMin, xMax] at a given sin(θ) value.
+     * ∂y/∂x = C1 + 2*C2*x + 3*C3*x² + C5*s
      */
-    private fun isMonotonicIncreasing(coefficients: DoubleArray, xMin: Double, xMax: Double): Boolean {
+    private fun isMonotonicIncreasing(
+        coefficients: DoubleArray,
+        xMin: Double,
+        xMax: Double,
+        sinIncline: Double = 0.0
+    ): Boolean {
         val steps = 20
         for (i in 0..steps) {
             val x = xMin + (xMax - xMin) * i / steps
-            val derivative = evaluateDerivative(coefficients, x)
+            val derivative = evaluateSpeedDerivative(coefficients, x, sinIncline)
             if (derivative <= 0) return false
         }
         return true
     }
 
     /**
-     * Evaluate polynomial: y = C0 + C1*x + C2*x² + C3*x³.
-     * Uses Horner's method for numerical stability.
-     */
-    fun evaluatePolynomial(coefficients: DoubleArray, x: Double): Double {
-        var result = 0.0
-        for (i in coefficients.indices.reversed()) {
-            result = result * x + coefficients[i]
-        }
-        return result
-    }
-
-    /**
-     * Evaluate the derivative of the polynomial: dy/dx = C1 + 2*C2*x + 3*C3*x².
-     * Uses Horner's method.
-     */
-    private fun evaluateDerivative(coefficients: DoubleArray, x: Double): Double {
-        if (coefficients.size <= 1) return 0.0
-        var result = 0.0
-        for (i in (coefficients.size - 1) downTo 1) {
-            result = result * x + i * coefficients[i]
-        }
-        return result
-    }
-
-    /**
-     * Invert the polynomial using Newton-Raphson: find x such that P(x) = targetY.
-     * Uses targetY as the initial guess (since adjusted speed ≈ raw speed).
+     * Evaluate the full model: y = C0 + C1*x + C2*x² + C3*x³ + C4*s + C5*x*s.
+     * coefficients is always 6 elements [C0, C1, C2, C3, C4, C5].
      *
-     * For monotonically increasing polynomials (which we validate), converges in:
-     * - 1 iteration for linear (exact)
-     * - 2-3 iterations for quadratic
-     * - 3-5 iterations for cubic
+     * @param coefficients 6-element array [C0, C1, C2, C3, C4, C5]
+     * @param x Raw treadmill speed (kph)
+     * @param sinIncline sin(θ) of raw treadmill incline (from PaceConverter.inclinePercentToSin)
+     */
+    fun evaluatePolynomial(coefficients: DoubleArray, x: Double, sinIncline: Double): Double {
+        // Speed polynomial: C0 + C1*x + C2*x² + C3*x³ (Horner's on first 4 terms)
+        var speedPart = 0.0
+        for (i in 3 downTo 0) {
+            speedPart = speedPart * x + coefficients[i]
+        }
+        // Incline terms: C4*s + C5*x*s
+        val inclinePart = coefficients[4] * sinIncline + coefficients[5] * x * sinIncline
+        return speedPart + inclinePart
+    }
+
+    /**
+     * Evaluate ∂y/∂x = C1 + 2*C2*x + 3*C3*x² + C5*sin(θ).
+     */
+    private fun evaluateSpeedDerivative(
+        coefficients: DoubleArray,
+        x: Double,
+        sinIncline: Double = 0.0
+    ): Double {
+        return coefficients[1] +
+            2.0 * coefficients[2] * x +
+            3.0 * coefficients[3] * x * x +
+            coefficients[5] * sinIncline
+    }
+
+    /**
+     * Invert the model using Newton-Raphson: find x such that f(x, s) = targetY,
+     * with s = sin(θ) known and fixed.
+     *
+     * f(x) = C0 + C1*x + C2*x² + C3*x³ + C4*s + C5*x*s - targetY
+     * f'(x) = C1 + 2*C2*x + 3*C3*x² + C5*s
      */
     fun invertPolynomialNewtonRaphson(
         coefficients: DoubleArray,
         targetY: Double,
+        sinIncline: Double,
         initialGuessX: Double = targetY
     ): Double {
         var x = initialGuessX
         for (i in 0 until NR_MAX_ITERATIONS) {
-            val fx = evaluatePolynomial(coefficients, x) - targetY
+            val fx = evaluatePolynomial(coefficients, x, sinIncline) - targetY
             if (abs(fx) < NR_TOLERANCE) break
-            val dfx = evaluateDerivative(coefficients, x)
-            if (abs(dfx) < 1e-12) break  // near-zero derivative, bail
+            val dfx = evaluateSpeedDerivative(coefficients, x, sinIncline)
+            if (abs(dfx) < 1e-12) break
             x -= fx / dfx
         }
         return x
     }
 
     /**
-     * Compute R² for a polynomial model against data points.
-     * Used in auto mode to show goodness-of-fit for the current polynomial.
+     * Compute R² for the full model (with incline) against data points.
      */
     fun computePolynomialR2(points: List<SpeedCalibrationPoint>, coefficients: DoubleArray): Double {
         if (points.isEmpty()) return 0.0
         val meanY = points.sumOf { it.strydKph } / points.size
         val ssTot = points.sumOf { (it.strydKph - meanY).pow(2) }
-        val ssRes = points.sumOf {
-            (it.strydKph - evaluatePolynomial(coefficients, it.treadmillKph)).pow(2)
+        val ssRes = points.sumOf { p ->
+            val s = PaceConverter.inclinePercentToSin(p.inclinePercent)
+            (p.strydKph - evaluatePolynomial(coefficients, p.treadmillKph, s)).pow(2)
         }
         return if (ssTot > 0) 1.0 - ssRes / ssTot else 0.0
     }
 
     /**
      * Solve a linear system Ax = b using Gaussian elimination with partial pivoting.
-     * For the normal equations of polynomial regression (max 4x4 for degree 3).
+     * Supports up to 6×6 systems (degree 3 + 2 incline terms).
      *
      * @return Solution vector, or null if the system is singular
      */
     private fun solveLinearSystem(a: Array<DoubleArray>, b: DoubleArray): DoubleArray? {
         val n = a.size
-        // Augmented matrix
         val aug = Array(n) { i -> DoubleArray(n + 1) { j ->
             if (j < n) a[i][j] else b[i]
         }}
 
         for (col in 0 until n) {
-            // Partial pivoting: find row with largest absolute value in column
             var maxRow = col
             var maxVal = abs(aug[col][col])
             for (row in col + 1 until n) {
                 val v = abs(aug[row][col])
                 if (v > maxVal) { maxVal = v; maxRow = row }
             }
-            if (maxVal < 1e-12) return null  // singular
+            if (maxVal < 1e-12) return null
 
-            // Swap rows
             if (maxRow != col) {
                 val tmp = aug[col]; aug[col] = aug[maxRow]; aug[maxRow] = tmp
             }
 
-            // Eliminate below
             val pivot = aug[col][col]
             for (row in col + 1 until n) {
                 val factor = aug[row][col] / pivot
@@ -442,7 +514,6 @@ object SpeedCalibrationManager {
             }
         }
 
-        // Back substitution
         val x = DoubleArray(n)
         for (i in n - 1 downTo 0) {
             var sum = aug[i][n]
