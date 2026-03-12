@@ -234,15 +234,30 @@ class TelemetryManager(
      * transitions creates oscillation (incline bounces between old/new while motor adjusts).
      */
     private fun compensateSpeedForInclineChange(newRawInclinePercent: Double) {
-        if (!state.speedCalibrationAuto || state.targetAdjustedSpeedKph <= 0) return
+        if (!state.speedCalibrationAuto) {
+            Log.d(TAG, "Incline compensation SKIPPED: auto calibration disabled")
+            return
+        }
+        if (state.targetAdjustedSpeedKph <= 0) {
+            Log.d(TAG, "Incline compensation SKIPPED: targetAdjustedSpeed=${state.targetAdjustedSpeedKph}")
+            return
+        }
 
+        val oldRawIncline = state.currentRawInclinePercent
         val newRawSpeedKph = state.adjustedToRawSpeed(state.targetAdjustedSpeedKph, newRawInclinePercent)
+        val delta = kotlin.math.abs(newRawSpeedKph - state.currentSpeedKph)
 
-        if (kotlin.math.abs(newRawSpeedKph - state.currentSpeedKph) > 0.01) {
+        Log.d(TAG, "Incline compensation: target=${state.targetAdjustedSpeedKph} kph, " +
+            "oldIncline=$oldRawIncline%, newIncline=$newRawInclinePercent%, " +
+            "currentRaw=${state.currentSpeedKph}, newRaw=$newRawSpeedKph, delta=$delta")
+
+        if (delta > 0.01) {
             lastCommandedRawSpeed = newRawSpeedKph
             glassOsClient?.setSpeed(newRawSpeedKph)
-            Log.d(TAG, "Incline compensation: raw speed ${state.currentSpeedKph} -> $newRawSpeedKph kph " +
+            Log.d(TAG, "Incline compensation APPLIED: raw speed ${state.currentSpeedKph} -> $newRawSpeedKph kph " +
                 "to maintain adjusted ${state.targetAdjustedSpeedKph} kph (incline -> $newRawInclinePercent%)")
+        } else {
+            Log.d(TAG, "Incline compensation NOT NEEDED: delta=$delta <= 0.01")
         }
     }
 

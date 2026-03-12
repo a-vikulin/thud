@@ -102,6 +102,7 @@ class WorkoutExecutionEngine(
     private var inclineAdjustmentOffset: Double = 0.0  // Additive: effective = target + offset
     private var hasReachedTargetSpeed: Boolean = false  // Don't calc coefficient during initial acceleration
     private var hasReachedTargetIncline: Boolean = false  // Don't calc offset during incline transition
+    private var inclineSettledAtMs: Long = 0  // Timestamp when incline first reached target (cooldown start)
 
     // Per-step coefficient scoping (ONE_STEP mode)
     // Key: stepIdentityKey, Value: (speedCoeff, inclineOffset)
@@ -312,6 +313,7 @@ class WorkoutExecutionEngine(
         // to reach target speed before coefficient tracking resumes
         hasReachedTargetSpeed = false
         hasReachedTargetIncline = false
+        inclineSettledAtMs = 0
 
         // Calculate effective pace/incline using the adjustment coefficients
         val effectivePace = getEffectiveSpeed(step)
@@ -533,15 +535,25 @@ class WorkoutExecutionEngine(
         }
 
         // Incline uses additive offset: effective = target + offset
-        // Wait until treadmill has reached commanded incline before tracking offset
+        // Wait until treadmill has reached commanded incline before tracking offset.
+        // After the guard triggers, enforce a 1s cooldown — GlassOS subscription-based
+        // telemetry can deliver stale incline values tens of ms after the correct one,
+        // which would corrupt the offset immediately after settling.
         val effectiveTargetIncline = step.inclineTargetPercent + inclineAdjustmentOffset
         if (!hasReachedTargetIncline) {
             if (kotlin.math.abs(actualInclinePercent - effectiveTargetIncline) <= 0.5) {
                 hasReachedTargetIncline = true
-                Log.d(TAG, "Incline reached target: actual=$actualInclinePercent, target=$effectiveTargetIncline")
+                inclineSettledAtMs = System.currentTimeMillis()
+                Log.d(TAG, "Incline reached target: actual=$actualInclinePercent, target=$effectiveTargetIncline (cooldown started)")
             } else {
                 return  // Still transitioning, don't update offset
             }
+        }
+
+        // Cooldown: ignore offset updates for 1s after settling to flush stale telemetry
+        val msSinceSettled = System.currentTimeMillis() - inclineSettledAtMs
+        if (inclineSettledAtMs > 0 && msSinceSettled < 1000) {
+            return
         }
 
         val oldOffset = inclineAdjustmentOffset
@@ -755,7 +767,8 @@ class WorkoutExecutionEngine(
                 speedAdjustmentCoefficient = 1.0
                 inclineAdjustmentOffset = 0.0
                 hasReachedTargetSpeed = false
-        hasReachedTargetIncline = false
+                hasReachedTargetIncline = false
+                inclineSettledAtMs = 0
                 currentProgressionBaseSpeed = 0.0
                 lastCommandedProgressionSpeed = 0.0
                 stepCoefficients.clear()
@@ -800,6 +813,7 @@ class WorkoutExecutionEngine(
         // Reset flags for new step
         hasReachedTargetSpeed = false  // Wait for belt to reach target before tracking coefficient
         hasReachedTargetIncline = false  // Wait for incline to reach target before tracking offset
+        inclineSettledAtMs = 0
 
         // Initialize progression base speed for new step
         if (step.hasProgression) {
@@ -976,7 +990,7 @@ class WorkoutExecutionEngine(
             dataProvider = hrDataProvider
         )
 
-        handleAdjustmentResult(result, targetMin, targetMax, currentHeartRateBpm.toInt(), "HR")
+        handleAdjustmentResult(result, step, targetMin, targetMax, currentHeartRateBpm.toInt(), "HR")
     }
 
     private fun checkPowerTarget(step: ExecutionStep, currentTimeMs: Long) {
@@ -1017,11 +1031,12 @@ class WorkoutExecutionEngine(
             dataProvider = powerDataProvider
         )
 
-        handleAdjustmentResult(result, targetMin, targetMax, currentPowerWatts.toInt(), "Power")
+        handleAdjustmentResult(result, step, targetMin, targetMax, currentPowerWatts.toInt(), "Power")
     }
 
     private fun handleAdjustmentResult(
         result: AdjustmentController.AdjustmentResult,
+        step: ExecutionStep,
         targetMin: Int,
         targetMax: Int,
         currentValue: Int,
@@ -1037,12 +1052,22 @@ class WorkoutExecutionEngine(
                 Log.d(TAG, "$metricName adjustment: ${result.reason} -> speed ${result.newSpeedKph}")
             }
             is AdjustmentController.AdjustmentResult.AdjustIncline -> {
+                // Update offset immediately — don't wait for telemetry confirmation.
+                // GlassOS incline subscription is unreliable (may not deliver updates after SetIncline),
+                // so relying on telemetry would leave the offset stale and subsequent adjustments
+                // would compute the same floor value repeatedly.
+                val newOffset = result.newInclinePercent - step.inclineTargetPercent
+                inclineAdjustmentOffset = newOffset
+                // Re-arm the settling guard — treadmill needs to transition to the new incline
+                hasReachedTargetIncline = false
+                inclineSettledAtMs = 0
+
                 emitEvent(WorkoutEvent.InclineAdjusted(
                     newInclinePercent = result.newInclinePercent,
                     direction = result.direction,
                     reason = result.reason
                 ))
-                Log.d(TAG, "$metricName adjustment: ${result.reason} -> incline ${result.newInclinePercent}")
+                Log.d(TAG, "$metricName adjustment: ${result.reason} -> incline ${result.newInclinePercent} (offset=${"%.1f".format(newOffset)})")
             }
             is AdjustmentController.AdjustmentResult.Waiting -> {
                 Log.v(TAG, "$metricName adjustment waiting: ${result.reason}")
@@ -1239,6 +1264,7 @@ class WorkoutExecutionEngine(
         inclineAdjustmentOffset = 0.0
         hasReachedTargetSpeed = false
         hasReachedTargetIncline = false
+        inclineSettledAtMs = 0
         currentProgressionBaseSpeed = 0.0
         lastCommandedProgressionSpeed = 0.0
         adjustmentScope = AdjustmentScope.ALL_STEPS
