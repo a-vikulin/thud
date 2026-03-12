@@ -215,6 +215,11 @@ class GarminConnectUploader(private val context: Context) {
     private var consumerKey: String? = null
     private var consumerSecret: String? = null
 
+    // Tracks whether the last OAuth1→OAuth2 exchange failure was an auth error (401/403)
+    // vs a transient error (network, server 500). Only auth errors should trigger re-login.
+    @Volatile
+    private var lastExchangeWasAuthFailure = false
+
     /**
      * Check if OAuth1 tokens exist (user has authenticated at some point).
      */
@@ -343,13 +348,16 @@ class GarminConnectUploader(private val context: Context) {
             client.newCall(request).execute()
         } catch (e: java.io.IOException) {
             Log.e(TAG, "OAuth2 exchange network error: ${e.message}")
+            lastExchangeWasAuthFailure = false  // Network error, not auth
             return false
         }
         val body = response.body?.string() ?: ""
+        val code = response.code
         response.close()
 
         if (!response.isSuccessful) {
-            Log.e(TAG, "OAuth2 exchange failed: ${response.code} - $body")
+            lastExchangeWasAuthFailure = (code == 401 || code == 403)
+            Log.e(TAG, "OAuth2 exchange failed: $code - $body (authFailure=$lastExchangeWasAuthFailure)")
             return false
         }
 
@@ -364,6 +372,7 @@ class GarminConnectUploader(private val context: Context) {
                 .putLong(KEY_OAUTH2_EXPIRES_AT, expiresAt)
                 .apply()
 
+            lastExchangeWasAuthFailure = false  // Success — clear any previous failure
             Log.d(TAG, "OAuth2 token obtained, expires in ${expiresIn}s")
             true
         } catch (e: Exception) {
@@ -472,6 +481,7 @@ class GarminConnectUploader(private val context: Context) {
 
         if (code == 401 || code == 403) {
             Log.w(TAG, "Upload auth failed ($code) - tokens may be expired")
+            lastExchangeWasAuthFailure = true  // Upload endpoint rejected token
             return null
         }
 
@@ -525,13 +535,12 @@ class GarminConnectUploader(private val context: Context) {
     }
 
     /**
-     * Check if the last upload failure was an auth error (401/403).
-     * Used by caller to decide whether to trigger re-auth.
+     * Check if re-authentication (full WebView login) is needed.
+     * True only when the last failure was an actual auth rejection (401/403),
+     * NOT for transient network or server errors where existing OAuth1 tokens
+     * may still be valid.
      */
-    fun isOAuth2Expired(): Boolean {
-        val expiresAt = encryptedPrefs.getLong(KEY_OAUTH2_EXPIRES_AT, 0)
-        return System.currentTimeMillis() >= expiresAt - 60_000
-    }
+    fun isReauthRequired(): Boolean = lastExchangeWasAuthFailure
 
     /**
      * Upload a screenshot as a photo attached to a Garmin activity.

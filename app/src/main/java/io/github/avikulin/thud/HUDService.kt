@@ -1011,8 +1011,8 @@ class HUDService : Service(),
             } else {
                 Log.d(TAG, "Upload accepted (uploadId=${uploadResult.uploadId}) but no activity ID — skipping screenshot")
             }
-        } else if (!isRetryAfterLogin && garminUploader.isOAuth2Expired()) {
-            Log.d(TAG, "Garmin upload auth failed, launching re-auth")
+        } else if (!isRetryAfterLogin && garminUploader.isReauthRequired()) {
+            Log.d(TAG, "Garmin upload auth rejected (401/403), launching re-auth")
             withContext(Dispatchers.Main) {
                 launchGarminLoginForUpload(fitResult, workoutName, startTimeMs, screenshotFile)
             }
