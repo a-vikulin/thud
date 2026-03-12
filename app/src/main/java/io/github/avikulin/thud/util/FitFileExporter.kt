@@ -68,7 +68,9 @@ class FitFileExporter(private val context: Context) {
         val calibratedSpeedFieldDesc: FieldDescriptionMesg, // Field 1: calibrated speed
         val calibrationA: Double,                           // slope for linear mode
         val calibrationB: Double,                           // intercept for linear mode
-        val polynomialCoefficients: DoubleArray? = null     // polynomial coefficients for auto mode (overrides a/b)
+        val polynomialCoefficients: DoubleArray? = null,    // polynomial coefficients for auto mode (overrides a/b)
+        val calibrationInclineMinPercent: Double = 0.0,     // training data incline range for clamping
+        val calibrationInclineMaxPercent: Double = 0.0
     )
 
     companion object {
@@ -150,7 +152,9 @@ class FitFileExporter(private val context: Context) {
         useStrydSpeed: Boolean = false,
         paceCoefficient: Double = 1.0,
         speedCalibrationB: Double = 0.0,
-        polynomialCoefficients: DoubleArray? = null
+        polynomialCoefficients: DoubleArray? = null,
+        calibrationInclineMinPercent: Double = 0.0,
+        calibrationInclineMaxPercent: Double = 0.0
     ): FitExportResult? {
         if (workoutData.isEmpty()) {
             Log.w(TAG, "No workout data to export")
@@ -169,7 +173,8 @@ class FitFileExporter(private val context: Context) {
                 executionSteps, originalSteps,
                 fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion,
                 hrSensors, rrIntervals,
-                paceCoefficient, speedCalibrationB, polynomialCoefficients
+                paceCoefficient, speedCalibrationB, polynomialCoefficients,
+                calibrationInclineMinPercent, calibrationInclineMaxPercent
             )
             Log.i(TAG, "FIT file exported: ${result.displayPath} (useStrydSpeed=$useStrydSpeed)")
             result
@@ -240,13 +245,15 @@ class FitFileExporter(private val context: Context) {
         rrIntervals: List<Pair<Long, Float>>? = null,
         paceCoefficient: Double = 1.0,
         speedCalibrationB: Double = 0.0,
-        polynomialCoefficients: DoubleArray? = null
+        polynomialCoefficients: DoubleArray? = null,
+        calibrationInclineMinPercent: Double = 0.0,
+        calibrationInclineMaxPercent: Double = 0.0
     ): FitExportResult {
         // Create temp file for FIT SDK (it requires a File, not OutputStream)
         val tempFile = FileExportHelper.getTempFile(context, filename)
         try {
             // Write FIT file to temp location
-            writeFitFile(tempFile, workoutData, workoutName, startTimeMs, userHrRest, userLthr, userFtpWatts, thresholdPaceKph, pauseEvents, executionSteps, originalSteps, fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion, hrSensors, rrIntervals, paceCoefficient, speedCalibrationB, polynomialCoefficients)
+            writeFitFile(tempFile, workoutData, workoutName, startTimeMs, userHrRest, userLthr, userFtpWatts, thresholdPaceKph, pauseEvents, executionSteps, originalSteps, fitManufacturer, fitProductId, fitDeviceSerial, fitSoftwareVersion, hrSensors, rrIntervals, paceCoefficient, speedCalibrationB, polynomialCoefficients, calibrationInclineMinPercent, calibrationInclineMaxPercent)
 
             // Read bytes before saving to MediaStore (for Garmin Connect upload)
             val fitData = tempFile.readBytes()
@@ -293,7 +300,9 @@ class FitFileExporter(private val context: Context) {
         rrIntervals: List<Pair<Long, Float>>? = null,
         paceCoefficient: Double = 1.0,
         speedCalibrationB: Double = 0.0,
-        polynomialCoefficients: DoubleArray? = null
+        polynomialCoefficients: DoubleArray? = null,
+        calibrationInclineMinPercent: Double = 0.0,
+        calibrationInclineMaxPercent: Double = 0.0
     ) {
         val encoder = FileEncoder(file, Fit.ProtocolVersion.V2_0)
 
@@ -350,7 +359,7 @@ class FitFileExporter(private val context: Context) {
             .takeIf { it.isNotEmpty() }
 
         // 3d. tHUD treadmill speed developer fields (always written — raw + calibrated speed)
-        val treadmillDevFields = writeTreadmillDeveloperFieldDefinitions(encoder, hrSensors.size, paceCoefficient, speedCalibrationB, polynomialCoefficients)
+        val treadmillDevFields = writeTreadmillDeveloperFieldDefinitions(encoder, hrSensors.size, paceCoefficient, speedCalibrationB, polynomialCoefficients, calibrationInclineMinPercent, calibrationInclineMaxPercent)
 
         // 4. Sport message (required for proper workout recognition)
         writeSportMessage(encoder)
@@ -1014,7 +1023,9 @@ class FitFileExporter(private val context: Context) {
         hrSensorCount: Int,
         calibrationA: Double,
         calibrationB: Double,
-        polynomialCoefficients: DoubleArray? = null
+        polynomialCoefficients: DoubleArray? = null,
+        calibrationInclineMinPercent: Double = 0.0,
+        calibrationInclineMaxPercent: Double = 0.0
     ): TreadmillSpeedDevFields {
         val devDataIndex = (STRYD_DEV_DATA_INDEX + 1 + hrSensorCount).toShort()
 
@@ -1058,7 +1069,7 @@ class FitFileExporter(private val context: Context) {
         encoder.write(calibratedSpeedDesc)
 
         Log.d(TAG, "Wrote tHUD treadmill speed developer fields at devDataIndex=$devDataIndex")
-        return TreadmillSpeedDevFields(devDataId, rawSpeedDesc, calibratedSpeedDesc, calibrationA, calibrationB, polynomialCoefficients)
+        return TreadmillSpeedDevFields(devDataId, rawSpeedDesc, calibratedSpeedDesc, calibrationA, calibrationB, polynomialCoefficients, calibrationInclineMinPercent, calibrationInclineMaxPercent)
     }
 
     /**
@@ -1175,7 +1186,11 @@ class FitFileExporter(private val context: Context) {
             // Calibrated treadmill speed (UINT16 in m/s * 1000)
             // Uses polynomial model when available, otherwise linear a*raw+b
             val calibratedKph = if (treadmillDevFields.polynomialCoefficients != null) {
-                val sinTheta = PaceConverter.inclinePercentToSin(dataPoint.rawTreadmillInclinePercent)
+                val clampedIncline = dataPoint.rawTreadmillInclinePercent.coerceIn(
+                    treadmillDevFields.calibrationInclineMinPercent,
+                    treadmillDevFields.calibrationInclineMaxPercent
+                )
+                val sinTheta = PaceConverter.inclinePercentToSin(clampedIncline)
                 SpeedCalibrationManager.evaluatePolynomial(
                     treadmillDevFields.polynomialCoefficients, dataPoint.rawTreadmillSpeedKph, sinTheta
                 )

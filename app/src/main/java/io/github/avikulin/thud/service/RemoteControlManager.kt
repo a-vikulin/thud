@@ -123,7 +123,7 @@ class RemoteControlManager(
         val fromPending = pendingSpeedAdjusted != null
         val rawIncline = state.currentRawInclinePercent
         val currentAdjusted = pendingSpeedAdjusted
-            ?: state.rawToAdjustedSpeed(state.currentSpeedKph, rawIncline)
+            ?: state.getDisplayAdjustedSpeed()
         val newAdjusted = (currentAdjusted + deltaKph)
             .coerceIn(state.rawToAdjustedSpeed(state.minSpeedKph, rawIncline), state.rawToAdjustedSpeed(state.maxSpeedKph, rawIncline))
         pendingSpeedAdjusted = newAdjusted

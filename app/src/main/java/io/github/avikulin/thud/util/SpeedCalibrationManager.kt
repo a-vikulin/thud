@@ -60,7 +60,9 @@ object SpeedCalibrationManager {
         val coefficients: DoubleArray,  // always [C0, C1, C2, C3, C4, C5]
         val degree: Int,               // speed polynomial degree: 1, 2, or 3
         val r2: Double,
-        val n: Int
+        val n: Int,
+        val inclineMinPercent: Double,  // training data incline range (raw treadmill %)
+        val inclineMaxPercent: Double
     )
 
     /**
@@ -204,11 +206,15 @@ object SpeedCalibrationManager {
         val xMax = points.maxOf { it.treadmillKph }
         if (xMax - xMin < MIN_SPEED_RANGE_KPH) return null
 
+        // Training data incline range for clamping at evaluation time
+        val inclineMin = points.minOf { it.inclinePercent }
+        val inclineMax = points.maxOf { it.inclinePercent }
+
         val clampedDegree = degree.coerceIn(1, 3)
 
         // Try requested degree, fall back to lower degrees if monotonicity fails
         for (d in clampedDegree downTo 1) {
-            val result = fitPolynomialWithIncline(points, d, xMin, xMax)
+            val result = fitPolynomialWithIncline(points, d, xMin, xMax, inclineMin, inclineMax)
             if (result != null) return result
         }
         return null
@@ -228,7 +234,9 @@ object SpeedCalibrationManager {
         points: List<SpeedCalibrationPoint>,
         d: Int,
         xMin: Double,
-        xMax: Double
+        xMax: Double,
+        inclineMinPercent: Double,
+        inclineMaxPercent: Double
     ): PolynomialResult? {
         val n = points.size
         // Basis: [1, x, x², ..., x^d, s, x*s] → (d+1) + 2 = d+3 columns
@@ -351,7 +359,7 @@ object SpeedCalibrationManager {
         }
         val r2 = if (ssTot > 0) 1.0 - ssRes / ssTot else 0.0
 
-        return PolynomialResult(coefficients, d, r2, n)
+        return PolynomialResult(coefficients, d, r2, n, inclineMinPercent, inclineMaxPercent)
     }
 
     /**

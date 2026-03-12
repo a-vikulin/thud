@@ -73,6 +73,8 @@ class SettingsManager(
         const val PREF_SPEED_CALIBRATION_C3 = "speed_calibration_c3"
         const val PREF_SPEED_CALIBRATION_C4 = "speed_calibration_c4"
         const val PREF_SPEED_CALIBRATION_C5 = "speed_calibration_c5"
+        const val PREF_CALIBRATION_INCLINE_MIN = "calibration_incline_min"
+        const val PREF_CALIBRATION_INCLINE_MAX = "calibration_incline_max"
         const val PREF_FIT_USE_STRYD_SPEED = "fit_use_stryd_speed"
         const val PREF_INCLINE_ADJUSTMENT = "incline_adjustment"
         const val PREF_INCLINE_POWER_COEFFICIENT = "incline_power_coefficient"
@@ -405,6 +407,8 @@ class SettingsManager(
         state.speedCalibrationC3 = prefs.getFloat(PREF_SPEED_CALIBRATION_C3, 0f).toDouble()
         state.speedCalibrationC4 = prefs.getFloat(PREF_SPEED_CALIBRATION_C4, 0f).toDouble()
         state.speedCalibrationC5 = prefs.getFloat(PREF_SPEED_CALIBRATION_C5, 0f).toDouble()
+        state.calibrationInclineMinPercent = prefs.getFloat(PREF_CALIBRATION_INCLINE_MIN, 0f).toDouble()
+        state.calibrationInclineMaxPercent = prefs.getFloat(PREF_CALIBRATION_INCLINE_MAX, 0f).toDouble()
         state.fitUseStrydSpeed = prefs.getBoolean(PREF_FIT_USE_STRYD_SPEED, true)
         state.inclineAdjustment = prefs.getFloat(PREF_INCLINE_ADJUSTMENT, DEFAULT_INCLINE_ADJUSTMENT.toFloat()).toDouble()
         state.inclinePowerCoefficient = prefs.getFloat(PREF_INCLINE_POWER_COEFFICIENT, DEFAULT_INCLINE_POWER_COEFFICIENT.toFloat()).toDouble()
@@ -1217,6 +1221,8 @@ class SettingsManager(
                         state.speedCalibrationC3 = result.coefficients.getOrElse(3) { 0.0 }
                         state.speedCalibrationC4 = result.coefficients.getOrElse(4) { 0.0 }
                         state.speedCalibrationC5 = result.coefficients.getOrElse(5) { 0.0 }
+                        state.calibrationInclineMinPercent = result.inclineMinPercent
+                        state.calibrationInclineMaxPercent = result.inclineMaxPercent
                     }
                 }
                 refreshCalibrationDisplay()
@@ -1322,6 +1328,8 @@ class SettingsManager(
             putFloat(PREF_SPEED_CALIBRATION_C3, state.speedCalibrationC3.toFloat())
             putFloat(PREF_SPEED_CALIBRATION_C4, state.speedCalibrationC4.toFloat())
             putFloat(PREF_SPEED_CALIBRATION_C5, state.speedCalibrationC5.toFloat())
+            putFloat(PREF_CALIBRATION_INCLINE_MIN, state.calibrationInclineMinPercent.toFloat())
+            putFloat(PREF_CALIBRATION_INCLINE_MAX, state.calibrationInclineMaxPercent.toFloat())
         }
     }
 
@@ -2731,6 +2739,8 @@ class SettingsManager(
             putFloat(PREF_SPEED_CALIBRATION_C3, state.speedCalibrationC3.toFloat())
             putFloat(PREF_SPEED_CALIBRATION_C4, state.speedCalibrationC4.toFloat())
             putFloat(PREF_SPEED_CALIBRATION_C5, state.speedCalibrationC5.toFloat())
+            putFloat(PREF_CALIBRATION_INCLINE_MIN, state.calibrationInclineMinPercent.toFloat())
+            putFloat(PREF_CALIBRATION_INCLINE_MAX, state.calibrationInclineMaxPercent.toFloat())
             putBoolean(PREF_FIT_USE_STRYD_SPEED, state.fitUseStrydSpeed)
             putFloat(PREF_INCLINE_ADJUSTMENT, state.inclineAdjustment.toFloat())
             putFloat(PREF_INCLINE_POWER_COEFFICIENT, state.inclinePowerCoefficient.toFloat())

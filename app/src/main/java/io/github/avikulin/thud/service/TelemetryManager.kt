@@ -185,28 +185,65 @@ class TelemetryManager(
 
     // ==================== Treadmill Control ====================
 
+    // Tracks the last raw speed we commanded (via setSpeed or compensation)
+    // to distinguish our own commands from physical button speed changes in onSpeedUpdate.
+    @Volatile private var lastCommandedRawSpeed = 0.0
+
     /**
      * Set treadmill speed (adjusted speed, will be converted to treadmill speed).
+     * Updates [ServiceStateHolder.targetAdjustedSpeedKph] for stable display/recording.
      */
     fun setTreadmillSpeed(adjustedKph: Double): Boolean {
+        state.targetAdjustedSpeedKph = adjustedKph
         val treadmillKph = state.adjustedToRawSpeed(adjustedKph, state.currentRawInclinePercent)
+        lastCommandedRawSpeed = treadmillKph
         val success = glassOsClient?.setSpeed(treadmillKph) ?: false
         Log.d(TAG, "Set speed: $adjustedKph kph (adjusted) -> $treadmillKph kph (treadmill): $success")
         return success
     }
 
     /**
-     * Set treadmill incline.
-     * Converts effective incline (outdoor equivalent) to treadmill incline by adding adjustment.
+     * Set treadmill incline, compensating raw speed to maintain the same adjusted speed.
+     *
+     * When auto-calibration includes incline terms (C4, C5), changing incline shifts the
+     * speed calibration curve. Without compensation, the same raw speed would produce a
+     * different adjusted speed at the new incline — a phantom speed change.
+     *
+     * Sends incline FIRST, then compensated speed. The display uses [targetAdjustedSpeedKph]
+     * (which doesn't change here), so transient telemetry mismatches are invisible to the user.
+     *
      * @param effectivePercent The effective incline (0% = flat outdoor equivalent)
      */
     fun setTreadmillIncline(effectivePercent: Double): Boolean {
-        // Convert effective incline to treadmill incline
-        // e.g., if adjustment=1.0, effective 0% → treadmill 1%, effective 2% → treadmill 3%
-        val treadmillPercent = effectivePercent + state.inclineAdjustment
-        val success = glassOsClient?.setIncline(treadmillPercent) ?: false
-        Log.d(TAG, "Set incline: effective=$effectivePercent%, treadmill=$treadmillPercent%: $success")
+        val newTreadmillPercent = effectivePercent + state.inclineAdjustment
+        val success = glassOsClient?.setIncline(newTreadmillPercent) ?: false
+        compensateSpeedForInclineChange(newTreadmillPercent)
+        Log.d(TAG, "Set incline: effective=$effectivePercent%, treadmill=$newTreadmillPercent%: $success")
         return success
+    }
+
+    /**
+     * If auto-calibration is active and the belt is running, re-send the raw speed
+     * needed to maintain [targetAdjustedSpeedKph] at [newRawInclinePercent].
+     *
+     * Does NOT modify [targetAdjustedSpeedKph] — the target stays the same,
+     * only the raw speed to achieve it changes with incline.
+     *
+     * Only called from [setTreadmillIncline] (software-initiated incline changes).
+     * NOT called from onInclineUpdate — reacting to every telemetry tick during incline
+     * transitions creates oscillation (incline bounces between old/new while motor adjusts).
+     */
+    private fun compensateSpeedForInclineChange(newRawInclinePercent: Double) {
+        if (!state.speedCalibrationAuto || state.targetAdjustedSpeedKph <= 0) return
+
+        val newRawSpeedKph = state.adjustedToRawSpeed(state.targetAdjustedSpeedKph, newRawInclinePercent)
+
+        if (kotlin.math.abs(newRawSpeedKph - state.currentSpeedKph) > 0.01) {
+            lastCommandedRawSpeed = newRawSpeedKph
+            glassOsClient?.setSpeed(newRawSpeedKph)
+            Log.d(TAG, "Incline compensation: raw speed ${state.currentSpeedKph} -> $newRawSpeedKph kph " +
+                "to maintain adjusted ${state.targetAdjustedSpeedKph} kph (incline -> $newRawInclinePercent%)")
+        }
     }
 
     /**
@@ -300,7 +337,19 @@ class TelemetryManager(
     // ==================== TelemetryListener Implementation ====================
 
     override fun onSpeedUpdate(kph: Double) {
+        val rawChanged = kotlin.math.abs(kph - state.currentSpeedKph) > 0.001
         state.currentSpeedKph = kph
+
+        if (kph <= 0) {
+            // Belt stopped — clear target
+            state.targetAdjustedSpeedKph = 0.0
+        } else if (rawChanged && kotlin.math.abs(kph - lastCommandedRawSpeed) > 0.05) {
+            // Raw speed changed to something we didn't command — physical button or external source.
+            // Update target from telemetry so display reflects the new speed.
+            state.targetAdjustedSpeedKph = state.rawToAdjustedSpeed(kph, state.currentRawInclinePercent)
+            Log.d(TAG, "External speed change detected: raw=$kph, target=${state.targetAdjustedSpeedKph}")
+        }
+
         listener?.onSpeedUpdate(kph)
         listener?.onTelemetryUpdated()
     }

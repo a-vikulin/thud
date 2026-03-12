@@ -23,6 +23,16 @@ class ServiceStateHolder {
     // Note: Distance and elevation are NOT stored here - we calculate them from adjusted speed
     @Volatile var currentSpeedKph = 0.0
     @Volatile var currentInclinePercent = 0.0
+
+    /**
+     * The intended adjusted (perceived) speed. Set by TelemetryManager.setTreadmillSpeed()
+     * when we command a speed, and NOT changed when incline compensation adjusts raw speed
+     * to maintain the same perceived speed at a new incline.
+     *
+     * Use [getDisplayAdjustedSpeed] instead of [rawToAdjustedSpeed] for display/recording
+     * to avoid transient wobble during incline transitions with incline-aware calibration.
+     */
+    @Volatile var targetAdjustedSpeedKph = 0.0
     @Volatile var currentHeartRateBpm = 0.0
     @Volatile var currentElapsedSeconds = 0
 
@@ -58,6 +68,11 @@ class ServiceStateHolder {
     @Volatile var speedCalibrationC5 = 0.0          // cross term: C5*x*sin(θ)
     @Volatile var speedCalibrationDegree = 1        // speed polynomial degree: 1, 2, or 3
     //
+    // Training data incline range (raw treadmill %). Incline is clamped to this range
+    // before computing sin(θ) to prevent extrapolation beyond training data.
+    @Volatile var calibrationInclineMinPercent = 0.0
+    @Volatile var calibrationInclineMaxPercent = 0.0
+    //
     @Volatile var speedCalibrationAuto = false       // true = use polynomial from Stryd regression
     @Volatile var speedCalibrationRunWindow = 30     // how many recent runs for regression
 
@@ -68,13 +83,23 @@ class ServiceStateHolder {
     )
 
     /**
+     * Clamp raw incline to the training data range before computing sin(θ).
+     * Prevents extrapolation beyond the inclines present in calibration data.
+     */
+    private fun clampedCalibrationSinTheta(rawInclinePercent: Double): Double {
+        val clamped = rawInclinePercent.coerceIn(calibrationInclineMinPercent, calibrationInclineMaxPercent)
+        return PaceConverter.inclinePercentToSin(clamped)
+    }
+
+    /**
      * Convert raw treadmill speed to adjusted (perceived) speed. Single source of truth.
      * @param rawKph Raw treadmill speed
      * @param rawInclinePercent Raw treadmill incline (before adjustment). Used for auto mode incline correction.
      */
     fun rawToAdjustedSpeed(rawKph: Double, rawInclinePercent: Double = 0.0): Double = if (speedCalibrationAuto) {
-        val sinTheta = PaceConverter.inclinePercentToSin(rawInclinePercent)
-        SpeedCalibrationManager.evaluatePolynomial(getPolynomialCoefficients(), rawKph, sinTheta)
+        SpeedCalibrationManager.evaluatePolynomial(
+            getPolynomialCoefficients(), rawKph, clampedCalibrationSinTheta(rawInclinePercent)
+        )
     } else {
         rawKph * paceCoefficient + speedCalibrationB
     }
@@ -85,9 +110,8 @@ class ServiceStateHolder {
      * @param rawInclinePercent Raw treadmill incline (before adjustment). Used for auto mode incline correction.
      */
     fun adjustedToRawSpeed(adjustedKph: Double, rawInclinePercent: Double = 0.0): Double = if (speedCalibrationAuto) {
-        val sinTheta = PaceConverter.inclinePercentToSin(rawInclinePercent)
         SpeedCalibrationManager.invertPolynomialNewtonRaphson(
-            getPolynomialCoefficients(), adjustedKph, sinTheta
+            getPolynomialCoefficients(), adjustedKph, clampedCalibrationSinTheta(rawInclinePercent)
         )
     } else {
         (adjustedKph - speedCalibrationB) / paceCoefficient
@@ -99,6 +123,18 @@ class ServiceStateHolder {
 
     /** Raw treadmill incline = effective incline + adjustment. For speed calibration. */
     val currentRawInclinePercent: Double get() = currentInclinePercent + inclineAdjustment
+
+    /**
+     * Get the adjusted speed for display and recording.
+     * Prefers [targetAdjustedSpeedKph] (stable during incline transitions) over
+     * recomputing from telemetry (which wobbles when incline is changing).
+     * Falls back to [rawToAdjustedSpeed] when no target is set (e.g., physical button start).
+     */
+    fun getDisplayAdjustedSpeed(): Double {
+        val target = targetAdjustedSpeedKph
+        return if (target > 0 && currentSpeedKph > 0) target
+        else rawToAdjustedSpeed(currentSpeedKph, currentRawInclinePercent)
+    }
 
     // Incline power coefficient (0.0 = no adjustment, 1.0 = full theoretical adjustment)
     @Volatile var inclinePowerCoefficient = 0.5

@@ -151,7 +151,7 @@ class PopupManager(
         val buttonTextSize = resources.getDimension(R.dimen.text_popup_button) / TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 1f, resources.displayMetrics)
 
         // Current adjusted speed rounded to nearest 0.5 for highlighting
-        val currentAdjustedKph = state.rawToAdjustedSpeed(state.currentSpeedKph, rawIncline)
+        val currentAdjustedKph = state.getDisplayAdjustedSpeed()
         val roundedCurrentAdjustedKph = round(currentAdjustedKph * 2) / 2
 
         // Create popup container with dynamic grid size
